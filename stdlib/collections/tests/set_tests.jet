@@ -1,0 +1,368 @@
+### Tests for the Set type
+
+import collections::set
+import core::option::{Some, None}
+
+@test
+fn test_set_new():
+    let s = Set.new()
+    assert s.len() == 0
+    assert s.is_empty() == true
+
+@test
+fn test_set_with_capacity():
+    let s = Set.with_capacity(100)
+    assert s.len() == 0
+    assert s.is_empty() == true
+
+@test
+fn test_set_insert():
+    let mut s = Set.new()
+    let added = s.insert(1)
+    assert added == true
+    assert s.len() == 1
+    assert s.is_empty() == false
+
+@test
+fn test_set_insert_duplicate():
+    let mut s = Set.new()
+    s.insert(1)
+    let added = s.insert(1)
+    assert added == false
+    assert s.len() == 1
+
+@test
+fn test_set_contains():
+    let mut s = Set.new()
+    s.insert(42)
+    assert s.contains(42) == true
+    assert s.contains(100) == false
+
+@test
+fn test_set_remove():
+    let mut s = Set.new()
+    s.insert(1)
+    s.insert(2)
+    let removed = s.remove(1)
+    assert removed == true
+    assert s.len() == 1
+    assert s.contains(1) == false
+
+@test
+fn test_set_remove_missing():
+    let mut s = Set.new()
+    let removed = s.remove(100)
+    assert removed == false
+
+@test
+fn test_set_clear():
+    let mut s = Set.new()
+    s.insert(1)
+    s.insert(2)
+    s.clear()
+    assert s.len() == 0
+    assert s.is_empty() == true
+    assert s.contains(1) == false
+
+@test
+fn test_set_from_array():
+    let arr = [1, 2, 3, 2, 1]
+    let s = Set.from_array(arr)
+    assert s.len() == 3
+    assert s.contains(1) == true
+    assert s.contains(2) == true
+    assert s.contains(3) == true
+
+@test
+fn test_set_union():
+    let mut s1 = Set.new()
+    s1.insert(1)
+    s1.insert(2)
+    let mut s2 = Set.new()
+    s2.insert(2)
+    s2.insert(3)
+    let union = s1.union(s2)
+    assert union.len() == 3
+    assert union.contains(1) == true
+    assert union.contains(2) == true
+    assert union.contains(3) == true
+
+@test
+fn test_set_intersection():
+    let mut s1 = Set.new()
+    s1.insert(1)
+    s1.insert(2)
+    s1.insert(3)
+    let mut s2 = Set.new()
+    s2.insert(2)
+    s2.insert(3)
+    s2.insert(4)
+    let intersection = s1.intersection(s2)
+    assert intersection.len() == 2
+    assert intersection.contains(2) == true
+    assert intersection.contains(3) == true
+    assert intersection.contains(1) == false
+
+@test
+fn test_set_difference():
+    let mut s1 = Set.new()
+    s1.insert(1)
+    s1.insert(2)
+    s1.insert(3)
+    let mut s2 = Set.new()
+    s2.insert(2)
+    let difference = s1.difference(s2)
+    assert difference.len() == 2
+    assert difference.contains(1) == true
+    assert difference.contains(3) == true
+    assert difference.contains(2) == false
+
+@test
+fn test_set_symmetric_difference():
+    let mut s1 = Set.new()
+    s1.insert(1)
+    s1.insert(2)
+    let mut s2 = Set.new()
+    s2.insert(2)
+    s2.insert(3)
+    let sym_diff = s1.symmetric_difference(s2)
+    assert sym_diff.len() == 2
+    assert sym_diff.contains(1) == true
+    assert sym_diff.contains(3) == true
+    assert sym_diff.contains(2) == false
+
+@test
+fn test_set_is_subset():
+    let mut s1 = Set.new()
+    s1.insert(1)
+    s1.insert(2)
+    let mut s2 = Set.new()
+    s2.insert(1)
+    s2.insert(2)
+    s2.insert(3)
+    assert s1.is_subset(s2) == true
+    assert s2.is_subset(s1) == false
+
+@test
+fn test_set_is_superset():
+    let mut s1 = Set.new()
+    s1.insert(1)
+    s1.insert(2)
+    s1.insert(3)
+    let mut s2 = Set.new()
+    s2.insert(1)
+    s2.insert(2)
+    assert s1.is_superset(s2) == true
+    assert s2.is_superset(s1) == false
+
+@test
+fn test_set_is_disjoint():
+    let mut s1 = Set.new()
+    s1.insert(1)
+    s1.insert(2)
+    let mut s2 = Set.new()
+    s2.insert(3)
+    s2.insert(4)
+    let mut s3 = Set.new()
+    s3.insert(2)
+    s3.insert(3)
+    assert s1.is_disjoint(s2) == true
+    assert s1.is_disjoint(s3) == false
+
+@test
+fn test_set_all():
+    let mut s = Set.new()
+    s.insert(2)
+    s.insert(4)
+    s.insert(6)
+    assert s.all(|x| x % 2 == 0) == true
+    assert s.all(|x| x > 5) == false
+
+@test
+fn test_set_any():
+    let mut s = Set.new()
+    s.insert(1)
+    s.insert(2)
+    s.insert(3)
+    assert s.any(|x| x == 2) == true
+    assert s.any(|x| x > 10) == false
+
+@test
+fn test_set_find():
+    let mut s = Set.new()
+    s.insert(1)
+    s.insert(2)
+    s.insert(3)
+    assert s.find(|x| x > 1) == Some(2)
+    assert s.find(|x| x > 10) == None
+
+@test
+fn test_set_fold():
+    let mut s = Set.new()
+    s.insert(1)
+    s.insert(2)
+    s.insert(3)
+    let sum = s.fold(0, |acc, x| acc + x)
+    assert sum == 6
+
+@test
+fn test_set_map():
+    let mut s = Set.new()
+    s.insert(1)
+    s.insert(2)
+    s.insert(3)
+    let doubled = s.map(|x| x * 2)
+    assert doubled.contains(2) == true
+    assert doubled.contains(4) == true
+    assert doubled.contains(6) == true
+
+@test
+fn test_set_filter():
+    let mut s = Set.new()
+    s.insert(1)
+    s.insert(2)
+    s.insert(3)
+    s.insert(4)
+    let evens = s.filter(|x| x % 2 == 0)
+    assert evens.len() == 2
+    assert evens.contains(2) == true
+    assert evens.contains(4) == true
+
+@test
+fn test_set_retain():
+    let mut s = Set.new()
+    s.insert(1)
+    s.insert(2)
+    s.insert(3)
+    s.insert(4)
+    s.retain(|x| x % 2 == 0)
+    assert s.len() == 2
+    assert s.contains(2) == true
+    assert s.contains(4) == true
+    assert s.contains(1) == false
+
+@test
+fn test_set_take():
+    let mut s = Set.new()
+    s.insert(1)
+    s.insert(2)
+    let taken = s.take()
+    assert taken.is_some() == true
+    assert s.len() == 1
+
+@test
+fn test_set_take_empty():
+    let mut s: Set[int] = Set.new()
+    let taken = s.take()
+    assert taken == None
+
+@test
+fn test_set_take_value():
+    let mut s = Set.new()
+    s.insert(42)
+    s.insert(100)
+    let taken = s.take_value(42)
+    assert taken == Some(42)
+    assert s.contains(42) == false
+    assert s.len() == 1
+
+@test
+fn test_set_to_vec():
+    let mut s = Set.new()
+    s.insert(1)
+    s.insert(2)
+    s.insert(3)
+    let v = s.to_vec()
+    assert v.len() == 3
+
+@test
+fn test_set_count():
+    let mut s = Set.new()
+    s.insert(1)
+    s.insert(2)
+    s.insert(3)
+    s.insert(4)
+    let count = s.count(|x| x % 2 == 0)
+    assert count == 2
+
+@test
+fn test_set_partition():
+    let mut s = Set.new()
+    s.insert(1)
+    s.insert(2)
+    s.insert(3)
+    s.insert(4)
+    let (evens, odds) = s.partition(|x| x % 2 == 0)
+    assert evens.len() == 2
+    assert odds.len() == 2
+    assert evens.contains(2) == true
+    assert evens.contains(4) == true
+    assert odds.contains(1) == true
+    assert odds.contains(3) == true
+
+@test
+fn test_set_iteration():
+    let mut s = Set.new()
+    s.insert(1)
+    s.insert(2)
+    s.insert(3)
+    let mut sum = 0
+    for item in s:
+        sum += item
+    assert sum == 6
+
+@test
+fn test_set_iter():
+    let mut s = Set.new()
+    s.insert(1)
+    s.insert(2)
+    let mut iter = s.iter()
+    let first = iter.next()
+    assert first.is_some() == true
+    let second = iter.next()
+    assert second.is_some() == true
+
+@test
+fn test_set_extend():
+    let mut s = Set.new()
+    s.insert(1)
+    let other = Set.new()
+    other.insert(2)
+    other.insert(3)
+    s.extend(other)
+    assert s.len() == 3
+    assert s.contains(1) == true
+    assert s.contains(2) == true
+    assert s.contains(3) == true
+
+@test
+fn test_set_from_iter():
+    let mut source = Vec.new()
+    source.push(1)
+    source.push(2)
+    source.push(2)
+    source.push(3)
+    let s = Set.from_iter(source)
+    assert s.len() == 3
+    assert s.contains(1) == true
+    assert s.contains(2) == true
+    assert s.contains(3) == true
+
+@test
+fn test_set_string_elements():
+    let mut s = Set.new()
+    s.insert("hello")
+    s.insert("world")
+    s.insert("hello")
+    assert s.len() == 2
+    assert s.contains("hello") == true
+    assert s.contains("world") == true
+
+@test
+fn test_set_large_set():
+    let mut s = Set.new()
+    for i in 0..100:
+        s.insert(i)
+    assert s.len() == 100
+    for i in 0..100:
+        assert s.contains(i) == true

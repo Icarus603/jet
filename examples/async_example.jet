@@ -1,0 +1,90 @@
+# Async/await example
+# Demonstrates asynchronous programming patterns
+
+import std::async
+import std::io
+import std::time
+import std::net::http
+
+# Simulated async I/O operations
+async fn fetch_data(url: string) -> Result<string, http::Error>:
+    print(f"Fetching {url}...")
+    time::sleep_async(500)  # Simulate network delay
+    return Ok(f"Data from {url}")
+
+async fn process_data(data: string) -> string:
+    print(f"Processing {data}...")
+    time::sleep_async(200)  # Simulate processing
+    return f"Processed: {data}"
+
+async fn save_result(result: string) -> Result<(), io::Error>:
+    print(f"Saving {result}...")
+    time::sleep_async(100)
+    return Ok(())
+
+# Sequential async operations
+async fn sequential_workflow():
+    print("=== Sequential Workflow ===")
+
+    let data = fetch_data("https://api.example.com/data").await?
+    let processed = process_data(data).await
+    save_result(processed).await?
+
+    print("Sequential workflow completed!")
+
+# Concurrent async operations
+async fn concurrent_workflow():
+    print("\n=== Concurrent Workflow ===")
+
+    # Start multiple fetches concurrently
+    let fetch1 = fetch_data("https://api.example.com/users")
+    let fetch2 = fetch_data("https://api.example.com/posts")
+    let fetch3 = fetch_data("https://api.example.com/comments")
+
+    # Wait for all to complete
+    let (users, posts, comments) = async::join!(fetch1, fetch2, fetch3)
+
+    print(f"Got users: {users.is_ok()}")
+    print(f"Got posts: {posts.is_ok()}")
+    print(f"Got comments: {comments.is_ok()}")
+
+# Async with timeout
+async fn with_timeout_example():
+    print("\n=== Timeout Example ===")
+
+    let result = async::timeout(300ms, fetch_data("https://slow.api.com/data")).await
+
+    match result:
+        Ok(Ok(data)) -> print(f"Got data: {data}")
+        Ok(Err(e)) -> print(f"Request failed: {e}")
+        Err(async::TimeoutError) -> print("Request timed out!")
+
+# Async stream processing
+async fn stream_example():
+    print("\n=== Stream Example ===")
+
+    let urls = [
+        "https://api.example.com/1",
+        "https://api.example.com/2",
+        "https://api.example.com/3",
+    ]
+
+    # Process URLs concurrently with limited parallelism
+    let results = async::parallel_map(urls, fetch_data, 2).await
+
+    for (url, result) in urls.zip(results):
+        match result:
+            Ok(data) -> print(f"{url}: {data}")
+            Err(e) -> print(f"{url}: Error - {e}")
+
+# Async main entry point
+async fn main():
+    print("Async/await Examples")
+    print("====================\n")
+
+    sequential_workflow().await?
+    concurrent_workflow().await?
+    with_timeout_example().await?
+    stream_example().await?
+
+    print("\nAll async examples completed!")

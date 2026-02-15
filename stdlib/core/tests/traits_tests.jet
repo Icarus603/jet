@@ -1,0 +1,153 @@
+### Tests for core traits
+
+import core::traits
+
+# Test Eq trait
+@test
+fn test_eq_trait():
+    assert 5.eq(5) == true
+    assert 5.eq(3) == false
+    assert 5.ne(3) == true
+
+# Test Ord trait
+@test
+fn test_ord_trait():
+    assert 5.compare(3) == Ordering::Greater
+    assert 3.compare(5) == Ordering::Less
+    assert 5.compare(5) == Ordering::Equal
+
+@test
+fn test_ord_lt():
+    assert 3.lt(5) == true
+    assert 5.lt(3) == false
+    assert 5.lt(5) == false
+
+@test
+fn test_ord_gt():
+    assert 5.gt(3) == true
+    assert 3.gt(5) == false
+    assert 5.gt(5) == false
+
+@test
+fn test_ord_le():
+    assert 3.le(5) == true
+    assert 5.le(5) == true
+    assert 5.le(3) == false
+
+@test
+fn test_ord_ge():
+    assert 5.ge(3) == true
+    assert 5.ge(5) == true
+    assert 3.ge(5) == false
+
+@test
+fn test_ord_min():
+    assert 3.min(5) == 3
+    assert 5.min(3) == 3
+
+@test
+fn test_ord_max():
+    assert 3.max(5) == 5
+    assert 5.max(3) == 5
+
+@test
+fn test_ord_clamp():
+    assert 5.clamp(0, 10) == 5
+    assert (-5).clamp(0, 10) == 0
+    assert 15.clamp(0, 10) == 10
+
+# Test Ordering enum
+@test
+fn test_ordering_eq():
+    assert Ordering::Less.eq(Ordering::Less) == true
+    assert Ordering::Equal.eq(Ordering::Equal) == true
+    assert Ordering::Greater.eq(Ordering::Greater) == true
+    assert Ordering::Less.eq(Ordering::Equal) == false
+
+# Test Show trait
+@test
+fn test_show_trait():
+    assert 5.show() == "5"
+    assert true.show() == "true"
+    assert false.show() == "false"
+
+# Test Clone trait
+@test
+fn test_clone_trait():
+    let x = 5
+    let y = x.clone()
+    assert y == 5
+    assert x == y
+
+# Test Default trait
+@test
+fn test_default_trait():
+    assert int::default() == 0
+    assert bool::default() == false
+
+# Test Zero trait
+@test
+fn test_zero_trait():
+    assert int::zero() == 0
+    assert 5.is_zero() == false
+    assert 0.is_zero() == true
+
+# Test One trait
+@test
+fn test_one_trait():
+    assert int::one() == 1
+    assert 1.is_one() == true
+    assert 5.is_one() == false
+
+# Test arithmetic traits
+@test
+fn test_add_trait():
+    assert 5.add(3) == 8
+
+@test
+fn test_sub_trait():
+    assert 5.sub(3) == 2
+
+@test
+fn test_mul_trait():
+    assert 5.mul(3) == 15
+
+@test
+fn test_div_trait():
+    assert 6.div(3) == 2
+
+@test
+fn test_rem_trait():
+    assert 7.rem(3) == 1
+
+@test
+fn test_neg_trait():
+    assert 5.neg() == -5
+
+@test
+fn test_not_trait():
+    assert true.not() == false
+    assert false.not() == true
+
+# Test Bounded trait
+@test
+fn test_bounded_trait():
+    assert int::min_value() < int::max_value()
+
+# Test Abs trait
+@test
+fn test_abs_trait():
+    assert (-5).abs() == 5
+    assert 5.abs() == 5
+
+# Test Sqr trait
+@test
+fn test_sqr_trait():
+    assert 5.sqr() == 25
+    assert 3.sqr() == 9
+
+# Test MinMax trait
+@test
+fn test_minmax_trait():
+    assert 3.min(5) == 3
+    assert 3.max(5) == 5

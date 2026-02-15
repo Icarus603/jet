@@ -1,0 +1,151 @@
+# Language Spec Test: Control Flow
+# Tests: Section 3 - Grammar (statements and expressions)
+
+### Test if statements (3.3)
+fn test_if():
+    let x = 10
+
+    # Simple if
+    if x > 5:
+        print("x is greater than 5")
+
+    # If-else
+    if x < 5:
+        print("x is less than 5")
+    else:
+        print("x is not less than 5")
+
+    # If-elif-else chain
+    if x < 5:
+        print("small")
+    elif x < 10:
+        print("medium")
+    elif x < 20:
+        print("large")
+    else:
+        print("very large")
+
+### Test if expressions
+fn test_if_expr():
+    let x = 10
+    let result = if x > 5 then "big" else "small"
+
+### Test while loops (3.3)
+fn test_while():
+    let mut i = 0
+    while i < 10:
+        i += 1
+
+    # While with label
+    'outer: while true:
+        break 'outer
+
+### Test for loops (3.3)
+fn test_for():
+    # For loop over array
+    let nums = [1, 2, 3, 4, 5]
+    for num in nums:
+        print("num")
+
+    # For loop over range
+    for i in 0..10:
+        print("i")
+
+    # For with label
+    'outer: for i in 0..5:
+        break 'outer
+
+### Test infinite loops (3.3)
+fn test_loop():
+    let mut count = 0
+    loop:
+        count += 1
+        if count > 10:
+            break
+
+### Test match statements (3.3)
+enum Color:
+    | Red
+    | Green
+    | Blue
+
+fn test_match():
+    let color = Color::Red
+
+    match color:
+        | Color::Red => print("red")
+        | Color::Green => print("green")
+        | Color::Blue => print("blue")
+
+    # Match with values
+    let x = 5
+    match x:
+        | 0 => print("zero")
+        | 1 => print("one")
+        | _ => print("other")
+
+### Test match with guards
+fn test_match_guards():
+    let x = 5
+    match x:
+        | n if n < 0 => print("negative")
+        | n if n == 0 => print("zero")
+        | _ => print("positive")
+
+### Test return statement (3.2)
+fn test_return():
+    return 42
+
+fn test_early_return(x: int):
+    if x < 0:
+        return
+    print("positive")
+
+### Test break and continue (3.2)
+fn test_break_continue():
+    for i in 0..10:
+        if i == 5:
+            break
+        if i % 2 == 0:
+            continue
+        print("odd number")
+
+### Test break with value
+fn test_break_value():
+    let result = loop:
+        break 42
+    print("result from loop")
+
+### Test nested loops with labels
+fn test_nested_loops():
+    'outer: for i in 0..5:
+        'inner: for j in 0..5:
+            if i * j > 10:
+                break 'outer
+            if j == 2:
+                continue 'inner
+
+### Test blocks (3.3)
+fn test_blocks():
+    let x = 5
+
+    # Block with value
+    let y = {
+        let temp = x * 2
+        temp + 1
+    }
+
+### Main entry point
+fn main():
+    test_if()
+    test_if_expr()
+    test_while()
+    test_for()
+    test_loop()
+    test_match()
+    test_match_guards()
+    let val = test_return()
+    test_early_return(10)
+    test_break_continue()
+    test_nested_loops()
+    test_blocks()

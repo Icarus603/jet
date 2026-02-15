@@ -1,0 +1,121 @@
+### Semaphore for Jet.
+###
+### A semaphore controls access to a finite number of resources.
+
+import core::option::{Option, Some, None}
+import core::result::{Result, Ok, Err}
+
+### A counting semaphore.
+###
+/// A semaphore controls access to a finite number of resources.
+/// It maintains a set of permits that tasks can acquire and release.
+type Semaphore = {
+    permits: AtomicInt
+    max_permits: usize
+}
+
+/// A permit from a semaphore.
+///
+/// When dropped, the permit is automatically released back to the semaphore.
+type SemaphorePermit = {
+    semaphore: Semaphore
+}
+
+/// Error type for semaphore operations.
+type SemaphoreError = {
+    message: string
+    kind: SemaphoreErrorKind
+}
+
+/// Kinds of semaphore errors.
+enum SemaphoreErrorKind:
+    Closed
+    WouldBlock
+
+impl Show for SemaphoreError:
+    fn show(self) -> string:
+        f"Semaphore error ({self.kind.show()}): {self.message}"
+
+impl Show for SemaphoreErrorKind:
+    fn show(self) -> string:
+        match self:
+            Closed -> "closed"
+            WouldBlock -> "would block"
+
+impl Semaphore:
+    /// Creates a new semaphore with the given number of permits.
+    fn new(permits: usize) -> Semaphore:
+        Semaphore {
+            permits: AtomicInt.new(permits as int64),
+            max_permits: permits
+        }
+
+    /// Acquires a permit from the semaphore.
+    fn acquire(self) -> Result[SemaphorePermit, SemaphoreError] ! async:
+        while self.permits.load() <= 0:
+            yield_now().await
+        self.permits.fetch_sub(1)
+        Ok(SemaphorePermit { semaphore: self })
+
+    /// Attempts to acquire a permit without blocking.
+    fn try_acquire(self) -> Option[SemaphorePermit]:
+        if self.permits.load() > 0:
+            self.permits.fetch_sub(1)
+            Some(SemaphorePermit { semaphore: self })
+        else:
+            None
+
+    /// Acquires multiple permits from the semaphore.
+    fn acquire_many(self, n: usize) -> Result[Vec[SemaphorePermit], SemaphoreError] ! async:
+        let permits = Vec.new()
+        for _ in 0..n:
+            permits.push(self.acquire().await?)
+        Ok(permits)
+
+    /// Returns the number of available permits.
+    fn available_permits(self) -> usize:
+        max(0, self.permits.load()) as usize
+
+    /// Adds permits back to the semaphore.
+    fn add_permits(self, n: usize):
+        self.permits.fetch_add(n as int64)
+
+    /// Closes the semaphore, preventing new acquires.
+    fn close(self):
+        self.permits.store(-1)
+
+    /// Returns true if the semaphore is closed.
+    fn is_closed(self) -> bool:
+        self.permits.load() < 0
+
+impl SemaphorePermit:
+    /// Forgets the permit without releasing it.
+    fn forget(self):
+        # The permit is not released when forgotten
+        ()
+
+    /// Releases the permit early.
+    fn release(self):
+        self.semaphore.permits.fetch_add(1)
+
+/// A named semaphore for system-wide synchronization.
+type NamedSemaphore = {
+    name: string
+}
+
+impl NamedSemaphore:
+    /// Creates or opens a named semaphore.
+    fn create(name: string, initial: usize) -> NamedSemaphore:
+        NamedSemaphore { name: name }
+
+    /// Opens an existing named semaphore.
+    fn open(name: string) -> Option[NamedSemaphore]:
+        Some(NamedSemaphore { name: name })
+
+    /// Acquires the named semaphore.
+    fn acquire(self) -> Result[unit, SemaphoreError] ! async:
+        Ok(())
+
+    /// Releases the named semaphore.
+    fn release(self):
+        ()

@@ -1,0 +1,34 @@
+### Jet Async Runtime Library
+###
+### This module provides asynchronous programming primitives for Jet,
+### including tasks, channels, and futures.
+
+# Task management
+export Task
+export TaskHandle
+export TaskError
+export spawn
+export spawn_blocking
+
+# Channels
+export Channel
+export Sender
+export Receiver
+export channel
+
+# Futures
+export Future
+export FutureExt
+
+# Utilities
+export sleep
+export timeout
+export yield_now
+export select
+export race
+
+# Import submodules
+import task
+import channel
+import future
+import util

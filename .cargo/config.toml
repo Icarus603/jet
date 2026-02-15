@@ -1,0 +1,23 @@
+[env]
+# LLVM configuration for inkwell
+# Set this to your LLVM installation path
+# For macOS with Homebrew LLVM on Apple Silicon:
+LLVM_SYS_211_PREFIX = "/opt/homebrew/opt/llvm@21"
+
+[build]
+# Use the correct linker on macOS
+
+[target.aarch64-apple-darwin]
+linker = "clang"
+
+[target.x86_64-apple-darwin]
+linker = "clang"
+
+[profile.dev]
+# Disable debug info for faster builds in development
+debug = 1
+
+[profile.release]
+# Optimize for size in release builds
+opt-level = 3
+lto = "thin"

@@ -1,0 +1,176 @@
+### Error raised when unwrap is called on None or Err.
+type UnwrapError = {
+    message: string
+}
+
+impl Show for UnwrapError:
+    fn show(self) -> string:
+        self.message
+
+impl Eq for UnwrapError:
+    fn eq(self, other: UnwrapError) -> bool:
+        self.message == other.message
+
+impl Clone for UnwrapError:
+    fn clone(self) -> UnwrapError:
+        UnwrapError { message: self.message }
+
+### A general error type for operations that can fail with a message.
+type Error = {
+    message: string
+}
+
+impl Show for Error:
+    fn show(self) -> string:
+        self.message
+
+impl Eq for Error:
+    fn eq(self, other: Error) -> bool:
+        self.message == other.message
+
+impl Clone for Error:
+    fn clone(self) -> Error:
+        Error { message: self.message }
+
+### Error type for invalid arguments.
+type InvalidArgumentError = {
+    message: string
+}
+
+impl Show for InvalidArgumentError:
+    fn show(self) -> string:
+        "Invalid argument: " + self.message
+
+impl Eq for InvalidArgumentError:
+    fn eq(self, other: InvalidArgumentError) -> bool:
+        self.message == other.message
+
+impl Clone for InvalidArgumentError:
+    fn clone(self) -> InvalidArgumentError:
+        InvalidArgumentError { message: self.message }
+
+### Error type for operations that are not supported.
+type UnsupportedOperationError = {
+    message: string
+}
+
+impl Show for UnsupportedOperationError:
+    fn show(self) -> string:
+        "Unsupported operation: " + self.message
+
+impl Eq for UnsupportedOperationError:
+    fn eq(self, other: UnsupportedOperationError) -> bool:
+        self.message == other.message
+
+impl Clone for UnsupportedOperationError:
+    fn clone(self) -> UnsupportedOperationError:
+        UnsupportedOperationError { message: self.message }
+
+### Error type for out of bounds access.
+type OutOfBoundsError = {
+    index: uint
+    len: uint
+}
+
+impl Show for OutOfBoundsError:
+    fn show(self) -> string:
+        "Index " + self.index.show() + " is out of bounds (length: " + self.len.show() + ")"
+
+impl Eq for OutOfBoundsError:
+    fn eq(self, other: OutOfBoundsError) -> bool:
+        self.index == other.index and self.len == other.len
+
+impl Clone for OutOfBoundsError:
+    fn clone(self) -> OutOfBoundsError:
+        OutOfBoundsError { index: self.index, len: self.len }
+
+### Error type for operations on empty collections.
+type EmptyError = {
+    message: string
+}
+
+impl Show for EmptyError:
+    fn show(self) -> string:
+        self.message
+
+impl Eq for EmptyError:
+    fn eq(self, other: EmptyError) -> bool:
+        self.message == other.message
+
+impl Clone for EmptyError:
+    fn clone(self) -> EmptyError:
+        EmptyError { message: self.message }
+
+### Error type for conversion failures.
+type ConversionError = {
+    from: string
+    to: string
+    message: string
+}
+
+impl Show for ConversionError:
+    fn show(self) -> string:
+        "Cannot convert from " + self.from + " to " + self.to + ": " + self.message
+
+impl Eq for ConversionError:
+    fn eq(self, other: ConversionError) -> bool:
+        self.from == other.from and self.to == other.to and self.message == other.message
+
+impl Clone for ConversionError:
+    fn clone(self) -> ConversionError:
+        ConversionError {
+            from: self.from,
+            to: self.to,
+            message: self.message
+        }
+
+### Error type for IO operations.
+type IOError = {
+    message: string
+}
+
+impl Show for IOError:
+    fn show(self) -> string:
+        "IO error: " + self.message
+
+impl Eq for IOError:
+    fn eq(self, other: IOError) -> bool:
+        self.message == other.message
+
+impl Clone for IOError:
+    fn clone(self) -> IOError:
+        IOError { message: self.message }
+
+### Error type for timeout operations.
+type TimeoutError = {
+    message: string
+}
+
+impl Show for TimeoutError:
+    fn show(self) -> string:
+        "Timeout: " + self.message
+
+impl Eq for TimeoutError:
+    fn eq(self, other: TimeoutError) -> bool:
+        self.message == other.message
+
+impl Clone for TimeoutError:
+    fn clone(self) -> TimeoutError:
+        TimeoutError { message: self.message }
+
+### Error type for cancelled operations.
+type CancelledError = {
+    message: string
+}
+
+impl Show for CancelledError:
+    fn show(self) -> string:
+        "Cancelled: " + self.message
+
+impl Eq for CancelledError:
+    fn eq(self, other: CancelledError) -> bool:
+        self.message == other.message
+
+impl Clone for CancelledError:
+    fn clone(self) -> CancelledError:
+        CancelledError { message: self.message }

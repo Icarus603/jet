@@ -1,0 +1,108 @@
+# Language Spec Test: Effects and Error Handling
+# Tests: Section 5 - Effects and Error Handling
+
+### Test pure functions (5.1)
+fn pure_add(a: int, b: int) -> int:
+    return a + b
+
+### Test function with single effect (5.1)
+enum DivisionError:
+    | DivisionByZero
+
+fn divide(a: float, b: float) -> float ! DivisionError:
+    if b == 0.0:
+        raise DivisionError::DivisionByZero
+    return a / b
+
+### Test multiple effects (5.1)
+enum NetworkError:
+    | Timeout
+    | ConnectionFailed
+
+enum ParseError:
+    | InvalidJson
+    | MissingField
+
+fn fetch_data(url: string) -> string ! NetworkError | ParseError:
+    # Simulate network call
+    if url == "":
+        raise NetworkError::Timeout
+    return "data"
+
+### Test async effect (5.1)
+fn async_fetch(url: string) -> string ! async | NetworkError:
+    # Async operation
+    return "async data"
+
+### Test raising errors (5.3)
+fn parse_int(s: string) -> int ! ParseError:
+    if s == "":
+        raise ParseError::MissingField
+    return 42
+
+### Test try operator (5.4)
+fn process_file(path: string) -> string ! NetworkError | ParseError:
+    let content = fetch_data(path)?       # if Err, return immediately
+    let parsed = parse_int(content)?      # if Err, return immediately
+    return "processed"
+
+### Test pattern matching on results (5.5)
+fn test_pattern_match():
+    let result = divide(10.0, 2.0)
+    match result:
+        | Ok(value) => print("Result: ")
+        | Err(e) => print("Error")
+
+### Test effect handlers (5.7)
+fn test_handler():
+    handle:
+        let x = divide(10.0, 0.0)
+        return x
+    with DivisionError::DivisionByZero resume:
+        resume 0.0  # Return default value
+
+### Test nested handlers
+fn test_nested_handlers():
+    handle:
+        handle:
+            raise NetworkError::Timeout
+        with NetworkError::Timeout resume:
+            resume ()
+    with ParseError::InvalidJson resume:
+        resume ()
+
+### Test effect propagation through calls
+fn helper() -> int ! NetworkError:
+    raise NetworkError::ConnectionFailed
+
+fn caller() -> int ! NetworkError:
+    return helper()  # NetworkError propagates
+
+### Test builtin effects
+fn test_async() ! async:
+    # await some_future()
+    pass
+
+fn test_io() ! io:
+    # read_file("path")
+    pass
+
+fn test_unsafe() ! unsafe:
+    # unsafe { ... }
+    pass
+
+### Test Result and Option types (5.7)
+fn test_result_option():
+    let x: Option[int] = Some(5)
+    let y = x.unwrap_or(0)        # 5 or default
+    # let z = x.map(|v| v * 2)    # Some(10)
+
+    let r: Result[int, string] = Ok(5)
+    # let v = r.expect("Must succeed")  # panics on Err
+
+### Main entry point
+fn main():
+    let sum = pure_add(1, 2)
+    let quot = divide(10.0, 2.0)
+    test_pattern_match()
+    test_handler()

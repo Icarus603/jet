@@ -1,0 +1,122 @@
+### Condition variable for Jet.
+###
+### A condition variable allows tasks to wait for a condition to become true.
+
+import core::option::{Option, Some, None}
+import core::result::{Result, Ok, Err}
+
+### A condition variable.
+###
+/// A condition variable allows tasks to wait for a notification.
+/// It is always used with a mutex to protect the condition being waited for.
+type Condvar = {
+    # Internal state for managing waiters
+    waiters: AtomicInt
+    notified: AtomicBool
+}
+
+### Error type for condition variable operations.
+type CondvarError = {
+    message: string
+    kind: CondvarErrorKind
+}
+
+### Kinds of condition variable errors.
+enum CondvarErrorKind:
+    Timeout
+    Poisoned
+
+impl Show for CondvarError:
+    fn show(self) -> string:
+        f"Condvar error ({self.kind.show()}): {self.message}"
+
+impl Show for CondvarErrorKind:
+    fn show(self) -> string:
+        match self:
+            Timeout -> "timeout"
+            Poisoned -> "poisoned"
+
+impl Condvar:
+    ### Creates a new condition variable.
+    fn new() -> Condvar:
+        Condvar {
+            waiters: AtomicInt.new(0),
+            notified: AtomicBool.new(false)
+        }
+
+    ### Waits on the condition variable.
+    ###
+    ### The mutex guard is unlocked during the wait and re-locked before returning.
+    fn wait[T](self, guard: MutexGuard[T]) -> Result[MutexGuard[T], CondvarError] ! async:
+        self.waiters.fetch_add(1)
+        # In a real implementation, unlock the mutex and wait
+        while not self.notified.load():
+            yield_now().await
+        self.waiters.fetch_sub(1)
+        Ok(guard)
+
+    ### Waits on the condition variable with a timeout.
+    fn wait_timeout[T](
+        self,
+        guard: MutexGuard[T],
+        duration: float64
+    ) -> Result[MutexGuard[T], CondvarError] ! async:
+        self.waiters.fetch_add(1)
+        let start = now()
+        while not self.notified.load():
+            if now() - start > duration:
+                self.waiters.fetch_sub(1)
+                return Err(CondvarError { message: "Timeout", kind: CondvarErrorKind::Timeout })
+            yield_now().await
+        self.waiters.fetch_sub(1)
+        Ok(guard)
+
+    ### Waits while a condition is true.
+    fn wait_while[T](
+        self,
+        guard: MutexGuard[T],
+        condition: fn(T) -> bool
+    ) -> Result[MutexGuard[T], CondvarError] ! async:
+        while condition(guard.deref()):
+            guard = self.wait(guard).await?
+        Ok(guard)
+
+    ### Notifies one waiting task.
+    fn notify_one(self):
+        self.notified.store(true)
+
+    ### Notifies all waiting tasks.
+    fn notify_all(self):
+        self.notified.store(true)
+
+    ### Returns the number of tasks waiting on this condition variable.
+    fn num_waiters(self) -> usize:
+        max(0, self.waiters.load()) as usize
+
+### A condition variable that can be used with an RwLock.
+type RwCondvar = {
+    inner: Condvar
+}
+
+impl RwCondvar:
+    ### Creates a new RwCondvar.
+    fn new() -> RwCondvar:
+        RwCondvar { inner: Condvar.new() }
+
+    ### Waits on the condition variable with a read lock.
+    fn wait_read[T](self, guard: RwLockReadGuard[T]) -> Result[RwLockReadGuard[T], CondvarError] ! async:
+        # In a real implementation, unlock and wait
+        Ok(guard)
+
+    ### Waits on the condition variable with a write lock.
+    fn wait_write[T](self, guard: RwLockWriteGuard[T]) -> Result[RwLockWriteGuard[T], CondvarError] ! async:
+        # In a real implementation, unlock and wait
+        Ok(guard)
+
+    ### Notifies one waiting task.
+    fn notify_one(self):
+        self.inner.notify_one()
+
+    ### Notifies all waiting tasks.
+    fn notify_all(self):
+        self.inner.notify_all()

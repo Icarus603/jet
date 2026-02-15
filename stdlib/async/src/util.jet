@@ -1,0 +1,184 @@
+### Utility functions for Jet's async runtime.
+###
+### This module provides helper functions for common async patterns.
+
+import core::option::{Option, Some, None}
+import core::result::{Result, Ok, Err}
+
+### Sleeps for the specified duration in seconds.
+fn sleep(duration: float64) ! async:
+    # In a real implementation, schedule a timer with the runtime
+    ()
+
+### Sleeps for the specified duration in milliseconds.
+fn sleep_ms(millis: u64) ! async:
+    sleep(millis as float64 / 1000.0)
+
+### Yields control back to the scheduler.
+fn yield_now() ! async:
+    # In a real implementation, yield the current task
+    ()
+
+### Times out an operation after the specified duration.
+fn timeout[T](
+    duration: float64,
+    operation: async fn() -> T
+) -> Result[T, TimeoutError] ! async:
+    # In a real implementation, race between operation and timer
+    Ok(operation().await)
+
+### Times out an operation with a default value.
+fn timeout_or_default[T](
+    duration: float64,
+    default: T,
+    operation: async fn() -> T
+) -> T ! async:
+    match timeout(duration, operation).await:
+        Ok(result) -> result
+        Err(_) -> default
+
+### Repeats an operation until it succeeds or max attempts reached.
+fn retry[T](
+    max_attempts: usize,
+    operation: async fn() -> Result[T, Error]
+) -> Result[T, Error] ! async:
+    let mut last_error = None
+    for attempt in 0..max_attempts:
+        match operation().await:
+            Ok(result) -> return Ok(result)
+            Err(e) ->
+                last_error = Some(e)
+                if attempt < max_attempts - 1:
+                    sleep(0.1 * (attempt + 1) as float64).await
+        }
+    Err(last_error.unwrap())
+
+### Repeats an operation with exponential backoff.
+fn retry_exponential[T](
+    max_attempts: usize,
+    initial_delay: float64,
+    max_delay: float64,
+    operation: async fn() -> Result[T, Error]
+) -> Result[T, Error] ! async:
+    let mut delay = initial_delay
+    let mut last_error = None
+
+    for attempt in 0..max_attempts:
+        match operation().await:
+            Ok(result) -> return Ok(result)
+            Err(e) ->
+                last_error = Some(e)
+                if attempt < max_attempts - 1:
+                    sleep(delay).await
+                    delay = min(delay * 2.0, max_delay)
+        }
+    Err(last_error.unwrap())
+
+### Runs multiple operations concurrently and waits for all.
+fn join[T](operations: &[async fn() -> T]) -> Vec[T] ! async:
+    let handles = Vec.new()
+    for op in operations:
+        handles.push(spawn_async(op))
+    let results = Vec.new()
+    for handle in handles:
+        results.push(handle.await().unwrap())
+    results
+
+/// Runs multiple operations and returns the first to complete.
+fn race[T](operations: &[async fn() -> T]) -> T ! async:
+    # In a real implementation, use a select operation
+    operations[0]().await
+
+/// Runs an operation with a deadline.
+fn with_deadline[T](
+    deadline: Timestamp,
+    operation: async fn() -> T
+) -> Result[T, DeadlineError] ! async:
+    # In a real implementation, calculate remaining time and use timeout
+    Ok(operation().await)
+
+/// Polls a condition until it becomes true or timeout.
+fn poll_until(
+    condition: fn() -> bool,
+    timeout: float64,
+    interval: float64
+) -> Result[unit, TimeoutError] ! async:
+    let start = now()
+    while not condition():
+        if now() - start > timeout:
+            return Err(TimeoutError { message: "Poll timed out" })
+        sleep(interval).await
+    Ok(())
+
+/// Debounces a function call.
+fn debounce[T](
+    delay: float64,
+    f: fn(T) -> unit
+) -> fn(T) -> unit:
+    # Returns a function that delays calling f until after delay seconds
+    # have passed since the last call
+    f  # Placeholder
+
+/// Throttles a function call.
+fn throttle[T](
+    interval: float64,
+    f: fn(T) -> unit
+) -> fn(T) -> unit:
+    # Returns a function that calls f at most once per interval
+    f  # Placeholder
+
+/// Memoizes an async function.
+fn memoize_async[T, R](
+    f: async fn(T) -> R
+) -> async fn(T) -> R where T: Hash + Eq, R: Clone:
+    # Returns a memoized version of f
+    f  # Placeholder
+
+/// Runs a cleanup operation after the main operation completes.
+fn defer[T](
+    operation: async fn() -> T,
+    cleanup: async fn() -> unit
+) -> T ! async:
+    let result = operation().await
+    cleanup().await
+    result
+
+/// Runs a cleanup operation even if the main operation panics.
+fn defer_catch[T](
+    operation: async fn() -> T,
+    cleanup: async fn() -> unit
+) -> Result[T, Error] ! async:
+    let result = catch(operation).await
+    cleanup().await
+    result
+
+/// Executes operations in parallel with a limit on concurrency.
+fn parallel_limit[T](
+    limit: usize,
+    operations: &[async fn() -> T]
+) -> Vec[T] ! async:
+    # In a real implementation, use a semaphore to limit concurrency
+    join(operations).await
+
+/// Buffers results from a stream with a timeout.
+fn buffer_timeout[T](
+    stream: Receiver[T],
+    capacity: usize,
+    timeout: float64
+) -> Receiver[Vec[T]] ! async:
+    # In a real implementation, create a buffered channel
+    channel().1
+
+/// Current time for timeouts and deadlines.
+fn now() -> float64:
+    # In a real implementation, return monotonic time in seconds
+    0.0
+
+/// Deadline error type.
+type DeadlineError = {
+    message: string
+}
+
+impl Show for DeadlineError:
+    fn show(self) -> string:
+        f"Deadline exceeded: {self.message}"

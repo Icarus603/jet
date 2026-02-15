@@ -1,0 +1,33 @@
+### Jet I/O Library
+###
+### This module provides file and console I/O operations for the Jet programming language.
+
+# File operations
+export File
+export OpenOptions
+export FileError
+
+# Path operations
+export Path
+export PathBuf
+
+# Standard I/O
+export stdin
+export stdout
+export stderr
+export print
+export println
+export eprint
+export eprintln
+export read_line
+export read_to_string
+
+# Buffered I/O
+export BufReader
+export BufWriter
+
+# Import submodules
+import file
+import path
+import stdio
+import buffered

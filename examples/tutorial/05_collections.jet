@@ -1,0 +1,113 @@
+# Tutorial 5: Collections
+# Collections store multiple values in a single container.
+
+fn main():
+    # ========== ARRAYS ==========
+    # Fixed-size ordered collection of same type
+    let numbers = [1, 2, 3, 4, 5]
+    print(f"Numbers: {numbers}")
+    print(f"First: {numbers[0]}, Last: {numbers[numbers.len() - 1]}")
+
+    # Empty array with type annotation
+    let empty: [int] = []
+
+    # Array operations
+    let mut items = [10, 20, 30]
+    items.push(40)           # Add to end
+    print(f"After push: {items}")
+
+    let last = items.pop()   # Remove from end
+    print(f"Popped: {last}, remaining: {items}")
+
+    # Array slicing
+    let slice = numbers[1..4]  # Elements 1, 2, 3
+    print(f"Slice [1..4]: {slice}")
+
+    # ========== VECTORS (DYNAMIC ARRAYS) ==========
+    // In Jet, arrays can grow automatically, similar to vectors
+    let mut dynamic = []
+    dynamic.push(100)
+    dynamic.push(200)
+    print(f"Dynamic: {dynamic}, length: {dynamic.len()}")
+
+    # ========== MAPS (DICTIONARIES) ==========
+    # Key-value pairs
+    let mut scores = {
+        "Alice": 95,
+        "Bob": 87,
+        "Charlie": 92
+    }
+    print(f"Scores: {scores}")
+
+    # Access values
+    print(f"Alice's score: {scores["Alice"]}")
+
+    # Modify values
+    scores["Bob"] = 90
+    print(f"Updated Bob's score: {scores["Bob"]}")
+
+    # Add new key-value pair
+    scores["Diana"] = 88
+    print(f"Added Diana: {scores["Diana"]}")
+
+    # Check if key exists
+    if scores.contains_key("Eve"):
+        print("Eve is in the scores")
+    else:
+        print("Eve is not in the scores")
+
+    # Iterate over map
+    print("\nAll scores:")
+    for name, score in scores:
+        print(f"  {name}: {score}")
+
+    # ========== SETS ==========
+    // Using a map with empty values as a set
+    let mut unique_tags = {}
+    unique_tags["rust"] = true
+    unique_tags["programming"] = true
+    unique_tags["rust"] = true  # Duplicate, won't add again
+    print(f"\nUnique tags count: {unique_tags.len()}")
+
+    # ========== TUPLES ==========
+    // Fixed-size collection that can hold different types
+    let person = ("Alice", 30, true)
+    print(f"\nPerson: {person}")
+
+    # Destructuring
+    let (name, age, is_active) = person
+    print(f"Name: {name}, Age: {age}, Active: {is_active}")
+
+    # Access by position
+    print(f"Name via index: {person.0}")
+
+    # ========== COLLECTION METHODS ==========
+    let data = [3, 1, 4, 1, 5, 9, 2, 6]
+
+    print(f"\nOriginal: {data}")
+    print(f"Length: {data.len()}")
+    print(f"Contains 5: {data.contains(5)}")
+
+    # Find
+    match data.find(fn(x) -> x > 5):
+        | Some(x) => print(f"First > 5: {x}")
+        | None => print("No value > 5 found")
+
+    // Filter
+    let evens = data.filter(fn(x) -> x % 2 == 0)
+    print(f"Evens: {evens}")
+
+    // Map
+    let doubled = data.map(fn(x) -> x * 2)
+    print(f"Doubled: {doubled}")
+
+    // Fold/Reduce
+    let sum = data.fold(0, fn(acc, x) -> acc + x)
+    print(f"Sum: {sum}")
+
+    // Sort
+    let sorted = data.sort()
+    print(f"Sorted: {sorted}")
+
+    // Exercise: Given an array of numbers, find the average
+    // Hint: Use fold to sum, then divide by length

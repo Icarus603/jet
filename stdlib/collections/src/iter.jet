@@ -1,0 +1,513 @@
+### Iterator utilities for the Jet Collections Library.
+###
+### This module provides additional iterator types and utility functions
+### for working with iterators in Jet.
+
+import core::option::{Option, Some, None}
+
+### An iterator that yields nothing.
+struct EmptyIter[T]:
+    # Marker type for empty iterator
+
+### An iterator that yields a single element.
+struct Once[T]:
+    value: Option[T]
+
+### An iterator that yields elements from a range.
+struct RangeIter[T]:
+    current: T
+    end: T
+    step: T
+
+### An iterator that repeats a value forever.
+struct Repeat[T]:
+    value: T
+
+### An iterator that repeats a value n times.
+struct RepeatN[T]:
+    value: T
+    remaining: usize
+
+### An iterator that chains two iterators together.
+struct Chain[A, B]:
+    first: A
+    second: B
+    first_done: bool
+
+### An iterator that filters elements.
+struct Filter[I, T]:
+    iter: I
+    predicate: fn(T) -> bool
+
+### An iterator that maps elements.
+struct Map[I, T, U]:
+    iter: I
+    function: fn(T) -> U
+
+### An iterator that takes only the first n elements.
+struct Take[I, T]:
+    iter: I
+    remaining: usize
+
+### An iterator that skips the first n elements.
+struct Skip[I, T]:
+    iter: I
+    to_skip: usize
+    skipped: bool
+
+### An iterator that enumerates elements with their index.
+struct Enumerate[I, T]:
+    iter: I
+    index: usize
+
+### An iterator that zips two iterators together.
+struct Zip[A, B]:
+    first: A
+    second: B
+
+### An iterator that yields elements while a predicate is true.
+struct TakeWhile[I, T]:
+    iter: I
+    predicate: fn(T) -> bool
+    done: bool
+
+### An iterator that skips elements while a predicate is true.
+struct SkipWhile[I, T]:
+    iter: I
+    predicate: fn(T) -> bool
+    skipping: bool
+
+### An iterator that flattens nested iterators.
+struct Flatten[I, J, T]:
+    outer: I
+    current_inner: Option[J]
+
+### An iterator that yields unique elements.
+struct Unique[I, T]:
+    iter: I
+    seen: Set[T]
+
+### Creates an empty iterator.
+fn empty[T]() -> EmptyIter[T]:
+    EmptyIter {}
+
+### Creates an iterator that yields a single element.
+fn once[T](value: T) -> Once[T]:
+    Once { value: Some(value) }
+
+### Creates an iterator that repeats a value forever.
+fn repeat[T](value: T) -> Repeat[T]:
+    Repeat { value: value }
+
+### Creates an iterator that repeats a value n times.
+fn repeat_n[T](value: T, n: usize) -> RepeatN[T]:
+    RepeatN { value: value, remaining: n }
+
+### Creates a range iterator.
+fn range[T](start: T, end: T) -> RangeIter[T] where T: Inc + Eq:
+    RangeIter { current: start, end: end, step: T::one() }
+
+### Creates a range iterator with a step.
+fn range_step[T](start: T, end: T, step: T) -> RangeIter[T] where T: Add + Eq:
+    RangeIter { current: start, end: end, step: step }
+
+impl[T] EmptyIter[T]:
+    ### Returns the next element (always None).
+    fn next(self) -> Option[T]:
+        None
+
+    ### Returns the length (always 0).
+    fn len(self) -> usize:
+        0
+
+    ### Returns true (always empty).
+    fn is_empty(self) -> bool:
+        true
+
+impl[T] Once[T]:
+    ### Returns the next element.
+    fn next(mut self) -> Option[T]:
+        let result = self.value
+        self.value = None
+        result
+
+    ### Returns the remaining length.
+    fn len(self) -> usize:
+        if self.value.is_some() { 1 } else { 0 }
+
+    ### Returns true if the iterator is empty.
+    fn is_empty(self) -> bool:
+        self.value.is_none()
+
+impl[T] Repeat[T] where T: Clone:
+    ### Returns the next element (always the same value).
+    fn next(self) -> Option[T]:
+        Some(self.value.clone())
+
+    ### Returns the length (infinite).
+    fn len(self) -> usize:
+        usize::max_value()
+
+    ### Returns false (never empty).
+    fn is_empty(self) -> bool:
+        false
+
+impl[T] RepeatN[T]:
+    ### Returns the next element.
+    fn next(mut self) -> Option[T]:
+        if self.remaining == 0:
+            None
+        else:
+            self.remaining -= 1
+            Some(self.value)
+
+    ### Returns the remaining length.
+    fn len(self) -> usize:
+        self.remaining
+
+    ### Returns true if the iterator is empty.
+    fn is_empty(self) -> bool:
+        self.remaining == 0
+
+impl[T] RangeIter[T] where T: Inc + Ord + Eq:
+    ### Returns the next element.
+    fn next(mut self) -> Option[T]:
+        if self.current >= self.end:
+            None
+        else:
+            let value = self.current
+            self.current = self.current.inc()
+            Some(value)
+
+    ### Returns the remaining length.
+    fn len(self) -> usize:
+        if self.current >= self.end:
+            0
+        else:
+            # Approximate - may not be accurate for all types
+            (self.end - self.current) as usize
+
+    ### Returns true if the iterator is empty.
+    fn is_empty(self) -> bool:
+        self.current >= self.end
+
+impl[A, B, T] Chain[A, B] where A: Iter[Item = T], B: Iter[Item = T]:
+    ### Returns the next element.
+    fn next(mut self) -> Option[T]:
+        if not self.first_done:
+            match self.first.next():
+                Some(value) -> return Some(value)
+                None ->
+                    self.first_done = true
+                    return self.second.next()
+        else:
+            self.second.next()
+
+    ### Returns the remaining length.
+    fn len(self) -> usize:
+        self.first.len() + self.second.len()
+
+    ### Returns true if the iterator is empty.
+    fn is_empty(self) -> bool:
+        self.first.is_empty() and self.second.is_empty()
+
+impl[I, T] Filter[I, T] where I: Iter[Item = T]:
+    ### Returns the next element that satisfies the predicate.
+    fn next(mut self) -> Option[T]:
+        while true:
+            match self.iter.next():
+                Some(value) ->
+                    if self.predicate(value):
+                        return Some(value)
+                None -> return None
+
+    ### Returns true if the iterator might be empty.
+    fn is_empty(self) -> bool:
+        # Conservative estimate
+        self.iter.is_empty()
+
+impl[I, T, U] Map[I, T, U] where I: Iter[Item = T]:
+    ### Returns the next mapped element.
+    fn next(mut self) -> Option[U]:
+        match self.iter.next():
+            Some(value) -> Some(self.function(value))
+            None -> None
+
+    ### Returns true if the underlying iterator is empty.
+    fn is_empty(self) -> bool:
+        self.iter.is_empty()
+
+impl[I, T] Take[I, T] where I: Iter[Item = T]:
+    ### Returns the next element.
+    fn next(mut self) -> Option[T]:
+        if self.remaining == 0:
+            None
+        else:
+            self.remaining -= 1
+            self.iter.next()
+
+    ### Returns the remaining length.
+    fn len(self) -> usize:
+        let underlying = self.iter.len()
+        if underlying < self.remaining:
+            underlying
+        else:
+            self.remaining
+
+    ### Returns true if the iterator is empty.
+    fn is_empty(self) -> bool:
+        self.remaining == 0 or self.iter.is_empty()
+
+impl[I, T] Skip[I, T] where I: Iter[Item = T]:
+    ### Returns the next element.
+    fn next(mut self) -> Option[T]:
+        if not self.skipped:
+            for _ in 0..self.to_skip:
+                match self.iter.next():
+                    Some(_) -> ()
+                    None ->
+                        self.skipped = true
+                        return None
+            self.skipped = true
+        self.iter.next()
+
+    ### Returns true if the iterator might be empty.
+    fn is_empty(self) -> bool:
+        self.iter.is_empty()
+
+impl[I, T] Enumerate[I, T] where I: Iter[Item = T]:
+    ### Returns the next element with its index.
+    fn next(mut self) -> Option[(usize, T)]:
+        match self.iter.next():
+            Some(value) ->
+                let index = self.index
+                self.index += 1
+                Some((index, value))
+            None -> None
+
+    ### Returns the remaining length.
+    fn len(self) -> usize:
+        self.iter.len()
+
+    ### Returns true if the iterator is empty.
+    fn is_empty(self) -> bool:
+        self.iter.is_empty()
+
+impl[A, B, T, U] Zip[A, B] where A: Iter[Item = T], B: Iter[Item = U]:
+    ### Returns the next pair of elements.
+    fn next(mut self) -> Option[(T, U)]:
+        match self.first.next():
+            Some(a) ->
+                match self.second.next():
+                    Some(b) -> Some((a, b))
+                    None -> None
+            None -> None
+
+    ### Returns the remaining length (minimum of both iterators).
+    fn len(self) -> usize:
+        let len1 = self.first.len()
+        let len2 = self.second.len()
+        if len1 < len2 { len1 } else { len2 }
+
+    ### Returns true if either iterator is empty.
+    fn is_empty(self) -> bool:
+        self.first.is_empty() or self.second.is_empty()
+
+impl[I, T] TakeWhile[I, T] where I: Iter[Item = T]:
+    ### Returns the next element while the predicate is true.
+    fn next(mut self) -> Option[T]:
+        if self.done:
+            return None
+        match self.iter.next():
+            Some(value) ->
+                if self.predicate(value):
+                    Some(value)
+                else:
+                    self.done = true
+                    None
+            None -> None
+
+    ### Returns true if the iterator might be empty.
+    fn is_empty(self) -> bool:
+        self.done or self.iter.is_empty()
+
+impl[I, T] SkipWhile[I, T] where I: Iter[Item = T]:
+    ### Returns the next element.
+    fn next(mut self) -> Option[T]:
+        if self.skipping:
+            while true:
+                match self.iter.next():
+                    Some(value) ->
+                        if not self.predicate(value):
+                            self.skipping = false
+                            return Some(value)
+                    None -> return None
+        else:
+            self.iter.next()
+
+    ### Returns true if the iterator might be empty.
+    fn is_empty(self) -> bool:
+        self.iter.is_empty()
+
+### Extension trait for all iterators.
+trait IterExt[T]:
+    ### Counts the number of elements.
+    fn count(self) -> usize
+
+    ### Returns the first element.
+    fn first(self) -> Option[T]
+
+    ### Returns the last element.
+    fn last(self) -> Option[T]
+
+    ### Returns the nth element.
+    fn nth(self, n: usize) -> Option[T]
+
+    ### Returns the element at position n (same as nth).
+    fn element_at(self, n: usize) -> Option[T]
+
+    ### Consumes the iterator and returns all elements as a vector.
+    fn collect_vec(self) -> Vec[T]
+
+    ### Consumes the iterator and returns all elements in a set.
+    fn collect_set(self) -> Set[T] where T: Hash + Eq
+
+    ### Folds the iterator into a single value.
+    fn fold[U](self, initial: U, f: fn(U, T) -> U) -> U
+
+    ### Returns true if all elements satisfy the predicate.
+    fn all(self, f: fn(T) -> bool) -> bool
+
+    ### Returns true if any element satisfies the predicate.
+    fn any(self, f: fn(T) -> bool) -> bool
+
+    ### Finds the first element that satisfies the predicate.
+    fn find(self, f: fn(T) -> bool) -> Option[T]
+
+    ### Returns the position of the first element that satisfies the predicate.
+    fn position(self, f: fn(T) -> bool) -> Option[usize]
+
+    ### Maps each element to a new value.
+    fn map[U](self, f: fn(T) -> U) -> Map[Self, T, U]
+
+    ### Filters elements by a predicate.
+    fn filter(self, f: fn(T) -> bool) -> Filter[Self, T]
+
+    ### Takes only the first n elements.
+    fn take(self, n: usize) -> Take[Self, T]
+
+    ### Skips the first n elements.
+    fn skip(self, n: usize) -> Skip[Self, T]
+
+    ### Enumerates elements with their index.
+    fn enumerate(self) -> Enumerate[Self, T]
+
+    ### Chains this iterator with another.
+    fn chain[I](self, other: I) -> Chain[Self, I]
+
+    ### Zips this iterator with another.
+    fn zip[I, U](self, other: I) -> Zip[Self, I]
+
+    ### Takes elements while the predicate is true.
+    fn take_while(self, f: fn(T) -> bool) -> TakeWhile[Self, T]
+
+    ### Skips elements while the predicate is true.
+    fn skip_while(self, f: fn(T) -> bool) -> SkipWhile[Self, T]
+
+### Implements IterExt for all iterators.
+impl[I, T] IterExt[T] for I where I: Iter[Item = T]:
+    fn count(self) -> usize:
+        let mut count = 0
+        for _ in self:
+            count += 1
+        count
+
+    fn first(self) -> Option[T]:
+        self.next()
+
+    fn last(self) -> Option[T]:
+        let mut last = None
+        for item in self:
+            last = Some(item)
+        last
+
+    fn nth(self, n: usize) -> Option[T]:
+        for i in 0..n:
+            match self.next():
+                Some(_) -> ()
+                None -> return None
+        self.next()
+
+    fn element_at(self, n: usize) -> Option[T]:
+        self.nth(n)
+
+    fn collect_vec(self) -> Vec[T]:
+        let vec = Vec.new()
+        for item in self:
+            vec.push(item)
+        vec
+
+    fn collect_set(self) -> Set[T] where T: Hash + Eq:
+        let set = Set.new()
+        for item in self:
+            set.insert(item)
+        set
+
+    fn fold[U](self, initial: U, f: fn(U, T) -> U) -> U:
+        let acc = initial
+        for item in self:
+            acc = f(acc, item)
+        acc
+
+    fn all(self, f: fn(T) -> bool) -> bool:
+        for item in self:
+            if not f(item):
+                return false
+        true
+
+    fn any(self, f: fn(T) -> bool) -> bool:
+        for item in self:
+            if f(item):
+                return true
+        false
+
+    fn find(self, f: fn(T) -> bool) -> Option[T]:
+        for item in self:
+            if f(item):
+                return Some(item)
+        None
+
+    fn position(self, f: fn(T) -> bool) -> Option[usize]:
+        let mut pos = 0
+        for item in self:
+            if f(item):
+                return Some(pos)
+            pos += 1
+        None
+
+    fn map[U](self, f: fn(T) -> U) -> Map[I, T, U]:
+        Map { iter: self, function: f }
+
+    fn filter(self, f: fn(T) -> bool) -> Filter[I, T]:
+        Filter { iter: self, predicate: f }
+
+    fn take(self, n: usize) -> Take[I, T]:
+        Take { iter: self, remaining: n }
+
+    fn skip(self, n: usize) -> Skip[I, T]:
+        Skip { iter: self, to_skip: n, skipped: false }
+
+    fn enumerate(self) -> Enumerate[I, T]:
+        Enumerate { iter: self, index: 0 }
+
+    fn chain[J](self, other: J) -> Chain[I, J]:
+        Chain { first: self, second: other, first_done: false }
+
+    fn zip[J, U](self, other: J) -> Zip[I, J]:
+        Zip { first: self, second: other }
+
+    fn take_while(self, f: fn(T) -> bool) -> TakeWhile[I, T]:
+        TakeWhile { iter: self, predicate: f, done: false }
+
+    fn skip_while(self, f: fn(T) -> bool) -> SkipWhile[I, T]:
+        SkipWhile { iter: self, predicate: f, skipping: true }

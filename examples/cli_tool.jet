@@ -1,0 +1,562 @@
+# Command Line Tool Example
+# Demonstrates argument parsing, file operations, and user interaction
+
+# Configuration for the CLI tool
+struct Config:
+    verbose: bool
+    output_format: OutputFormat
+    dry_run: bool
+    files: [string]
+    pattern: Option[string]
+    replace: Option[string]
+
+enum OutputFormat:
+    | Plain
+    | Json
+    | Csv
+    | Html
+
+# Command type for parsed CLI commands
+enum Command:
+    | Search(pattern: string, files: [string], options: SearchOptions)
+    | Replace(pattern: string, replacement: string, files: [string], options: ReplaceOptions)
+    | Stats(files: [string], format: OutputFormat)
+    | Help(topic: Option[string])
+    | Version
+
+struct SearchOptions:
+    case_sensitive: bool
+    whole_word: bool
+    regex: bool
+    context_lines: int
+    max_matches: int
+
+struct ReplaceOptions:
+    case_sensitive: bool
+    regex: bool
+    backup: bool
+    confirm: bool
+    dry_run: bool
+
+# CLI Argument Parser
+struct ArgumentParser:
+    args: [string]
+    pos: int
+
+impl ArgumentParser:
+    fn new(args: [string]) -> ArgumentParser:
+        ArgumentParser { args: args, pos: 0 }
+
+    # Check if there are more arguments
+    fn has_more(self) -> bool:
+        self.pos < self.args.len()
+
+    # Peek at current argument
+    fn peek(self) -> Option[string]:
+        if self.pos < self.args.len():
+            Some(self.args[self.pos])
+        else:
+            None
+
+    # Get next argument and advance
+    fn next(self) -> Option[string]:
+        let arg = self.peek()
+        if arg.is_some():
+            self.pos = self.pos + 1
+        arg
+
+    # Parse command from arguments
+    fn parse_command(self) -> Result[Command, string] ! CliError:
+        # Skip program name (first arg)
+        self.next()
+
+        if not self.has_more():
+            return Ok(Help(None))
+
+        let cmd = match self.next():
+            | Some(c) => c
+            | None => return Ok(Help(None))
+
+        match cmd:
+            | "search" | "s" => self.parse_search()
+            | "replace" | "r" => self.parse_replace()
+            | "stats" => self.parse_stats()
+            | "help" | "-h" | "--help" =>
+                let topic = self.next()
+                Ok(Help(topic))
+            | "version" | "-v" | "--version" => Ok(Version)
+            | _ => Err(f"Unknown command: {cmd}")
+
+    fn parse_search(self) -> Result[Command, string] ! CliError:
+        let pattern = match self.next():
+            | Some(p) => p
+            | None => return Err("search requires a pattern")
+
+        let mut files = []
+        let mut opts = SearchOptions {
+            case_sensitive: false,
+            whole_word: false,
+            regex: false,
+            context_lines: 0,
+            max_matches: 1000
+        }
+
+        while self.has_more():
+            let arg = match self.next():
+                | Some(a) => a
+                | None => break
+
+            if arg == "-i" or arg == "--case-sensitive":
+                opts.case_sensitive = true
+            elif arg == "-w" or arg == "--word":
+                opts.whole_word = true
+            elif arg == "-e" or arg == "--regex":
+                opts.regex = true
+            elif arg == "-C" or arg == "--context":
+                match self.next():
+                    | Some(n) =>
+                        match parse_int(n):
+                            | Some(lines) => opts.context_lines = lines
+                            | None => return Err("Invalid context value")
+                    | None => return Err("-C requires a value")
+            elif arg == "-m" or arg == "--max":
+                match self.next():
+                    | Some(n) =>
+                        match parse_int(n):
+                            | Some(max) => opts.max_matches = max
+                            | None => return Err("Invalid max value")
+                    | None => return Err("-m requires a value")
+            elif arg.starts_with("-"):
+                return Err(f"Unknown option: {arg}")
+            else:
+                files.push(arg)
+
+        if files.len() == 0:
+            return Err("search requires at least one file")
+
+        Ok(Search(pattern, files, opts))
+
+    fn parse_replace(self) -> Result[Command, string] ! CliError:
+        let pattern = match self.next():
+            | Some(p) => p
+            | None => return Err("replace requires a pattern")
+
+        let replacement = match self.next():
+            | Some(r) => r
+            | None => return Err("replace requires a replacement")
+
+        let mut files = []
+        let mut opts = ReplaceOptions {
+            case_sensitive: false,
+            regex: false,
+            backup: true,
+            confirm: false,
+            dry_run: false
+        }
+
+        while self.has_more():
+            let arg = match self.next():
+                | Some(a) => a
+                | None => break
+
+            if arg == "-i" or arg == "--case-sensitive":
+                opts.case_sensitive = true
+            elif arg == "-e" or arg == "--regex":
+                opts.regex = true
+            elif arg == "--no-backup":
+                opts.backup = false
+            elif arg == "-c" or arg == "--confirm":
+                opts.confirm = true
+            elif arg == "-n" or arg == "--dry-run":
+                opts.dry_run = true
+            elif arg.starts_with("-"):
+                return Err(f"Unknown option: {arg}")
+            else:
+                files.push(arg)
+
+        if files.len() == 0:
+            return Err("replace requires at least one file")
+
+        Ok(Replace(pattern, replacement, files, opts))
+
+    fn parse_stats(self) -> Result[Command, string] ! CliError:
+        let mut files = []
+        let mut format = OutputFormat::Plain
+
+        while self.has_more():
+            let arg = match self.next():
+                | Some(a) => a
+                | None => break
+
+            if arg == "--json":
+                format = OutputFormat::Json
+            elif arg == "--csv":
+                format = OutputFormat::Csv
+            elif arg == "--html":
+                format = OutputFormat::Html
+            elif arg.starts_with("-"):
+                return Err(f"Unknown option: {arg}")
+            else:
+                files.push(arg)
+
+        if files.len() == 0:
+            return Err("stats requires at least one file")
+
+        Ok(Stats(files, format))
+
+# File statistics
+struct FileStats:
+    path: string
+    lines: int
+    words: int
+    chars: int
+    bytes: int
+
+impl FileStats:
+    fn analyze(path: string) -> Result[FileStats, string] ! IoError:
+        let content = match read_file(path):
+            | Ok(c) => c
+            | Err(e) => return Err(f"Cannot read {path}: {e}")
+
+        let lines = content.count('\n') + 1
+        let words = content.split_whitespace().len()
+        let chars = content.len()
+        let bytes = content.byte_len()
+
+        Ok(FileStats {
+            path: path,
+            lines: lines,
+            words: words,
+            chars: chars,
+            bytes: bytes
+        })
+
+    fn to_string(self, format: OutputFormat) -> string:
+        match format:
+            | Plain => f"{self.lines:8} {self.words:8} {self.chars:8} {self.path}"
+            | Json => f'{{"path":"{self.path}","lines":{self.lines},"words":{self.words},"chars":{self.chars}}}'
+            | Csv => f"{self.path},{self.lines},{self.words},{self.chars},{self.bytes}"
+            | Html => f"<tr><td>{self.path}</td><td>{self.lines}</td><td>{self.words}</td><td>{self.chars}</td></tr>"
+
+# Command handlers
+fn handle_search(cmd: Command) -> Result[(), string] ! CliError:
+    let Search(pattern, files, opts) = cmd
+
+    print(f"Searching for '{pattern}' in {files.len()} file(s)...")
+    print(f"Options: case_sensitive={opts.case_sensitive}, regex={opts.regex}\n")
+
+    let mut total_matches = 0
+
+    for file_path in files:
+        let content = match read_file(file_path):
+            | Ok(c) => c
+            | Err(e) =>
+                print(f"Error reading {file_path}: {e}")
+                continue
+
+        let lines = content.split('\n')
+        let mut file_matches = 0
+
+        for line_num, line in lines.enumerate():
+            if matches_pattern(line, pattern, opts):
+                if file_matches == 0:
+                    print(f"\n{file_path}:")
+
+                file_matches = file_matches + 1
+                total_matches = total_matches + 1
+
+                # Print with context
+                let start = max(0, line_num - opts.context_lines)
+                let end = min(lines.len(), line_num + opts.context_lines + 1)
+
+                for ctx_num in start..end:
+                    let prefix = if ctx_num == line_num: ">>> " else: "    "
+                    print(f"{prefix}{ctx_num + 1}: {lines[ctx_num]}")
+
+                if opts.context_lines > 0:
+                    print("")
+
+            if total_matches >= opts.max_matches:
+                print(f"\n(Reached maximum of {opts.max_matches} matches)")
+                return Ok(())
+
+    print(f"\nTotal matches: {total_matches}")
+    Ok(())
+
+fn handle_replace(cmd: Command) -> Result[(), string] ! CliError:
+    let Replace(pattern, replacement, files, opts) = cmd
+
+    if opts.dry_run:
+        print("DRY RUN - No changes will be made\n")
+
+    print(f"Replacing '{pattern}' with '{replacement}' in {files.len()} file(s)...")
+
+    for file_path in files:
+        let content = match read_file(file_path):
+            | Ok(c) => c
+            | Err(e) =>
+                print(f"Error reading {file_path}: {e}")
+                continue
+
+        let new_content = replace_pattern(content, pattern, replacement, opts)
+
+        if new_content == content:
+            print(f"  {file_path}: No changes")
+        else:
+            let changes = count_changes(content, new_content)
+
+            if opts.confirm:
+                print(f"\n{file_path}: {changes} change(s) proposed")
+                print("Show diff? [y/n/q]: ")
+                # In real implementation, would read user input
+                let confirmed = true
+
+                if not confirmed:
+                    print("Skipped")
+                    continue
+
+            if not opts.dry_run:
+                if opts.backup:
+                    let backup_path = file_path + ".bak"
+                    if let Err(e) = write_file(backup_path, content):
+                        print(f"  Error creating backup: {e}")
+                        continue
+
+                if let Err(e) = write_file(file_path, new_content):
+                    print(f"  Error writing {file_path}: {e}")
+                else:
+                    print(f"  {file_path}: {changes} replacement(s) made")
+            else:
+                print(f"  {file_path}: {changes} replacement(s) would be made")
+
+    Ok(())
+
+fn handle_stats(cmd: Command) -> Result[(), string] ! CliError:
+    let Stats(files, format) = cmd
+
+    let mut all_stats = []
+
+    for file_path in files:
+        match FileStats::analyze(file_path):
+            | Ok(stats) => all_stats.push(stats)
+            | Err(e) => print(f"Error: {e}")
+
+    # Output header based on format
+    match format:
+        | Plain => print("   Lines    Words    Chars  File")
+        | Csv => print("file,lines,words,chars,bytes")
+        | Html => print("<table><tr><th>File</th><th>Lines</th><th>Words</th><th>Chars</th></tr>")
+        | Json => print("[")
+
+    for i, stats in all_stats.enumerate():
+        let sep = if format == Json and i < all_stats.len() - 1: "," else: ""
+        print(stats.to_string(format) + sep)
+
+    # Output footer based on format
+    match format:
+        | Html => print("</table>")
+        | Json => print("]")
+        | _ =>
+            # Print totals for plain/CSV
+            let total_lines = all_stats.fold(0, fn(acc, s) -> acc + s.lines)
+            let total_words = all_stats.fold(0, fn(acc, s) -> acc + s.words)
+            let total_chars = all_stats.fold(0, fn(acc, s) -> acc + s.chars)
+
+            if format == Plain:
+                print(f"{total_lines:8} {total_words:8} {total_chars:8} total")
+            else:
+                print(f"total,{total_lines},{total_words},{total_chars},0")
+
+    Ok(())
+
+fn print_help(topic: Option[string]):
+    match topic:
+        | Some("search") => print(SEARCH_HELP)
+        | Some("replace") => print(REPLACE_HELP)
+        | Some("stats") => print(STATS_HELP)
+        | _ => print(MAIN_HELP)
+
+# Help text constants
+const MAIN_HELP = "jet-tool - A versatile file processing tool
+
+Usage: jet-tool <command> [options] [arguments]
+
+Commands:
+  search   Search for patterns in files
+  replace  Replace patterns in files
+  stats    Display file statistics
+  help     Show this help or help for a specific command
+  version  Show version information
+
+Options:
+  -h, --help     Show help
+  -v, --version  Show version
+
+Examples:
+  jet-tool search 'error' *.log
+  jet-tool replace 'old' 'new' *.txt --dry-run
+  jet-tool stats *.rs --json
+
+Run 'jet-tool help <command>' for more information."
+
+const SEARCH_HELP = "jet-tool search - Search for patterns in files
+
+Usage: jet-tool search <pattern> [options] <files...>
+
+Options:
+  -i, --case-sensitive  Case-sensitive matching (default: insensitive)
+  -w, --word            Match whole words only
+  -e, --regex           Pattern is a regular expression
+  -C, --context <n>     Show n lines of context
+  -m, --max <n>         Maximum number of matches
+
+Examples:
+  jet-tool search 'TODO' src/*.rs
+  jet-tool search 'error|warning' *.log -e
+  jet-tool search 'function' *.jet -C 2"
+
+const REPLACE_HELP = "jet-tool replace - Replace patterns in files
+
+Usage: jet-tool replace <pattern> <replacement> [options] <files...>
+
+Options:
+  -i, --case-sensitive  Case-sensitive matching
+  -e, --regex           Pattern is a regular expression
+  --no-backup          Don't create backup files
+  -c, --confirm        Confirm each replacement
+  -n, --dry-run        Show what would be changed without modifying files
+
+Examples:
+  jet-tool replace 'old' 'new' *.txt
+  jet-tool replace 'foo.*' 'bar' *.rs -e --dry-run
+  jet-tool replace 'TODO' 'DONE' *.md -c"
+
+const STATS_HELP = "jet-tool stats - Display file statistics
+
+Usage: jet-tool stats [options] <files...>
+
+Options:
+  --json   Output in JSON format
+  --csv    Output in CSV format
+  --html   Output in HTML table format
+
+Examples:
+  jet-tool stats *.rs
+  jet-tool stats src/**/*.jet --json
+  jet-tool stats *.txt --csv > stats.csv"
+
+# Helper functions
+fn matches_pattern(line: string, pattern: string, opts: SearchOptions) -> bool:
+    # Simplified pattern matching
+    if opts.regex:
+        # Would use regex engine
+        line.contains(pattern)
+    elif opts.whole_word:
+        line.contains(f" {pattern} ") or line.starts_with(pattern + " ") or
+        line.ends_with(" " + pattern) or line == pattern
+    elif opts.case_sensitive:
+        line.contains(pattern)
+    else:
+        line.to_lower().contains(pattern.to_lower())
+
+fn replace_pattern(content: string, pattern: string,
+                   replacement: string, opts: ReplaceOptions) -> string:
+    # Simplified replacement
+    if opts.case_sensitive:
+        content.replace(pattern, replacement)
+    else:
+        # Case-insensitive replacement would be more complex
+        content.replace(pattern, replacement)
+
+fn count_changes(original: string, modified: string) -> int:
+    # Simplified change counting
+    if original == modified:
+        0
+    else:
+        1  # Would count actual replacements
+
+fn read_file(path: string) -> Result[string, string] ! IoError:
+    # Would read file from disk
+    Ok("")  # Placeholder
+
+fn write_file(path: string, content: string) -> Result[(), string] ! IoError:
+    # Would write file to disk
+    Ok(())  # Placeholder
+
+fn parse_int(s: string) -> Option[int]:
+    # Simplified int parsing
+    Some(0)  # Placeholder
+
+fn max(a: int, b: int) -> int:
+    if a > b: a else: b
+
+fn min(a: int, b: int) -> int:
+    if a < b: a else: b
+
+# Main entry point
+fn main(args: [string]):
+    print("=== CLI Tool Demo ===\n")
+
+    # Simulate command execution
+    let demo_commands = [
+        ["jet-tool", "help"],
+        ["jet-tool", "search", "TODO", "*.rs", "-C", "2"],
+        ["jet-tool", "stats", "*.jet", "--json"],
+        ["jet-tool", "replace", "old", "new", "*.txt", "--dry-run"],
+    ]
+
+    for cmd_args in demo_commands:
+        print(f"$ {' '.join(cmd_args)}")
+
+        let parser = ArgumentParser::new(cmd_args)
+        match parser.parse_command():
+            | Ok(cmd) =>
+                match cmd:
+                    | Search(_, _, _) => print("(Would execute search)")
+                    | Replace(_, _, _, _) => print("(Would execute replace)")
+                    | Stats(_, _) => print("(Would execute stats)")
+                    | Help(topic) => print_help(topic)
+                    | Version => print("jet-tool 1.0.0")
+            | Err(e) =>
+                print(f"Error: {e}")
+
+        print("")
+
+    print("=== Demo Complete ===")
+
+# String extensions
+impl string:
+    fn split_whitespace(self) -> [string]:
+        self.split([' ', '\t', '\n'])
+
+    fn to_lower(self) -> string:
+        # Would convert to lowercase
+        self
+
+    fn to_upper(self) -> string:
+        # Would convert to uppercase
+        self
+
+    fn byte_len(self) -> int:
+        # Would return byte length
+        self.len()
+
+    fn contains(self, substr: string) -> bool:
+        # Would check if contains substring
+        true
+
+    fn starts_with(self, prefix: string) -> bool:
+        # Would check prefix
+        true
+
+    fn ends_with(self, suffix: string) -> bool:
+        # Would check suffix
+        true
+
+    fn replace(self, from: string, to: string) -> string:
+        # Would replace all occurrences
+        self
+
+    fn join(self, parts: [string]) -> string:
+        # Would join parts with self as separator
+        ""

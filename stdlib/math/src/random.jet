@@ -1,0 +1,188 @@
+### Random number generation for Jet.
+###
+### This module provides random number generation utilities.
+
+import core::option::{Option, Some, None}
+import core::traits::{Bounded}
+
+### A random number generator.
+###
+### Uses a simple LCG (Linear Congruential Generator) algorithm.
+### For cryptographic purposes, use a CSPRNG instead.
+type Random = {
+    state: u64
+}
+
+### A seed for deterministic random number generation.
+type RandomSeed = {
+    value: u64
+}
+
+### A seeded random number generator.
+type SeededRandom = {
+    seed: RandomSeed
+    rng: Random
+}
+
+### The global random number generator.
+###
+### Initialized automatically on first use.
+let global_rng: Random = Random { state: 0x853c49e6748fea9b }
+
+impl Random:
+    ### Creates a new random number generator with a random seed.
+    fn new() -> Random:
+        # In a real implementation, seed from system entropy
+        Random { state: 0x853c49e6748fea9b }
+
+    ### Creates a random number generator from a seed.
+    fn from_seed(seed: u64) -> Random:
+        Random { state: seed }
+
+    ### Seeds the random number generator.
+    fn seed(mut self, seed: u64):
+        self.state = seed
+
+    ### Returns a random u64.
+    fn next_u64(mut self) -> u64:
+        # LCG parameters from Numerical Recipes
+        self.state = self.state.wrapping_mul(6364136223846793005).wrapping_add(1)
+        self.state
+
+    ### Returns a random u32.
+    fn next_u32(mut self) -> u32:
+        (self.next_u64() >> 32) as u32
+
+    ### Returns a random float64 in the range [0, 1).
+    fn next_f64(mut self) -> float64:
+        # Generate 53 bits of precision
+        let bits = self.next_u64() >> 11
+        (bits as float64) / (1u64 << 53) as float64
+
+    ### Returns a random float64 in the range [min, max).
+    fn range_f64(mut self, min: float64, max: float64) -> float64:
+        min + self.next_f64() * (max - min)
+
+    ### Returns a random integer in the range [min, max).
+    fn range_int(mut self, min: int64, max: int64) -> int64:
+        min + (self.next_u64() % (max - min) as u64) as int64
+
+    ### Returns a random boolean.
+    fn next_bool(mut self) -> bool:
+        (self.next_u64() & 1) == 1
+
+    ### Returns a random item from a slice.
+    fn choose[T](mut self, items: &[T]) -> Option[T]:
+        if items.is_empty():
+            return None
+        Some(items[self.next_u64() as usize % items.len()])
+
+    ### Shuffles a slice in place.
+    fn shuffle[T](mut self, items: &mut [T]):
+        let n = items.len()
+        for i in (1..n).rev():
+            let j = self.next_u64() as usize % (i + 1)
+            items.swap(i, j)
+
+    ### Fills a buffer with random bytes.
+    fn fill_bytes(mut self, buffer: &mut [u8]):
+        for i in 0..buffer.len():
+            buffer[i] = (self.next_u64() & 0xFF) as u8
+
+impl RandomSeed:
+    ### Creates a new random seed from a u64 value.
+    fn new(value: u64) -> RandomSeed:
+        RandomSeed { value: value }
+
+    ### Creates a seed from the current time.
+    fn from_time() -> RandomSeed:
+        # In a real implementation, get current timestamp
+        RandomSeed { value: 0 }
+
+    ### Creates a seed from a string hash.
+    fn from_string(s: string) -> RandomSeed:
+        # Simple hash function
+        let mut hash: u64 = 0xcbf29ce484222325
+        for c in s.chars():
+            hash = hash ^ (c as u64)
+            hash = hash.wrapping_mul(0x100000001b3)
+        RandomSeed { value: hash }
+
+impl SeededRandom:
+    ### Creates a new seeded random number generator.
+    fn new(seed: RandomSeed) -> SeededRandom:
+        SeededRandom {
+            seed: seed,
+            rng: Random.from_seed(seed.value)
+        }
+
+    ### Resets the random number generator to its initial state.
+    fn reset(mut self):
+        self.rng.seed(self.seed.value)
+
+    ### Delegates to the underlying RNG.
+    fn next_u64(self) -> u64:
+        self.rng.next_u64()
+
+    fn next_f64(self) -> float64:
+        self.rng.next_f64()
+
+    fn range_f64(self, min: float64, max: float64) -> float64:
+        self.rng.range_f64(min, max)
+
+    fn range_int(self, min: int64, max: int64) -> int64:
+        self.rng.range_int(min, max)
+
+### Returns a random float64 in the range [0, 1).
+fn random() -> float64:
+    global_rng.next_f64()
+
+### Returns a random integer in the range [min, max).
+fn random_int(min: int64, max: int64) -> int64:
+    global_rng.range_int(min, max)
+
+### Returns a random float64 in the range [min, max).
+fn random_float(min: float64, max: float64) -> float64:
+    global_rng.range_f64(min, max)
+
+### Returns a random boolean.
+fn random_bool() -> bool:
+    global_rng.next_bool()
+
+### Returns a random item from a slice.
+fn random_choice[T](items: &[T]) -> Option[T]:
+    global_rng.choose(items)
+
+### Shuffles a slice in place.
+fn random_shuffle[T](items: &mut [T]):
+    global_rng.shuffle(items)
+
+### Generates a random alphanumeric string of the given length.
+fn random_string(length: usize) -> string:
+    let chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+    let result = StringBuilder.new()
+    for _ in 0..length:
+        let idx = global_rng.next_u64() as usize % chars.len()
+        result.append_char(chars.char_at(idx))
+    result.to_string()
+
+### Generates a random UUID v4 string.
+fn random_uuid() -> string:
+    # UUID format: xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx
+    # where y is 8, 9, a, or b
+    let hex = "0123456789abcdef"
+    let result = StringBuilder.new()
+
+    for i in 0..36:
+        if i == 8 or i == 13 or i == 18 or i == 23:
+            result.append_char('-')
+        else if i == 14:
+            result.append_char('4')
+        else if i == 19:
+            let y = (global_rng.next_u64() % 4) + 8
+            result.append_char(hex.char_at(y as usize))
+        else:
+            let idx = global_rng.next_u64() as usize % 16
+            result.append_char(hex.char_at(idx))
+
+    result.to_string()

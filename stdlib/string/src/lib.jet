@@ -1,0 +1,29 @@
+### Jet String Library
+###
+### This module provides string manipulation utilities for the Jet programming language.
+### It includes String, StringBuilder, and Regex types.
+
+# String type and operations
+export String
+export StringBuilder
+export Regex
+export RegexMatch
+export RegexError
+
+# String utility functions
+export split
+export join
+export trim
+export trim_start
+export trim_end
+export starts_with
+export ends_with
+export contains
+export replace
+export to_upper
+export to_lower
+
+# Import submodules
+import string
+import string_builder
+import regex

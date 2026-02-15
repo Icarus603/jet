@@ -1,0 +1,336 @@
+# Data Processing Pipeline
+# Demonstrates file I/O, iterators, data transformation, and error handling
+
+# Record type for CSV-like data
+struct DataRecord:
+    id: int
+    name: string
+    category: string
+    value: float
+    date: string
+
+# Statistics for numeric columns
+struct Statistics:
+    count: int
+    sum: float
+    mean: float
+    min: float
+    max: float
+    variance: float
+
+impl Statistics:
+    fn new() -> Statistics:
+        Statistics {
+            count: 0,
+            sum: 0.0,
+            mean: 0.0,
+            min: 0.0,
+            max: 0.0,
+            variance: 0.0
+        }
+
+    # Add a value to the statistics
+    fn add(self, value: float) -> Statistics:
+        let new_count = self.count + 1
+        let new_sum = self.sum + value
+        let new_mean = new_sum / new_count as float
+
+        let new_min = if self.count == 0: value else: min(self.min, value)
+        let new_max = if self.count == 0: value else: max(self.max, value)
+
+        # Welford's algorithm for variance
+        let delta = value - self.mean
+        let new_variance = if self.count == 0:
+            0.0
+        else:
+            self.variance + (delta * (value - new_mean) - self.variance) / new_count as float
+
+        Statistics {
+            count: new_count,
+            sum: new_sum,
+            mean: new_mean,
+            min: new_min,
+            max: new_max,
+            variance: new_variance
+        }
+
+    # Get standard deviation
+    fn std_dev(self) -> float:
+        sqrt(self.variance)
+
+    # Merge two statistics objects
+    fn merge(self, other: Statistics) -> Statistics:
+        if self.count == 0:
+            other
+        elif other.count == 0:
+            self
+        else:
+            let total_count = self.count + other.count
+            let delta = other.mean - self.mean
+            let new_mean = (self.sum + other.sum) / total_count as float
+
+            # Combine variances
+            let m_a = self.variance * (self.count - 1) as float
+            let m_b = other.variance * (other.count - 1) as float
+            let m_c = m_a + m_b + delta * delta * self.count as float * other.count as float / total_count as float
+
+            Statistics {
+                count: total_count,
+                sum: self.sum + other.sum,
+                mean: new_mean,
+                min: min(self.min, other.min),
+                max: max(self.max, other.max),
+                variance: m_c / total_count as float
+            }
+
+# Data processing pipeline
+struct DataPipeline:
+    records: [DataRecord]
+
+impl DataPipeline:
+    # Load data from CSV string
+    fn from_csv(data: string) -> Result[DataPipeline, string] ! ParseError:
+        let mut records = []
+        let lines = data.split('\n')
+
+        # Skip header
+        for i, line in lines.enumerate():
+            if i == 0 or line.trim().len() == 0:
+                continue
+
+            match parse_record(line):
+                | Ok(record) => records.push(record)
+                | Err(e) => return Err(f"Parse error on line {i + 1}: {e}")
+
+        Ok(DataPipeline { records: records })
+
+    # Filter records by predicate
+    fn filter(self, pred: fn(DataRecord) -> bool) -> DataPipeline:
+        let mut filtered = []
+        for record in self.records:
+            if pred(record):
+                filtered.push(record)
+        DataPipeline { records: filtered }
+
+    # Transform records
+    fn map(self, transform: fn(DataRecord) -> DataRecord) -> DataPipeline:
+        let mut transformed = []
+        for record in self.records:
+            transformed.push(transform(record))
+        DataPipeline { records: transformed }
+
+    # Sort records by key function
+    fn sort_by[T: Comparable](self, key_fn: fn(DataRecord) -> T) -> DataPipeline:
+        # In a real implementation, this would use a proper sort
+        # For demo, we just return self
+        self
+
+    # Group records by a key function
+    fn group_by[T: Hashable](self, key_fn: fn(DataRecord) -> T) -> Map[T, [DataRecord]]:
+        let mut groups = Map::new()
+        for record in self.records:
+            let key = key_fn(record)
+            if not groups.contains_key(key):
+                groups[key] = []
+            groups[key].push(record)
+        groups
+
+    # Aggregate records
+    fn aggregate(self, agg_fn: fn([DataRecord]) -> DataRecord) -> DataRecord:
+        agg_fn(self.records)
+
+    # Calculate statistics for a numeric field
+    fn statistics(self, value_fn: fn(DataRecord) -> float) -> Statistics:
+        let mut stats = Statistics::new()
+        for record in self.records:
+            stats = stats.add(value_fn(record))
+        stats
+
+    # Get count of records
+    fn count(self) -> int:
+        self.records.len()
+
+    # Get first n records
+    fn take(self, n: int) -> DataPipeline:
+        let mut taken = []
+        for i, record in self.records.enumerate():
+            if i >= n:
+                break
+            taken.push(record)
+        DataPipeline { records: taken }
+
+    # Skip first n records
+    fn skip(self, n: int) -> DataPipeline:
+        let mut skipped = []
+        for i, record in self.records.enumerate():
+            if i >= n:
+                skipped.push(record)
+        DataPipeline { records: skipped }
+
+    # Chain operations
+    fn then(self, op: fn(DataPipeline) -> DataPipeline) -> DataPipeline:
+        op(self)
+
+    # Export to CSV
+    fn to_csv(self) -> string:
+        let mut result = "id,name,category,value,date\n"
+        for record in self.records:
+            result = result + format_record(record) + "\n"
+        result
+
+    # Export summary report
+    fn summary(self) -> string:
+        let mut report = "Data Summary\n"
+        report = report + "============\n\n"
+        report = report + f"Total records: {self.count()}\n\n"
+
+        # Category breakdown
+        let categories = self.group_by(fn(r) -> r.category)
+        report = report + "By category:\n"
+        for category, records in categories:
+            report = report + f"  {category}: {records.len()}\n"
+
+        # Value statistics
+        let stats = self.statistics(fn(r) -> r.value)
+        report = report + f"\nValue statistics:\n"
+        report = report + f"  Count: {stats.count}\n"
+        report = report + f"  Sum: {stats.sum}\n"
+        report = report + f"  Mean: {stats.mean}\n"
+        report = report + f"  Min: {stats.min}\n"
+        report = report + f"  Max: {stats.max}\n"
+        report = report + f"  Std Dev: {stats.std_dev()}\n"
+
+        report
+
+# Parse a single CSV record
+fn parse_record(line: string) -> Result[DataRecord, string] ! ParseError:
+    let fields = line.split(',')
+
+    if fields.len() != 5:
+        return Err(f"Expected 5 fields, got {fields.len()}")
+
+    let id = match parse_int(fields[0].trim()):
+        | Some(n) => n
+        | None => return Err("Invalid id")
+
+    let value = match parse_float(fields[3].trim()):
+        | Some(n) => n
+        | None => return Err("Invalid value")
+
+    Ok(DataRecord {
+        id: id,
+        name: fields[1].trim(),
+        category: fields[2].trim(),
+        value: value,
+        date: fields[4].trim()
+    })
+
+# Format a record as CSV
+fn format_record(record: DataRecord) -> string:
+    f"{record.id},{record.name},{record.category},{record.value},{record.date}"
+
+# Helper functions
+fn min(a: float, b: float) -> float:
+    if a < b: a else: b
+
+fn max(a: float, b: float) -> float:
+    if a > b: a else: b
+
+fn sqrt(n: float) -> float:
+    # Simplified square root
+    n * 0.5  # Placeholder
+
+fn parse_int(s: string) -> Option[int]:
+    # Simplified int parsing
+    Some(0)  # Placeholder
+
+fn parse_float(s: string) -> Option[float]:
+    # Simplified float parsing
+    Some(0.0)  # Placeholder
+
+# Demo with sample data
+fn main():
+    print("=== Data Processing Pipeline Demo ===\n")
+
+    # Sample sales data
+    let csv_data = "id,name,category,value,date
+1,Widget A,Electronics,99.99,2024-01-15
+2,Gadget B,Electronics,149.50,2024-01-16
+3,Book C,Books,24.99,2024-01-17
+4,Tool D,Hardware,45.00,2024-01-18
+5,Widget E,Electronics,79.99,2024-01-19
+6,Book F,Books,19.99,2024-01-20
+7,Tool G,Hardware,89.50,2024-01-21
+8,Widget H,Electronics,199.99,2024-01-22
+9,Book I,Books,34.99,2024-01-23
+10,Tool J,Hardware,55.00,2024-01-24"
+
+    print("1. Loading data from CSV...")
+    let pipeline = match DataPipeline::from_csv(csv_data):
+        | Ok(p) => p
+        | Err(e) =>
+            print(f"Error: {e}")
+            return
+
+    print(f"   Loaded {pipeline.count()} records\n")
+
+    print("2. Filtering electronics only...")
+    let electronics = pipeline.filter(fn(r) -> r.category == "Electronics")
+    print(f"   Found {electronics.count()} electronics items\n")
+
+    print("3. Calculating statistics...")
+    let all_stats = pipeline.statistics(fn(r) -> r.value)
+    print(f"   Mean value: ${all_stats.mean:.2f}")
+    print(f"   Total value: ${all_stats.sum:.2f}")
+    print(f"   Value range: ${all_stats.min:.2f} - ${all_stats.max:.2f}\n")
+
+    print("4. Grouping by category...")
+    let by_category = pipeline.group_by(fn(r) -> r.category)
+    for category, records in by_category:
+        let cat_stats = DataPipeline { records: records }.statistics(fn(r) -> r.value)
+        print(f"   {category}: {records.len()} items, total ${cat_stats.sum:.2f}")
+
+    print("\n5. High-value items (>$50)...")
+    let high_value = pipeline
+        .filter(fn(r) -> r.value > 50.0)
+        .sort_by(fn(r) -> -r.value)
+
+    print(f"   Found {high_value.count()} high-value items")
+
+    print("\n6. Full summary report:")
+    print(pipeline.summary())
+
+    print("\n=== Demo Complete ===")
+
+# Trait for hashable types
+trait Hashable:
+    fn hash(self) -> int
+
+# Simple map implementation placeholder
+struct Map[K, V]:
+    # Simplified map structure
+    data: [(K, V)]
+
+impl[K, V] Map[K, V]:
+    fn new() -> Map[K, V]:
+        Map { data: [] }
+
+    fn contains_key(self, key: K) -> bool:
+        for (k, _) in self.data:
+            if k == key:
+                return true
+        false
+
+    fn get(self, key: K) -> Option[V]:
+        for (k, v) in self.data:
+            if k == key:
+                return Some(v)
+        None
+
+    fn set(self, key: K, value: V):
+        # Would update existing or add new
+        self.data.push((key, value))
+
+    # Iterator for for loops
+    fn iter(self) -> Iterator[(K, V)]:
+        self.data.iter()

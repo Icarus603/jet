@@ -1,0 +1,28 @@
+[package]
+name = "jet-stdlib"
+version = "1.0.0"
+edition = "2021"
+authors = ["Jet Contributors"]
+description = "Standard library for the Jet programming language"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/jet-lang/jet"
+
+[dependencies]
+# Runtime support for GC integration
+jet-rt-gc = { path = "../runtime/gc" }
+
+[lib]
+name = "jet_stdlib"
+path = "src/lib.rs"
+
+[features]
+default = ["full"]
+full = ["core", "collections", "string", "math", "io", "async", "sync", "net"]
+core = []
+collections = ["core"]
+string = ["core"]
+math = ["core"]
+io = ["core"]
+async = ["core"]
+sync = ["core"]
+net = ["core", "async", "io"]

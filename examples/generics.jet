@@ -1,0 +1,324 @@
+# Generics example
+# Demonstrates generic types, functions, and constraints
+
+# Generic function: identity
+fn identity[T](value: T) -> T:
+    return value
+
+# Generic function: swap
+fn swap[T](a: mut T, b: mut T):
+    let temp = a
+    a = b
+    b = temp
+
+# Generic function with constraint
+fn find_max[T](items: [T]) -> Option[T]
+    where T: Comparable:
+    if items.is_empty():
+        return None
+
+    let mut max = items[0]
+    for item in items[1..]:
+        if item > max:
+            max = item
+    return Some(max)
+
+# Generic struct: Box
+struct Box[T]:
+    value: T
+
+impl[T] Box[T]:
+    fn new(value: T) -> Self:
+        return Box { value }
+
+    fn get(self) -> T:
+        return self.value
+
+    fn set(mut self, value: T):
+        self.value = value
+
+    fn map[U](self, f: fn(T) -> U) -> Box[U]:
+        return Box::new(f(self.value))
+
+# Generic struct: Option
+enum Option[T]:
+    | Some(T)
+    | None
+
+impl[T] Option[T]:
+    fn is_some(self) -> bool:
+        match self:
+            Option::Some(_) -> return true
+            Option::None -> return false
+
+    fn is_none(self) -> bool:
+        return not self.is_some()
+
+    fn unwrap(self) -> T ! UnwrapError:
+        match self:
+            Option::Some(value) -> return value
+            Option::None -> raise UnwrapError
+
+    fn unwrap_or(self, default: T) -> T:
+        match self:
+            Option::Some(value) -> return value
+            Option::None -> return default
+
+    fn map[U](self, f: fn(T) -> U) -> Option[U]:
+        match self:
+            Option::Some(value) -> return Option::Some(f(value))
+            Option::None -> return Option::None
+
+    fn and_then[U](self, f: fn(T) -> Option[U]) -> Option[U]:
+        match self:
+            Option::Some(value) -> return f(value)
+            Option::None -> return Option::None
+
+# Generic struct: Result
+enum Result[T, E]:
+    | Ok(T)
+    | Err(E)
+
+impl[T, E] Result[T, E]:
+    fn is_ok(self) -> bool:
+        match self:
+            Result::Ok(_) -> return true
+            Result::Err(_) -> return false
+
+    fn is_err(self) -> bool:
+        return not self.is_ok()
+
+    fn unwrap(self) -> T ! UnwrapError:
+        match self:
+            Result::Ok(value) -> return value
+            Result::Err(e) -> raise UnwrapError
+
+    fn unwrap_or(self, default: T) -> T:
+        match self:
+            Result::Ok(value) -> return value
+            Result::Err(_) -> return default
+
+    fn map[U](self, f: fn(T) -> U) -> Result[U, E]:
+        match self:
+            Result::Ok(value) -> return Result::Ok(f(value))
+            Result::Err(e) -> return Result::Err(e)
+
+    fn map_err[F](self, f: fn(E) -> F) -> Result[T, F]:
+        match self:
+            Result::Ok(value) -> return Result::Ok(value)
+            Result::Err(e) -> return Result::Err(f(e))
+
+# Generic struct: Vec (dynamic array)
+struct Vec[T]:
+    data: [T]
+    len: int
+
+impl[T] Vec[T]:
+    fn new() -> Self:
+        return Vec { data: [], len: 0 }
+
+    fn with_capacity(capacity: int) -> Self:
+        return Vec { data: [capacity], len: 0 }
+
+    fn push(mut self, value: T):
+        # In real implementation, this would handle reallocation
+        self.data.append(value)
+        self.len += 1
+
+    fn pop(mut self) -> Option[T]:
+        if self.len == 0:
+            return Option::None
+        self.len -= 1
+        return Option::Some(self.data[self.len])
+
+    fn get(self, index: int) -> Option[T]:
+        if index < 0 or index >= self.len:
+            return Option::None
+        return Option::Some(self.data[index])
+
+    fn len(self) -> int:
+        return self.len
+
+    fn is_empty(self) -> bool:
+        return self.len == 0
+
+    fn iter(self) -> Iterator[T]:
+        return Iterator::new(self.data)
+
+# Generic struct: Map (hash map)
+struct Map[K, V]:
+    buckets: [[(K, V)]]
+    len: int
+
+impl[K, V] Map[K, V]
+    where K: Hash + Eq:
+
+    fn new() -> Self:
+        return Map { buckets: [16], len: 0 }
+
+    fn insert(mut self, key: K, value: V) -> Option[V]:
+        # Simplified implementation
+        let bucket = self.get_bucket(key)
+        for (i, (k, v)) in bucket.enumerate():
+            if k == key:
+                let old = v
+                bucket[i] = (key, value)
+                return Option::Some(old)
+        bucket.append((key, value))
+        self.len += 1
+        return Option::None
+
+    fn get(self, key: K) -> Option[V]:
+        let bucket = self.get_bucket(key)
+        for (k, v) in bucket:
+            if k == key:
+                return Option::Some(v)
+        return Option::None
+
+    fn contains_key(self, key: K) -> bool:
+        return self.get(key).is_some()
+
+    fn remove(mut self, key: K) -> Option[V]:
+        let bucket = self.get_bucket(key)
+        for (i, (k, v)) in bucket.enumerate():
+            if k == key:
+                self.len -= 1
+                return Option::Some(bucket.remove(i)[1])
+        return Option::None
+
+    fn len(self) -> int:
+        return self.len
+
+    fn is_empty(self) -> bool:
+        return self.len == 0
+
+    fn keys(self) -> [K]:
+        let mut result = []
+        for bucket in self.buckets:
+            for (k, _) in bucket:
+                result.append(k)
+        return result
+
+    fn values(self) -> [V]:
+        let mut result = []
+        for bucket in self.buckets:
+            for (_, v) in bucket:
+                result.append(v)
+        return result
+
+    fn get_bucket(self, key: K) -> [(K, V)]:
+        let hash = key.hash()
+        let index = hash % self.buckets.len()
+        return self.buckets[index]
+
+# Generic function with multiple type parameters
+fn zip[T, U](a: [T], b: [U]) -> [(T, U)]:
+    let mut result = []
+    let len = min(a.len(), b.len())
+    for i in 0..len:
+        result.append((a[i], b[i]))
+    return result
+
+# Generic function with trait bounds
+fn sort[T](items: mut [T])
+    where T: Comparable:
+    # Simple bubble sort for demonstration
+    let n = items.len()
+    for i in 0..n:
+        for j in 0..(n - i - 1):
+            if items[j] > items[j + 1]:
+                swap(&mut items[j], &mut items[j + 1])
+
+# Generic function combining multiple constraints
+fn process_items[T, U](items: [T], processor: fn(T) -> U) -> [U]
+    where T: Clone,
+          U: Default:
+    let mut results = []
+    for item in items:
+        results.append(processor(item.clone()))
+    return results
+
+# Demonstration functions
+fn demonstrate_identity():
+    print("=== Identity Function ===")
+    let int_val = identity(42)
+    let str_val = identity("hello")
+    let bool_val = identity(true)
+
+    print(f"identity(42) = {int_val}")
+    print(f"identity('hello') = {str_val}")
+    print(f"identity(true) = {bool_val}")
+
+fn demonstrate_option():
+    print("\n=== Option Type ===")
+    let some_value: Option[int] = Option::Some(42)
+    let none_value: Option[int] = Option::None
+
+    print(f"Some(42).is_some() = {some_value.is_some()}")
+    print(f"None.is_some() = {none_value.is_some()}")
+    print(f"Some(42).unwrap_or(0) = {some_value.unwrap_or(0)}")
+    print(f"None.unwrap_or(0) = {none_value.unwrap_or(0)}")
+
+    let doubled = some_value.map(fn(x) -> x * 2)
+    print(f"Some(42).map(x * 2) = {doubled}")
+
+fn demonstrate_result():
+    print("\n=== Result Type ===")
+    let ok_value: Result[int, string] = Result::Ok(42)
+    let err_value: Result[int, string] = Result::Err("something went wrong")
+
+    print(f"Ok(42).is_ok() = {ok_value.is_ok()}")
+    print(f"Err(...).is_ok() = {err_value.is_ok()}")
+
+    let mapped = ok_value.map(fn(x) -> x * 2)
+    print(f"Ok(42).map(x * 2) = {mapped}")
+
+fn demonstrate_vec():
+    print("\n=== Vec Type ===")
+    let mut vec = Vec::new()
+    vec.push(1)
+    vec.push(2)
+    vec.push(3)
+
+    print(f"Vec after pushes: len = {vec.len()}")
+
+    match vec.pop():
+        Option::Some(value) -> print(f"Popped: {value}")
+        Option::None -> print("Vec is empty")
+
+    print(f"Vec after pop: len = {vec.len()}")
+
+fn demonstrate_map():
+    print("\n=== Map Type ===")
+    let mut map = Map::new()
+    map.insert("one", 1)
+    map.insert("two", 2)
+    map.insert("three", 3)
+
+    print(f"Map len = {map.len()}")
+
+    match map.get("two"):
+        Option::Some(value) -> print(f"map['two'] = {value}")
+        Option::None -> print("Key not found")
+
+    print(f"Contains 'four': {map.contains_key('four')}")
+
+fn demonstrate_sort():
+    print("\n=== Generic Sort ===")
+    let mut numbers = [3, 1, 4, 1, 5, 9, 2, 6]
+    print(f"Before sort: {numbers}")
+    sort(&mut numbers)
+    print(f"After sort: {numbers}")
+
+fn main():
+    print("Generics Examples")
+    print("=================\n")
+
+    demonstrate_identity()
+    demonstrate_option()
+    demonstrate_result()
+    demonstrate_vec()
+    demonstrate_map()
+    demonstrate_sort()
+
+    print("\nAll generics examples completed!")

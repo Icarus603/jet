@@ -1,0 +1,53 @@
+### Jet Collections Library
+###
+### This module provides collection types for the Jet programming language.
+### It includes Vec (dynamic arrays), Map (hash maps), and Set (hash sets),
+### along with iterator utilities.
+
+# Vec - Dynamic array
+export Vec
+export Iter
+
+# Map - Hash map
+export Map
+export Bucket
+export KeysIter
+export ValuesIter
+export EntriesIter
+
+# Set - Hash set
+export Set
+export SetIter
+
+# Iterator utilities
+export EmptyIter
+export Once
+export RangeIter
+export Repeat
+export RepeatN
+export Chain
+export Filter
+export Map as IterMap
+export Take
+export Skip
+export Enumerate
+export Zip
+export TakeWhile
+export SkipWhile
+export Flatten
+export Unique
+export IterExt
+
+# Iterator helper functions
+export empty
+export once
+export repeat
+export repeat_n
+export range
+export range_step
+
+# Import the modules
+import vec
+import map
+import set
+import iter

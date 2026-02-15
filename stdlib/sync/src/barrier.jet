@@ -1,0 +1,93 @@
+### Barrier for Jet.
+###
+### A barrier enables multiple tasks to synchronize at a meeting point.
+
+import core::option::{Option, Some, None}
+import core::result::{Result, Ok, Err}
+
+### A barrier for synchronizing multiple tasks.
+###
+/// A barrier allows multiple tasks to wait for each other to reach a point.
+/// When the specified number of tasks have arrived, they are all released.
+type Barrier = {
+    count: AtomicInt
+    target: usize
+    generation: AtomicInt
+}
+
+/// A guard returned by Barrier.wait().
+///
+/// Indicates whether this task is the "leader" that triggered the barrier.
+type BarrierGuard = {
+    is_leader: bool
+}
+
+/// Error type for barrier operations.
+type BarrierError = {
+    message: string
+}
+
+impl Show for BarrierError:
+    fn show(self) -> string:
+        f"Barrier error: {self.message}"
+
+impl Barrier:
+    /// Creates a new barrier for the given number of tasks.
+    fn new(n: usize) -> Barrier:
+        Barrier {
+            count: AtomicInt.new(0),
+            target: n,
+            generation: AtomicInt.new(0)
+        }
+
+    /// Waits for all tasks to reach the barrier.
+    fn wait(self) -> Result[BarrierGuard, BarrierError] ! async:
+        let gen = self.generation.load()
+        let count = self.count.fetch_add(1) + 1
+
+        if count >= self.target as int64:
+            # This is the last task - trigger the barrier
+            self.count.store(0)
+            self.generation.fetch_add(1)
+            Ok(BarrierGuard { is_leader: true })
+        else:
+            # Wait for the barrier to trigger
+            while self.generation.load() == gen:
+                yield_now().await
+            Ok(BarrierGuard { is_leader: false })
+
+    /// Returns the number of tasks that have arrived at the barrier.
+    fn num_waiting(self) -> usize:
+        max(0, self.count.load()) as usize
+
+    /// Returns the number of tasks required to trigger the barrier.
+    fn target(self) -> usize:
+        self.target
+
+    /// Resets the barrier to its initial state.
+    fn reset(self):
+        self.count.store(0)
+        self.generation.fetch_add(1)
+
+impl BarrierGuard:
+    /// Returns true if this task was the leader.
+    fn is_leader(self) -> bool:
+        self.is_leader
+
+/// A cyclic barrier that can be reused.
+type CyclicBarrier = {
+    inner: Barrier
+}
+
+impl CyclicBarrier:
+    /// Creates a new cyclic barrier.
+    fn new(n: usize) -> CyclicBarrier:
+        CyclicBarrier { inner: Barrier.new(n) }
+
+    /// Waits for all tasks to reach the barrier.
+    fn wait(self) -> Result[BarrierGuard, BarrierError] ! async:
+        self.inner.wait().await
+
+    /// Resets the barrier.
+    fn reset(self):
+        self.inner.reset()

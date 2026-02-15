@@ -1,0 +1,444 @@
+# Regular Expression Matcher
+# Demonstrates pattern matching, recursion, and state machines
+
+# Regular expression AST node types
+enum RegexNode:
+    # Literal character match
+    | Char(c: char)
+    # Any character (dot)
+    | Any
+    # Start of string anchor
+    | Start
+    # End of string anchor
+    | End
+    # Character class [abc] or [a-z]
+    | Class(chars: [char], ranges: [(char, char)], negated: bool)
+    # Alternation (a|b)
+    | Alt(left: RegexNode, right: RegexNode)
+    # Concatenation (ab)
+    | Concat(left: RegexNode, right: RegexNode)
+    # Zero or more (a*)
+    | Star(child: RegexNode)
+    # One or more (a+)
+    | Plus(child: RegexNode)
+    # Zero or one (a?)
+    | Optional(child: RegexNode)
+    # Exactly n repetitions (a{n})
+    | Repeat(child: RegexNode, count: int)
+    # Group with capture
+    | Group(child: RegexNode, index: int)
+
+# Match result contains captured groups
+struct MatchResult:
+    matched: bool
+    position: int
+    captures: [string]
+    full_match: string
+
+# The regex matcher
+struct Regex:
+    pattern: RegexNode
+    groups: int
+
+impl Regex:
+    # Compile a regex pattern string into a Regex
+    fn compile(pattern: string) -> Result[Regex, string] ! RegexError:
+        let parser = RegexParser::new(pattern)
+        parser.parse()
+
+    # Match the regex against an input string
+    fn match(self, input: string) -> MatchResult:
+        # Try matching at each position
+        for start in 0..input.len():
+            let result = self.match_at(input, start, 0)
+            if result.matched:
+                return result
+
+        MatchResult {
+            matched: false,
+            position: 0,
+            captures: [],
+            full_match: ""
+        }
+
+    # Check if input matches from the beginning
+    fn is_match(self, input: string) -> bool:
+        let result = self.match_at(input, 0, 0)
+        result.matched
+
+    # Find first match in input
+    fn find(self, input: string) -> Option[MatchResult]:
+        let result = self.match(input)
+        if result.matched:
+            Some(result)
+        else:
+            None
+
+    # Find all matches in input
+    fn find_all(self, input: string) -> [MatchResult]:
+        let mut results = []
+        let mut pos = 0
+
+        while pos < input.len():
+            let result = self.match_at(input, pos, 0)
+            if result.matched:
+                results.push(result)
+                pos = result.position + result.full_match.len()
+                # Prevent infinite loop on empty match
+                if result.full_match.len() == 0:
+                    pos = pos + 1
+            else:
+                pos = pos + 1
+
+        results
+
+    # Internal: try to match at specific position
+    fn match_at(self, input: string, pos: int, group_start: int) -> MatchResult:
+        let ctx = MatchContext {
+            input: input,
+            pos: pos,
+            captures: [],
+            start_pos: pos
+        }
+
+        let result = self.match_node(ctx, self.pattern)
+
+        MatchResult {
+            matched: result.success,
+            position: pos,
+            captures: result.captures,
+            full_match: input[pos..result.pos]
+        }
+
+    # Match a specific node type
+    fn match_node(self, ctx: MatchContext, node: RegexNode) -> MatchState:
+        match node:
+            | Char(c) => self.match_char(ctx, c)
+            | Any => self.match_any(ctx)
+            | Start => self.match_start(ctx)
+            | End => self.match_end(ctx)
+            | Class(chars, ranges, negated) =>
+                self.match_class(ctx, chars, ranges, negated)
+            | Alt(left, right) => self.match_alt(ctx, left, right)
+            | Concat(left, right) => self.match_concat(ctx, left, right)
+            | Star(child) => self.match_star(ctx, child)
+            | Plus(child) => self.match_plus(ctx, child)
+            | Optional(child) => self.match_optional(ctx, child)
+            | Repeat(child, count) => self.match_repeat(ctx, child, count)
+            | Group(child, idx) => self.match_group(ctx, child, idx)
+
+    # Match literal character
+    fn match_char(self, ctx: MatchContext, c: char) -> MatchState:
+        if ctx.pos < ctx.input.len() and ctx.input[ctx.pos] == c:
+            MatchState { success: true, pos: ctx.pos + 1, captures: ctx.captures }
+        else:
+            MatchState { success: false, pos: ctx.pos, captures: ctx.captures }
+
+    # Match any character
+    fn match_any(self, ctx: MatchContext) -> MatchState:
+        if ctx.pos < ctx.input.len():
+            MatchState { success: true, pos: ctx.pos + 1, captures: ctx.captures }
+        else:
+            MatchState { success: false, pos: ctx.pos, captures: ctx.captures }
+
+    # Match start anchor
+    fn match_start(self, ctx: MatchContext) -> MatchState:
+        if ctx.pos == 0:
+            MatchState { success: true, pos: ctx.pos, captures: ctx.captures }
+        else:
+            MatchState { success: false, pos: ctx.pos, captures: ctx.captures }
+
+    # Match end anchor
+    fn match_end(self, ctx: MatchContext) -> MatchState:
+        if ctx.pos == ctx.input.len():
+            MatchState { success: true, pos: ctx.pos, captures: ctx.captures }
+        else:
+            MatchState { success: false, pos: ctx.pos, captures: ctx.captures }
+
+    # Match character class
+    fn match_class(self, ctx: MatchContext, chars: [char],
+                   ranges: [(char, char)], negated: bool) -> MatchState:
+        if ctx.pos >= ctx.input.len():
+            return MatchState { success: false, pos: ctx.pos, captures: ctx.captures }
+
+        let ch = ctx.input[ctx.pos]
+        let in_chars = chars.contains(ch)
+        let in_range = ranges.any(fn(r: (char, char)) -> bool {
+            ch >= r.0 and ch <= r.1
+        })
+
+        let matched = in_chars or in_range
+        let should_match = if negated: not matched else: matched
+
+        if should_match:
+            MatchState { success: true, pos: ctx.pos + 1, captures: ctx.captures }
+        else:
+            MatchState { success: false, pos: ctx.pos, captures: ctx.captures }
+
+    # Match alternation
+    fn match_alt(self, ctx: MatchContext, left: RegexNode, right: RegexNode) -> MatchState:
+        let left_result = self.match_node(ctx, left)
+        if left_result.success:
+            left_result
+        else:
+            self.match_node(ctx, right)
+
+    # Match concatenation
+    fn match_concat(self, ctx: MatchContext, left: RegexNode, right: RegexNode) -> MatchState:
+        let left_result = self.match_node(ctx, left)
+        if not left_result.success:
+            return left_result
+
+        let right_ctx = MatchContext {
+            input: ctx.input,
+            pos: left_result.pos,
+            captures: left_result.captures,
+            start_pos: ctx.start_pos
+        }
+        self.match_node(right_ctx, right)
+
+    # Match star (zero or more)
+    fn match_star(self, ctx: MatchContext, child: RegexNode) -> MatchState:
+        let mut best_result = MatchState {
+            success: true,
+            pos: ctx.pos,
+            captures: ctx.captures
+        }
+
+        loop:
+            let result = self.match_node(MatchContext {
+                input: ctx.input,
+                pos: best_result.pos,
+                captures: best_result.captures.clone(),
+                start_pos: ctx.start_pos
+            }, child)
+
+            if not result.success or result.pos == best_result.pos:
+                break
+
+            best_result = result
+
+        best_result
+
+    # Match plus (one or more)
+    fn match_plus(self, ctx: MatchContext, child: RegexNode) -> MatchState:
+        let first = self.match_node(ctx, child)
+        if not first.success:
+            return first
+
+        # Then match star
+        self.match_star(MatchContext {
+            input: ctx.input,
+            pos: first.pos,
+            captures: first.captures,
+            start_pos: ctx.start_pos
+        }, child)
+
+    # Match optional
+    fn match_optional(self, ctx: MatchContext, child: RegexNode) -> MatchState:
+        let result = self.match_node(ctx, child)
+        if result.success:
+            result
+        else:
+            MatchState { success: true, pos: ctx.pos, captures: ctx.captures }
+
+    # Match repeat
+    fn match_repeat(self, ctx: MatchContext, child: RegexNode, count: int) -> MatchState:
+        let mut current = MatchState {
+            success: true,
+            pos: ctx.pos,
+            captures: ctx.captures
+        }
+
+        for _ in 0..count:
+            current = self.match_node(MatchContext {
+                input: ctx.input,
+                pos: current.pos,
+                captures: current.captures,
+                start_pos: ctx.start_pos
+            }, child)
+
+            if not current.success:
+                break
+
+        current
+
+    # Match group
+    fn match_group(self, ctx: MatchContext, child: RegexNode, idx: int) -> MatchState:
+        let start = ctx.pos
+        let result = self.match_node(ctx, child)
+
+        if result.success:
+            let capture = ctx.input[start..result.pos]
+            result.captures[idx] = capture
+
+        result
+
+# Helper structures
+struct MatchContext:
+    input: string
+    pos: int
+    captures: [string]
+    start_pos: int
+
+struct MatchState:
+    success: bool
+    pos: int
+    captures: [string]
+
+# Simple regex parser (supports subset of syntax)
+struct RegexParser:
+    pattern: string
+    pos: int
+    group_count: int
+
+impl RegexParser:
+    fn new(pattern: string) -> RegexParser:
+        RegexParser {
+            pattern: pattern,
+            pos: 0,
+            group_count: 0
+        }
+
+    fn parse(self) -> Result[Regex, string] ! RegexError:
+        let node = self.parse_expr()?
+        Ok(Regex {
+            pattern: node,
+            groups: self.group_count
+        })
+
+    fn parse_expr(self) -> Result[RegexNode, string] ! RegexError:
+        # Simplified: just parse concatenation for now
+        self.parse_concat()
+
+    fn parse_concat(self) -> Result[RegexNode, string] ! RegexError:
+        let left = self.parse_atom()?
+
+        if self.pos < self.pattern.len():
+            let right = self.parse_concat()?
+            Ok(Concat(left, right))
+        else:
+            Ok(left)
+
+    fn parse_atom(self) -> Result[RegexNode, string] ! RegexError:
+        if self.pos >= self.pattern.len():
+            return Err("Unexpected end of pattern")
+
+        let c = self.pattern[self.pos]
+        self.pos = self.pos + 1
+
+        match c:
+            | '.' => Ok(Any)
+            | '^' => Ok(Start)
+            | '$' => Ok(End)
+            | '*' => Err("* must follow an expression")
+            | '+' => Err("+ must follow an expression")
+            | '?' => Err("? must follow an expression")
+            | '(' => self.parse_group()
+            | '[' => self.parse_class()
+            | '\\' => self.parse_escape()
+            | _ => Ok(Char(c))
+
+    fn parse_group(self) -> Result[RegexNode, string] ! RegexError:
+        self.group_count = self.group_count + 1
+        let idx = self.group_count
+        let inner = self.parse_expr()?
+
+        if self.pos >= self.pattern.len() or self.pattern[self.pos] != ')':
+            return Err("Unclosed group")
+
+        self.pos = self.pos + 1
+        Ok(Group(inner, idx))
+
+    fn parse_class(self) -> Result[RegexNode, string] ! RegexError:
+        # Simplified character class parsing
+        let mut chars = []
+        let mut ranges = []
+        let mut negated = false
+
+        if self.pos < self.pattern.len() and self.pattern[self.pos] == '^':
+            negated = true
+            self.pos = self.pos + 1
+
+        while self.pos < self.pattern.len() and self.pattern[self.pos] != ']':
+            let c = self.pattern[self.pos]
+            self.pos = self.pos + 1
+
+            # Check for range (a-z)
+            if self.pos + 1 < self.pattern.len() and
+               self.pattern[self.pos] == '-' and
+               self.pattern[self.pos + 1] != ']':
+                let end = self.pattern[self.pos + 1]
+                ranges.push((c, end))
+                self.pos = self.pos + 2
+            else:
+                chars.push(c)
+
+        if self.pos >= self.pattern.len():
+            return Err("Unclosed character class")
+
+        self.pos = self.pos + 1  # Skip ']'
+        Ok(Class(chars, ranges, negated))
+
+    fn parse_escape(self) -> Result[RegexNode, string] ! RegexError:
+        if self.pos >= self.pattern.len():
+            return Err("Incomplete escape sequence")
+
+        let c = self.pattern[self.pos]
+        self.pos = self.pos + 1
+
+        match c:
+            | 'd' => Ok(Class([], [('0', '9')], false))  # Digit
+            | 'w' => Ok(Class(['_'], [('a', 'z'), ('A', 'Z'), ('0', '9')], false))  # Word
+            | 's' => Ok(Class([' ', '\t', '\n', '\r'], [], false))  # Whitespace
+            | 'D' => Ok(Class([], [('0', '9')], true))  # Non-digit
+            | 'W' => Ok(Class(['_'], [('a', 'z'), ('A', 'Z'), ('0', '9')], true))  # Non-word
+            | 'S' => Ok(Class([' ', '\t', '\n', '\r'], [], true))  # Non-whitespace
+            | _ => Ok(Char(c))
+
+# Demo
+fn main():
+    print("=== Regex Matcher Demo ===\n")
+
+    # Simple literal match
+    print("1. Literal match 'hello':")
+    let re1 = Regex::compile("hello")?
+    let m1 = re1.match("hello world")
+    print(f"   Match 'hello world': {m1.matched}")
+    print(f"   Full match: '{m1.full_match}'")
+
+    # Dot matches any character
+    print("\n2. Dot pattern 'h.llo':")
+    let re2 = Regex::compile("h.llo")?
+    print(f"   Match 'hello': {re2.is_match("hello")}")
+    print(f"   Match 'hallo': {re2.is_match("hallo")}")
+
+    # Character class
+    print("\n3. Character class '[aeiou]':")
+    let re3 = Regex::compile("[aeiou]")?
+    let matches = re3.find_all("hello world")
+    print(f"   Vowels in 'hello world': {matches.len()} matches")
+
+    # Digit class
+    print("\n4. Digit class '\\d+':")
+    let re4 = Regex::compile("\\d+")?
+    let nums = re4.find_all("Phone: 123-456-7890")
+    print(f"   Numbers found: {nums.len()}")
+
+    # Word boundaries
+    print("\n5. Word matching '\\w+':")
+    let re5 = Regex::compile("\\w+")?
+    let words = re5.find_all("The quick brown fox")
+    print(f"   Words found: {words.len()}")
+
+    # Group capture
+    print("\n6. Group capture '(\\w+)=(\\d+)':")
+    let re6 = Regex::compile("(\\w+)=(\\d+)")?
+    match re6.find("name=123"):
+        | Some(m) =>
+            print(f"   Matched: {m.matched}")
+            for i, cap in m.captures.enumerate():
+                print(f"   Group {i}: '{cap}'")
+        | None => print("   No match")
+
+    print("\n=== Demo Complete ===")

@@ -1,0 +1,210 @@
+### Represents an optional value.
+###
+### Every Option is either Some containing a value, or None.
+enum Option[T]:
+    Some(T)
+    None
+
+impl[T] Option[T]:
+    ### Returns true if the option is Some.
+    fn is_some(self) -> bool:
+        match self:
+            Some(_) -> true
+            None -> false
+
+    ### Returns true if the option is None.
+    fn is_none(self) -> bool:
+        not self.is_some()
+
+    ### Unwraps the option, returning the value.
+    ### Raises if the option is None.
+    fn unwrap(self) -> T ! UnwrapError:
+        match self:
+            Some(v) -> v
+            None -> raise UnwrapError("called unwrap on None")
+
+    ### Returns the contained value or a default.
+    fn unwrap_or(self, default: T) -> T:
+        match self:
+            Some(v) -> v
+            None -> default
+
+    ### Returns the contained value or computes a default.
+    fn unwrap_or_else(self, f: fn() -> T) -> T:
+        match self:
+            Some(v) -> v
+            None -> f()
+
+    ### Maps Option[T] to Option[U] using a function.
+    fn map[U](self, f: fn(T) -> U) -> Option[U]:
+        match self:
+            Some(v) -> Some(f(v))
+            None -> None
+
+    ### Applies a function to the contained value (if any), or returns a default.
+    fn map_or[U](self, default: U, f: fn(T) -> U) -> U:
+        match self:
+            Some(v) -> f(v)
+            None -> default
+
+    ### Applies a function to the contained value (if any), or computes a default.
+    fn map_or_else[U](self, default: fn() -> U, f: fn(T) -> U) -> U:
+        match self:
+            Some(v) -> f(v)
+            None -> default()
+
+    ### Returns None if the option is None, otherwise calls f.
+    fn flat_map[U](self, f: fn(T) -> Option[U]) -> Option[U]:
+        match self:
+            Some(v) -> f(v)
+            None -> None
+
+    ### Returns the option if it contains a value, otherwise returns other.
+    fn or_else(self, other: fn() -> Option[T]) -> Option[T]:
+        match self:
+            Some(_) -> self
+            None -> other()
+
+    ### Returns the option if it contains a value, otherwise returns other.
+    fn or(self, other: Option[T]) -> Option[T]:
+        match self:
+            Some(_) -> self
+            None -> other
+
+    ### Returns None if the option is None, otherwise returns other.
+    fn and[U](self, other: Option[U]) -> Option[U]:
+        match self:
+            Some(_) -> other
+            None -> None
+
+    ### Returns None if the option is None, otherwise calls f.
+    fn and_then[U](self, f: fn(T) -> Option[U]) -> Option[U]:
+        self.flat_map(f)
+
+    ### Filters the option based on a predicate.
+    fn filter(self, f: fn(T) -> bool) -> Option[T]:
+        match self:
+            Some(v) -> if f(v) then self else None
+            None -> None
+
+    ### Returns true if the option is Some and the value satisfies the predicate.
+    fn is_some_and(self, f: fn(T) -> bool) -> bool:
+        match self:
+            Some(v) -> f(v)
+            None -> false
+
+    ### Transforms the Option[T] into a Result[T, E].
+    fn ok_or[E](self, err: E) -> Result[T, E]:
+        match self:
+            Some(v) -> Ok(v)
+            None -> Err(err)
+
+    ### Transforms the Option[T] into a Result[T, E] using a function.
+    fn ok_or_else[E](self, err: fn() -> E) -> Result[T, E]:
+        match self:
+            Some(v) -> Ok(v)
+            None -> Err(err())
+
+    ### Returns the contained value if Some, otherwise returns None.
+    fn xor(self, other: Option[T]) -> Option[T]:
+        match self:
+            Some(_) ->
+                match other:
+                    Some(_) -> None
+                    None -> self
+            None -> other
+
+    ### Inserts a value into the option if it is None.
+    fn get_or_insert(self, value: T) -> T:
+        match self:
+            Some(v) -> v
+            None ->
+                # In a real implementation, this would mutate self
+                value
+
+    ### Inserts a computed value into the option if it is None.
+    fn get_or_insert_with(self, f: fn() -> T) -> T:
+        match self:
+            Some(v) -> v
+            None ->
+                # In a real implementation, this would mutate self
+                f()
+
+    ### Takes the value out of the option, leaving None in its place.
+    fn take(self) -> Option[T]:
+        # In a real implementation with mutability, this would:
+        # 1. Return the current value
+        # 2. Replace self with None
+        self
+
+    ### Replaces the value in the option, returning the old value.
+    fn replace(self, value: T) -> Option[T]:
+        # In a real implementation with mutability, this would:
+        # 1. Return the current value
+        # 2. Set self to Some(value)
+        self
+
+    ### Returns an iterator over the possibly contained value.
+    fn iter(self) -> Iter[T]:
+        # Returns an iterator that yields the value if Some, nothing if None
+        Iter::from_option(self)
+
+    ### Returns an Option with a reference to the value.
+    fn copied[U](self) -> Option[U] where T: Copy, U: From[T]:
+        self.map(|v| U::from(v))
+
+    ### Returns an Option with a cloned value.
+    fn cloned[U](self) -> Option[U] where T: Clone, U: From[T]:
+        self.map(|v| U::from(v.clone()))
+
+    ### Zips two options into one.
+    fn zip[U](self, other: Option[U]) -> Option[(T, U)]:
+        match self:
+            Some(v1) ->
+                match other:
+                    Some(v2) -> Some((v1, v2))
+                    None -> None
+            None -> None
+
+    ### Zips two options with a function.
+    fn zip_with[U, R](self, other: Option[U], f: fn(T, U) -> R) -> Option[R]:
+        self.zip(other).map(|(a, b)| f(a, b))
+
+    ### Unzips an option containing a tuple into two options.
+    fn unzip[A, B](self) -> (Option[A], Option[B]) where T = (A, B):
+        match self:
+            Some((a, b)) -> (Some(a), Some(b))
+            None -> (None, None)
+
+    ### Transposes an Option of a Result into a Result of an Option.
+    fn transpose[E](self) -> Result[Option[T], E] where T: Result[U, E]:
+        match self:
+            Some(Ok(v)) -> Ok(Some(v))
+            Some(Err(e)) -> Err(e)
+            None -> Ok(None)
+
+    ### Flattens an Option of an Option.
+    fn flatten[U](self) -> Option[U] where T = Option[U]:
+        match self:
+            Some(inner) -> inner
+            None -> None
+
+    ### Maps the option to a reference.
+    fn as_ref(self) -> Option[&T]:
+        match self:
+            Some(v) -> Some(&v)
+            None -> None
+
+    ### Maps the option to a mutable reference.
+    fn as_mut(self) -> Option[&mut T]:
+        match self:
+            Some(v) -> Some(&mut v)
+            None -> None
+
+### Creates a Some variant.
+fn Some[T](value: T) -> Option[T]:
+    Option::Some(value)
+
+### Creates a None variant.
+fn None[T]() -> Option[T]:
+    Option::None

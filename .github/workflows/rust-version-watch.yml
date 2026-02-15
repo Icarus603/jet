@@ -1,0 +1,95 @@
+name: Rust Version Watch
+
+on:
+  schedule:
+    - cron: "23 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  watch-rust:
+    name: Watch Rust Stable Updates
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check Rust stable channel and open/update issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const channelUrl = 'https://static.rust-lang.org/dist/channel-rust-stable.toml';
+            const res = await fetch(channelUrl);
+            if (!res.ok) {
+              core.setFailed(`Failed to fetch ${channelUrl}: ${res.status} ${res.statusText}`);
+              return;
+            }
+
+            const content = await res.text();
+            const versionLine = content.match(/^version\s*=\s*"([^"]+)"/m);
+            const dateLine = content.match(/^date\s*=\s*"([^"]+)"/m);
+
+            if (!versionLine) {
+              core.setFailed('Could not parse Rust stable version from channel manifest.');
+              return;
+            }
+
+            const rawVersion = versionLine[1];
+            const semverMatch = rawVersion.match(/(\d+\.\d+\.\d+)/);
+            if (!semverMatch) {
+              core.setFailed(`Could not extract semver from version string: ${rawVersion}`);
+              return;
+            }
+
+            const latestVersion = semverMatch[1];
+            const latestDate = dateLine ? dateLine[1] : 'unknown';
+
+            const titlePrefix = 'Rust stable update available:';
+            const title = `${titlePrefix} ${latestVersion}`;
+            const body = [
+              `Rust stable channel has a newer release candidate for review.`,
+              ``,
+              `- Latest stable: \`${latestVersion}\``,
+              `- Channel date: \`${latestDate}\``,
+              `- Source: ${channelUrl}`,
+              ``,
+              `## Suggested follow-up`,
+              `- Confirm CI/release workflows should stay on floating \`stable\` or be pinned.`,
+              `- Validate toolchain compatibility in Jet:`,
+              `  - \`cargo fmt --all -- --check\``,
+              `  - \`cargo clippy --workspace --all-targets -- -D warnings\``,
+              `  - \`bash scripts/check_safety_docs.sh\``,
+              `  - \`cargo test --workspace\``,
+            ].join('\n');
+
+            const search = await github.rest.search.issuesAndPullRequests({
+              q: `repo:${context.repo.owner}/${context.repo.repo} is:issue is:open in:title "${titlePrefix}"`
+            });
+
+            const existing = search.data.items.find((item) =>
+              item.title.startsWith(titlePrefix)
+            );
+
+            if (existing) {
+              if (existing.title === title) {
+                core.info(`No update needed. Existing issue #${existing.number} already tracks ${latestVersion}.`);
+                return;
+              }
+
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.number,
+                title,
+                body
+              });
+              core.info(`Updated existing issue #${existing.number} -> ${latestVersion}`);
+            } else {
+              const created = await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body
+              });
+              core.info(`Created issue #${created.data.number}`);
+            }

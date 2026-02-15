@@ -1,0 +1,128 @@
+# Tutorial 6: Error Handling
+# Jet uses an explicit effects system for error handling.
+
+# Define custom error types
+enum ParseError:
+    | InvalidFormat
+    | OutOfRange
+    | EmptyInput
+
+enum FileError:
+    | NotFound(path: string)
+    | PermissionDenied(path: string)
+    | IoError(message: string)
+
+# Function that can fail - uses '!' to declare effect
+fn parse_positive_number(input: string) -> int ! ParseError:
+    if input.len() == 0:
+        raise EmptyInput
+
+    # Try to parse (simplified)
+    let result = 0
+    for c in input:
+        if c < '0' or c > '9':
+            raise InvalidFormat
+        result = result * 10 + (c as int - '0' as int)
+
+    if result <= 0:
+        raise OutOfRange
+
+    return result
+
+# Propagating errors with '?'
+fn calculate_double(input: string) -> int ! ParseError:
+    # The '?' operator propagates errors up the call stack
+    let number = parse_positive_number(input)?
+    return number * 2
+
+# Function with multiple possible errors
+fn read_and_parse(path: string) -> int ! FileError | ParseError:
+    # Simulate file reading
+    let content = read_file(path)?
+    let number = parse_positive_number(content)?
+    return number
+
+# Simulated file reading
+fn read_file(path: string) -> string ! FileError:
+    if path == "":
+        raise NotFound(path)
+    # Simulated success
+    return "42"
+
+fn main():
+    # ========== HANDLING ERRORS ==========
+
+    # Using match to handle different error cases
+    print("1. Handling with match:")
+    match parse_positive_number("123"):
+        | Ok(n) => print(f"  Parsed: {n}")
+        | Err(EmptyInput) => print("  Error: Empty input")
+        | Err(InvalidFormat) => print("  Error: Invalid format")
+        | Err(OutOfRange) => print("  Error: Number out of range")
+
+    # Error propagation
+    print("\n2. Error propagation with '?':")
+    match calculate_double("21"):
+        | Ok(n) => print(f"  Double: {n}")
+        | Err(e) => print(f"  Error: {e:?}")
+
+    # Different error types
+    print("\n3. Different error cases:")
+
+    let test_inputs = ["42", "-5", "abc", ""]
+    for input in test_inputs:
+        print(f"  Input: '{input}'")
+        match parse_positive_number(input):
+            | Ok(n) => print(f"    -> Parsed: {n}")
+            | Err(EmptyInput) => print(f"    -> Error: Empty input")
+            | Err(InvalidFormat) => print(f"    -> Error: Invalid format")
+            | Err(OutOfRange) => print(f"    -> Error: Must be positive")
+
+    # ========== RESULT TYPE ==========
+    # Result is an enum: Ok(T) | Err(E)
+
+    fn safe_divide(a: float, b: float) -> Result[float, string]:
+        if b == 0.0:
+            return Err("Cannot divide by zero")
+        return Ok(a / b)
+
+    print("\n4. Result type:")
+    match safe_divide(10.0, 2.0):
+        | Ok(result) => print(f"    10 / 2 = {result}")
+        | Err(e) => print(f"    Error: {e}")
+
+    match safe_divide(10.0, 0.0):
+        | Ok(result) => print(f"    10 / 0 = {result}")
+        | Err(e) => print(f"    Error: {e}")
+
+    # ========== OPTION TYPE ==========
+    # Option is for values that may or may not exist: Some(T) | None
+
+    fn find_index(arr: [int], target: int) -> Option[int]:
+        for i, val in arr.enumerate():
+            if val == target:
+                return Some(i)
+        return None
+
+    let numbers = [10, 20, 30, 40, 50]
+
+    print("\n5. Option type:")
+    match find_index(numbers, 30):
+        | Some(i) => print(f"    Found 30 at index {i}")
+        | None => print(f"    30 not found")
+
+    match find_index(numbers, 100):
+        | Some(i) => print(f"    Found 100 at index {i}")
+        | None => print(f"    100 not found")
+
+    # Option combinators
+    let maybe_value = Some(42)
+    let doubled = maybe_value.map(fn(x) -> x * 2)
+    print(f"\n  Doubled Some(42): {doubled}")
+
+    # Default values with unwrap_or
+    let with_default = None.unwrap_or(0)
+    print(f"  None with default: {with_default}")
+
+    # Exercise: Write a function that reads a configuration value
+    # and returns a default if the value is missing or invalid

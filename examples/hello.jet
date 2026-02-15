@@ -1,0 +1,5 @@
+# Hello World example for Jet
+# This is the simplest possible Jet program
+
+fn main():
+    print("Hello, World!")

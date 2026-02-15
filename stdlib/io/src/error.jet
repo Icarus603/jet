@@ -1,0 +1,120 @@
+### Error types for I/O operations.
+###
+### This module provides error types used throughout the I/O library.
+
+import core::option::{Option, Some, None}
+import core::result::{Result, Ok, Err}
+
+### The main error type for I/O operations.
+###
+### This type represents all possible errors that can occur during I/O operations.
+type Error = {
+    kind: ErrorKind
+    message: string
+}
+
+### Kinds of I/O errors.
+###
+### This enum categorizes the different types of errors that can occur.
+enum ErrorKind:
+    NotFound
+    PermissionDenied
+    AlreadyExists
+    InvalidInput
+    InvalidData
+    UnexpectedEof
+    WriteZero
+    Interrupted
+    WouldBlock
+    NotConnected
+    AddrInUse
+    Other
+
+### Creates a new I/O error with the given kind and message.
+fn Error.new(kind: ErrorKind, message: string) -> Error:
+    Error { kind: kind, message: message }
+
+### Creates a NotFound error.
+fn Error.not_found(message: string) -> Error:
+    Error { kind: ErrorKind::NotFound, message: message }
+
+### Creates a PermissionDenied error.
+fn Error.permission_denied(message: string) -> Error:
+    Error { kind: ErrorKind::PermissionDenied, message: message }
+
+### Creates an AlreadyExists error.
+fn Error.already_exists(message: string) -> Error:
+    Error { kind: ErrorKind::AlreadyExists, message: message }
+
+### Creates an InvalidInput error.
+fn Error.invalid_input(message: string) -> Error:
+    Error { kind: ErrorKind::InvalidInput, message: message }
+
+### Creates an InvalidData error.
+fn Error.invalid_data(message: string) -> Error:
+    Error { kind: ErrorKind::InvalidData, message: message }
+
+### Creates an UnexpectedEof error.
+fn Error.unexpected_eof() -> Error:
+    Error { kind: ErrorKind::UnexpectedEof, message: "unexpected end of file" }
+
+### Creates a WriteZero error.
+fn Error.write_zero() -> Error:
+    Error { kind: ErrorKind::WriteZero, message: "write zero bytes" }
+
+### Creates an Interrupted error.
+fn Error.interrupted() -> Error:
+    Error { kind: ErrorKind::Interrupted, message: "operation interrupted" }
+
+impl Error:
+    ### Returns the kind of this error.
+    fn kind(self) -> ErrorKind:
+        self.kind
+
+    ### Returns the error message.
+    fn message(self) -> string:
+        self.message
+
+    ### Returns true if this error is of the given kind.
+    fn is(self, kind: ErrorKind) -> bool:
+        self.kind == kind
+
+impl Show for Error:
+    fn show(self) -> string:
+        f"IO error: {} ({})" % [self.kind.show(), self.message]
+
+impl Show for ErrorKind:
+    fn show(self) -> string:
+        match self:
+            NotFound -> "not found"
+            PermissionDenied -> "permission denied"
+            AlreadyExists -> "already exists"
+            InvalidInput -> "invalid input"
+            InvalidData -> "invalid data"
+            UnexpectedEof -> "unexpected EOF"
+            WriteZero -> "write zero"
+            Interrupted -> "interrupted"
+            WouldBlock -> "would block"
+            NotConnected -> "not connected"
+            AddrInUse -> "address in use"
+            Other -> "other"
+
+impl Eq for ErrorKind:
+    fn eq(self, other: ErrorKind) -> bool:
+        match (self, other):
+            (NotFound, NotFound) -> true
+            (PermissionDenied, PermissionDenied) -> true
+            (AlreadyExists, AlreadyExists) -> true
+            (InvalidInput, InvalidInput) -> true
+            (InvalidData, InvalidData) -> true
+            (UnexpectedEof, UnexpectedEof) -> true
+            (WriteZero, WriteZero) -> true
+            (Interrupted, Interrupted) -> true
+            (WouldBlock, WouldBlock) -> true
+            (NotConnected, NotConnected) -> true
+            (AddrInUse, AddrInUse) -> true
+            (Other, Other) -> true
+            _ -> false
+
+### Result type alias for I/O operations.
+type IoResult[T] = Result[T, Error]

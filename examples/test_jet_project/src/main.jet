@@ -1,0 +1,5 @@
+# Simple hello world without stdlib import for now
+# The print function needs stdlib prelude integration
+
+fn main():
+    pass

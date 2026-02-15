@@ -1,0 +1,66 @@
+### Jet Math Library
+###
+### This module provides mathematical functions, constants, and types
+### for the Jet programming language.
+
+# Math functions
+export abs
+export min
+export max
+export clamp
+export sqrt
+export cbrt
+export pow
+export exp
+export ln
+export log
+export log2
+export log10
+export sin
+export cos
+export tan
+export asin
+export acos
+export atan
+export atan2
+export sinh
+export cosh
+export tanh
+export asinh
+export acosh
+export atanh
+export floor
+export ceil
+export round
+export trunc
+
+# Constants
+export pi
+export e
+export tau
+export phi
+
+# Vector types
+export Vec2
+export Vec3
+export Vec4
+
+# Matrix types
+export Mat2
+export Mat3
+export Mat4
+
+# Random number generation
+export Random
+export random
+export random_int
+export random_float
+export RandomSeed
+export SeededRandom
+
+# Import submodules
+import basic
+import trig
+import vector
+import matrix
+import random

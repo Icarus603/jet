@@ -1,0 +1,13 @@
+[package]
+name = "jet-ir"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+indexmap = "2.0"
+
+[dev-dependencies]
+pretty_assertions.workspace = true

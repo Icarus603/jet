@@ -1,0 +1,158 @@
+# Language Spec Test: Type System
+# Tests: Section 4 - Type System
+
+### Test primitive types (4.1)
+fn test_primitives():
+    # Integer types
+    let i8_val: i8 = 127
+    let i16_val: i16 = 32767
+    let i32_val: i32 = 2147483647
+    let i64_val: i64 = 9223372036854775807
+    let int_val: int = 42
+
+    # Unsigned integers
+    let u8_val: u8 = 255
+    let u16_val: u16 = 65535
+    let u32_val: u32 = 4294967295
+    let u64_val: u64 = 18446744073709551615
+    let uint_val: uint = 42
+
+    # Floating point
+    let f32_val: float32 = 3.14
+    let f64_val: float64 = 2.71828
+    let float_val: float = 1.41421
+
+    # Other primitives
+    let bool_val: bool = true
+    let char_val: char = 'x'
+    let str_val: string = "hello"
+    let unit_val: unit = ()
+
+### Test type inference (4.5)
+fn test_type_inference():
+    # Local variable inference
+    let x = 5           # inferred as int
+    let y = 3.14        # inferred as float64
+    let s = "hello"     # inferred as string
+    let b = true        # inferred as bool
+
+    # Function return type inference
+    fn double(x: int):   # return type inferred as int
+        return x * 2
+
+    let result = double(21)
+
+### Test tuples (4.2.1)
+fn test_tuples():
+    let point: (int, int) = (10, 20)
+    let name_age: (string, int) = ("Alice", 30)
+    let unit: unit = ()
+
+    # Tuple access
+    let (x, y) = point
+    let first = point.0
+    let second = point.1
+
+### Test arrays (4.2.2)
+fn test_arrays():
+    let nums: [int; 5] = [1, 2, 3, 4, 5]
+    let zeros = [0; 10]  # ten zeros
+
+    # Array indexing
+    let first = nums[0]
+    let last = nums[4]
+
+### Test structs (4.2.4)
+struct Point:
+    x: float
+    y: float
+
+struct Person:
+    name: string
+    age: int
+
+fn test_structs():
+    let p = Point { x: 1.0, y: 2.0 }
+    let person = Person { name: "Alice", age: 30 }
+
+    # Field access
+    let x_coord = p.x
+    let person_name = person.name
+
+### Test tuple structs
+struct Meters(float)
+struct Rgb(u8, u8, u8)
+
+fn test_tuple_structs():
+    let distance = Meters(100.0)
+    let color = Rgb(255, 0, 128)
+
+### Test unit structs
+struct Empty
+
+fn test_unit_structs():
+    let e = Empty
+
+### Test enums (4.2.5)
+enum Option[T]:
+    | Some(T)
+    | None
+
+enum Result[T, E]:
+    | Ok(T)
+    | Err(E)
+
+enum HttpStatus:
+    | Ok
+    | NotFound
+    | Error { code: int, message: string }
+
+fn test_enums():
+    let opt: Option[int] = Some(42)
+    let none: Option[int] = None
+
+    let ok: Result[int, string] = Ok(100)
+    let err: Result[int, string] = Err("failed")
+
+    let status = HttpStatus::Ok
+
+### Test generics (4.4)
+struct Box[T]:
+    value: T
+
+fn identity[T](x: T) -> T:
+    return x
+
+fn test_generics():
+    let int_box = Box { value: 42 }
+    let str_box = Box { value: "hello" }
+
+    let x = identity(42)
+    let s = identity("hello")
+
+### Test generic constraints (4.4.1)
+fn test_constraints[T: Display](value: T):
+    pass
+
+fn test_multiple_bounds[T: Display + Clone](value: T):
+    pass
+
+### Test function types (4.3)
+fn test_function_types():
+    # Simple function type
+    let add: fn(int, int) -> int = fn(a, b) => a + b
+
+    # Function with effects
+    # let read_file: fn(string) -> string ! IoError = ...
+
+### Main entry point
+fn main():
+    test_primitives()
+    test_type_inference()
+    test_tuples()
+    test_arrays()
+    test_structs()
+    test_tuple_structs()
+    test_unit_structs()
+    test_enums()
+    test_generics()

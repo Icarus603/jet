@@ -1,0 +1,25 @@
+# Arithmetic Operations Test
+# Tests: Integer operations, operator precedence, variable assignment
+
+fn main():
+    let a = 10
+    let b = 3
+
+    # Basic arithmetic
+    print(a + b)   # 13
+    print(a - b)   # 7
+    print(a * b)   # 30
+    print(a / b)   # 3
+    print(a % b)   # 1
+
+    # Operator precedence
+    let result = 2 + 3 * 4
+    print(result)  # 14
+
+    # Parentheses
+    let result2 = (2 + 3) * 4
+    print(result2)  # 20
+
+    # Negative numbers
+    let neg = -5
+    print(neg)  # -5

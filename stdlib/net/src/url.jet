@@ -1,0 +1,288 @@
+### URL parsing and manipulation for Jet.
+###
+### This module provides URL parsing and building functionality.
+
+import core::option::{Option, Some, None}
+import core::result::{Result, Ok, Err}
+import collections::Map
+
+### A URL (Uniform Resource Locator).
+type Url = {
+    scheme: string
+    username: string
+    password: Option[string]
+    host: string
+    port: Option[u16]
+    path: string
+    query: Option[string]
+    fragment: Option[string]
+}
+
+### Error type for URL parsing.
+type UrlError = {
+    message: string
+}
+
+impl Show for UrlError:
+    fn show(self) -> string:
+        f"URL error: {self.message}"
+
+impl Url:
+    ### Parses a URL from a string.
+    fn parse(s: string) -> Result[Url, UrlError]:
+        # In a real implementation, parse according to RFC 3986
+        # This is a simplified placeholder
+        Err(UrlError { message: "Not implemented" })
+
+    ### Creates a URL from components.
+    fn from_parts(
+        scheme: string,
+        host: string,
+        path: string
+    ) -> Url:
+        Url {
+            scheme: scheme,
+            username: "",
+            password: None,
+            host: host,
+            port: None,
+            path: path,
+            query: None,
+            fragment: None
+        }
+
+    ### Returns the scheme (e.g., "http", "https").
+    fn scheme(self) -> string:
+        self.scheme
+
+    ### Returns the host.
+    fn host(self) -> string:
+        self.host
+
+    ### Returns the port, if specified.
+    fn port(self) -> Option[u16]:
+        self.port
+
+    ### Returns the port, or the default for the scheme.
+    fn port_or_default(self) -> u16:
+        match self.port:
+            Some(p) -> p
+            None -> self.default_port()
+
+    ### Returns the default port for the scheme.
+    fn default_port(self) -> u16:
+        match self.scheme:
+            "http" -> 80
+            "https" -> 443
+            "ftp" -> 21
+            "ssh" -> 22
+            _ -> 0
+
+    ### Returns the path.
+    fn path(self) -> string:
+        self.path
+
+    ### Returns the query string, if any.
+    fn query(self) -> Option[string]:
+        self.query
+
+    ### Returns the fragment, if any.
+    fn fragment(self) -> Option[string]:
+        self.fragment
+
+    ### Returns the username, if any.
+    fn username(self) -> string:
+        self.username
+
+    ### Returns the password, if any.
+    fn password(self) -> Option[string]:
+        self.password
+
+    ### Returns the origin (scheme://host:port).
+    fn origin(self) -> string:
+        let origin = self.scheme + "://" + self.host
+        match self.port:
+            Some(p) -> origin + ":" + p.show()
+            None -> origin
+
+    ### Returns the full path including query string.
+    fn path_and_query(self) -> string:
+        match self.query:
+            Some(q) -> self.path + "?" + q
+            None -> self.path
+
+    ### Parses the query string into key-value pairs.
+    fn query_pairs(self) -> Map[string, string]:
+        let pairs = Map.new()
+        match self.query:
+            Some(q) ->
+                for part in q.split('&'):
+                    match part.split_once('='):
+                        Some((key, value)) ->
+                            pairs.insert(url_decode(key), url_decode(value))
+                        None ->
+                            pairs.insert(url_decode(part), "")
+            None -> ()
+        pairs
+
+    ### Returns true if the URL uses a secure scheme.
+    fn is_secure(self) -> bool:
+        self.scheme == "https" or self.scheme == "wss"
+
+    ### Returns true if this is an absolute URL.
+    fn is_absolute(self) -> bool:
+        not self.host.is_empty()
+
+    ### Joins this URL with a relative URL.
+    fn join(self, relative: string) -> Result[Url, UrlError]:
+        # In a real implementation, resolve the relative URL
+        Url.parse(relative)
+
+    ### Sets the scheme.
+    fn set_scheme(mut self, scheme: string) -> Url:
+        self.scheme = scheme
+        self
+
+    ### Sets the host.
+    fn set_host(mut self, host: string) -> Url:
+        self.host = host
+        self
+
+    ### Sets the port.
+    fn set_port(mut self, port: Option[u16]) -> Url:
+        self.port = port
+        self
+
+    ### Sets the path.
+    fn set_path(mut self, path: string) -> Url:
+        self.path = path
+        self
+
+    ### Sets the query string.
+    fn set_query(mut self, query: Option[string]) -> Url:
+        self.query = query
+        self
+
+    ### Sets the fragment.
+    fn set_fragment(mut self, fragment: Option[string]) -> Url:
+        self.fragment = fragment
+        self
+
+    ### Appends a path segment.
+    fn append_path(mut self, segment: string) -> Url:
+        if not self.path.ends_with("/"):
+            self.path += "/"
+        self.path += url_encode(segment)
+        self
+
+    ### Adds a query parameter.
+    fn add_query_param(mut self, key: string, value: string) -> Url:
+        let encoded = url_encode(key) + "=" + url_encode(value)
+        self.query = match self.query:
+            Some(q) -> Some(q + "&" + encoded)
+            None -> Some(encoded)
+        self
+
+impl Eq for Url:
+    fn eq(self, other: Url) -> bool:
+        self.scheme == other.scheme and
+        self.host == other.host and
+        self.port == other.port and
+        self.path == other.path and
+        self.query == other.query and
+        self.fragment == other.fragment
+
+impl Show for Url:
+    fn show(self) -> string:
+        let mut s = self.scheme + "://"
+
+        if not self.username.is_empty():
+            s += self.username
+            match self.password:
+                Some(p) -> s += ":" + p
+                None -> ()
+            s += "@"
+
+        s += self.host
+
+        match self.port:
+            Some(p) ->
+                if p != self.default_port():
+                    s += ":" + p.show()
+            None -> ()
+
+        s += self.path
+
+        match self.query:
+            Some(q) -> s += "?" + q
+            None -> ()
+
+        match self.fragment:
+            Some(f) -> s += "#" + f
+            None -> ()
+
+        s
+
+### Encodes a string for use in a URL.
+fn url_encode(s: string) -> string:
+    let result = StringBuilder.new()
+    for c in s.chars():
+        if c.is_alphanumeric() or c == '-' or c == '_' or c == '.' or c == '~':
+            result.append_char(c)
+        else:
+            # Percent-encode
+            for byte in c.to_bytes():
+                result.append_char('%')
+                result.append_char(to_hex_digit(byte >> 4))
+                result.append_char(to_hex_digit(byte & 0xF))
+    result.to_string()
+
+### Decodes a URL-encoded string.
+fn url_decode(s: string) -> string:
+    let result = StringBuilder.new()
+    let mut i = 0
+    while i < s.len():
+        if s.char_at(i) == '%' and i + 2 < s.len():
+            let high = from_hex_digit(s.char_at(i + 1))
+            let low = from_hex_digit(s.char_at(i + 2))
+            if high >= 0 and low >= 0:
+                result.append_char(((high << 4) | low) as char)
+                i += 3
+                continue
+        result.append_char(s.char_at(i))
+        i += 1
+    result.to_string()
+
+private fn to_hex_digit(n: u8) -> char:
+    if n < 10:
+        ('0' as u8 + n) as char
+    else:
+        ('A' as u8 + n - 10) as char
+
+private fn from_hex_digit(c: char) -> int:
+    if c >= '0' and c <= '9':
+        (c as u8 - '0' as u8) as int
+    else if c >= 'A' and c <= 'F':
+        (c as u8 - 'A' as u8 + 10) as int
+    else if c >= 'a' and c <= 'f':
+        (c as u8 - 'a' as u8 + 10) as int
+    else:
+        -1
+
+### Formats query parameters as a query string.
+fn format_query(params: Map[string, string]) -> string:
+    let parts = Vec.new()
+    for (key, value) in params.entries():
+        parts.push(url_encode(key) + "=" + url_encode(value))
+    parts.join("&")
+
+### Parses a query string into key-value pairs.
+fn parse_query(query: string) -> Map[string, string]:
+    let params = Map.new()
+    for part in query.split('&'):
+        match part.split_once('='):
+            Some((key, value)) ->
+                params.insert(url_decode(key), url_decode(value))
+            None ->
+                params.insert(url_decode(part), "")
+    params

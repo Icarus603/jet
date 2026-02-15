@@ -1,0 +1,281 @@
+### Buffered I/O for Jet.
+###
+### This module provides buffered reading and writing for improved performance.
+
+import core::option::{Option, Some, None}
+import core::result::{Result, Ok, Err}
+
+### A buffered reader for efficient reading.
+type BufReader = {
+    inner: File
+    buffer: Vec[u8]
+    pos: usize
+    filled: usize
+    capacity: usize
+}
+
+### A buffered writer for efficient writing.
+type BufWriter = {
+    inner: File
+    buffer: Vec[u8]
+    pos: usize
+    capacity: usize
+}
+
+### Default buffer size (8KB).
+const DEFAULT_BUF_SIZE: usize = 8192
+
+impl BufReader:
+    ### Creates a new BufReader with the default buffer size.
+    fn new(file: File) -> BufReader:
+        BufReader.with_capacity(DEFAULT_BUF_SIZE, file)
+
+    ### Creates a new BufReader with the specified capacity.
+    fn with_capacity(capacity: usize, file: File) -> BufReader:
+        BufReader {
+            inner: file,
+            buffer: Vec.with_capacity(capacity),
+            pos: 0,
+            filled: 0,
+            capacity: capacity
+        }
+
+    ### Creates a BufReader for stdin.
+    fn new_stdin() -> BufReader:
+        BufReader.new(File { path: PathBuf { path: "<stdin>" } })
+
+    ### Returns the number of bytes in the buffer.
+    fn buffer_len(self) -> usize:
+        self.filled - self.pos
+
+    ### Returns true if the buffer is empty.
+    fn buffer_is_empty(self) -> bool:
+        self.pos >= self.filled
+
+    ### Reads a single byte.
+    fn read_byte(mut self) -> Result[Option[u8], IOError] ! io:
+        if self.buffer_is_empty():
+            self.fill_buffer()?
+            if self.buffer_is_empty():
+                return Ok(None)
+        let byte = self.buffer[self.pos]
+        self.pos += 1
+        Ok(Some(byte))
+
+    ### Reads bytes into a buffer.
+    fn read(mut self, buf: &mut [u8]) -> Result[usize, IOError] ! io:
+        let mut total_read = 0
+        let buf_len = buf.len()
+
+        while total_read < buf_len:
+            if self.buffer_is_empty():
+                self.fill_buffer()?
+                if self.buffer_is_empty():
+                    break
+
+            let available = self.filled - self.pos
+            let to_copy = min(available, buf_len - total_read)
+
+            for i in 0..to_copy:
+                buf[total_read + i] = self.buffer[self.pos + i]
+
+            self.pos += to_copy
+            total_read += to_copy
+
+        Ok(total_read)
+
+    ### Reads a line into a string.
+    fn read_line(mut self) -> Result[string, IOError] ! io:
+        let result = StringBuilder.new()
+
+        loop:
+            if self.buffer_is_empty():
+                self.fill_buffer()?
+                if self.buffer_is_empty():
+                    break
+
+            while self.pos < self.filled:
+                let byte = self.buffer[self.pos]
+                self.pos += 1
+                if byte == '\n':
+                    return Ok(result.to_string())
+                result.append_char(byte as char)
+
+        Ok(result.to_string())
+
+    ### Reads until the specified delimiter byte.
+    fn read_until(mut self, delimiter: u8) -> Result[Vec[u8], IOError] ! io:
+        let result = Vec.new()
+
+        loop:
+            if self.buffer_is_empty():
+                self.fill_buffer()?
+                if self.buffer_is_empty():
+                    break
+
+            while self.pos < self.filled:
+                let byte = self.buffer[self.pos]
+                self.pos += 1
+                result.push(byte)
+                if byte == delimiter:
+                    return Ok(result)
+
+        Ok(result)
+
+    ### Reads the entire contents into a vector.
+    fn read_to_end(mut self) -> Result[Vec[u8], IOError] ! io:
+        let result = Vec.new()
+
+        # First, copy any buffered data
+        if not self.buffer_is_empty():
+            for i in self.pos..self.filled:
+                result.push(self.buffer[i])
+
+        # Then read directly from the file
+        let mut buf = Vec.with_capacity(DEFAULT_BUF_SIZE)
+        loop:
+            match self.inner.read_to_end():
+                Ok(bytes) ->
+                    if bytes.is_empty():
+                        break
+                    result.extend(bytes)
+                Err(e) -> return Err(e)
+
+        Ok(result)
+
+    ### Reads the entire contents into a string.
+    fn read_to_string(mut self) -> Result[string, IOError] ! io:
+        let bytes = self.read_to_end()?
+        # In a real implementation, validate UTF-8
+        Ok("")  # Placeholder
+
+    ### Returns the inner file.
+    fn into_inner(self) -> File:
+        self.inner
+
+    ### Private: Fills the buffer from the underlying file.
+    private fn fill_buffer(mut self) -> Result[unit, IOError] ! io:
+        self.pos = 0
+        self.filled = 0
+        # In a real implementation, read from file into buffer
+        Ok(())
+
+impl BufWriter:
+    ### Creates a new BufWriter with the default buffer size.
+    fn new(file: File) -> BufWriter:
+        BufWriter.with_capacity(DEFAULT_BUF_SIZE, file)
+
+    ### Creates a new BufWriter with the specified capacity.
+    fn with_capacity(capacity: usize, file: File) -> BufWriter:
+        BufWriter {
+            inner: file,
+            buffer: Vec.with_capacity(capacity),
+            pos: 0,
+            capacity: capacity
+        }
+
+    ### Creates a BufWriter for stdout.
+    fn new_stdout() -> BufWriter:
+        BufWriter.new(File { path: PathBuf { path: "<stdout>" } })
+
+    ### Writes a single byte.
+    fn write_byte(mut self, byte: u8) -> Result[unit, IOError] ! io:
+        if self.pos >= self.capacity:
+            self.flush_buffer()?
+        self.buffer.push(byte)
+        self.pos += 1
+        Ok(())
+
+    ### Writes bytes from a buffer.
+    fn write(mut self, buf: &[u8]) -> Result[unit, IOError] ! io:
+        let buf_len = buf.len()
+
+        # If the write is large, bypass the buffer
+        if buf_len >= self.capacity:
+            self.flush()?
+            return self.inner.write_bytes(buf)
+
+        # Otherwise, buffer the write
+        let mut written = 0
+        while written < buf_len:
+            if self.pos >= self.capacity:
+                self.flush_buffer()?
+
+            let space = self.capacity - self.pos
+            let to_write = min(space, buf_len - written)
+
+            for i in 0..to_write:
+                self.buffer.push(buf[written + i])
+
+            self.pos += to_write
+            written += to_write
+
+        Ok(())
+
+    ### Writes a string.
+    fn write_string(mut self, s: string) -> Result[unit, IOError] ! io:
+        # In a real implementation, convert string to bytes
+        self.write(&[])
+
+    ### Writes a string followed by a newline.
+    fn writeln(mut self, s: string) -> Result[unit, IOError] ! io:
+        self.write_string(s)?
+        self.write_byte('\n' as u8)
+
+    ### Flushes the buffer to the underlying file.
+    fn flush(mut self) -> Result[unit, IOError] ! io:
+        self.flush_buffer()?;
+        self.inner.sync_data()
+
+    ### Returns the number of bytes buffered.
+    fn buffer_len(self) -> usize:
+        self.pos
+
+    ### Returns the inner file.
+    fn into_inner(mut self) -> Result[File, IOError] ! io:
+        self.flush()?;
+        Ok(self.inner)
+
+    ### Private: Flushes the internal buffer.
+    private fn flush_buffer(mut self) -> Result[unit, IOError] ! io:
+        if self.pos > 0:
+            let to_write = self.buffer.slice(0, self.pos)
+            self.inner.write_bytes(&to_write)?
+            self.buffer.clear()
+            self.pos = 0
+        Ok(())
+
+### Creates a line iterator from a BufReader.
+struct Lines:
+    reader: BufReader
+
+impl Lines:
+    fn next(mut self) -> Option[Result[string, IOError] ! io]:
+        match self.reader.read_line():
+            Ok(line) ->
+                if line.is_empty():
+                    None
+                else:
+                    Some(Ok(line))
+            Err(e) -> Some(Err(e))
+
+### Creates a byte iterator from a BufReader.
+struct Bytes:
+    reader: BufReader
+
+impl Bytes:
+    fn next(mut self) -> Option[Result[u8, IOError] ! io]:
+        match self.reader.read_byte():
+            Ok(Some(b)) -> Some(Ok(b))
+            Ok(None) -> None
+            Err(e) -> Some(Err(e))
+
+### Creates a BufReader from a file path.
+fn buffered_reader(path: PathBuf) -> Result[BufReader, FileError] ! io:
+    let file = File.open(path)?
+    Ok(BufReader.new(file))
+
+### Creates a BufWriter from a file path.
+fn buffered_writer(path: PathBuf) -> Result[BufWriter, FileError] ! io:
+    let file = File.create(path)?
+    Ok(BufWriter.new(file))

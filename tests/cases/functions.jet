@@ -1,0 +1,36 @@
+# Functions Test
+# Tests: Function definition, parameters, return values, recursion
+
+fn add(a: int, b: int) -> int:
+    return a + b
+
+fn multiply(a: int, b: int) -> int:
+    return a * b
+
+fn factorial(n: int) -> int:
+    if n <= 1:
+        return 1
+    return n * factorial(n - 1)
+
+fn fib(n: int) -> int:
+    if n <= 1:
+        return n
+    return fib(n - 1) + fib(n - 2)
+
+fn greet(name: string) -> string:
+    return "Hello, " + name + "!"
+
+fn main():
+    # Basic function calls
+    print(add(5, 3))           # 8
+    print(multiply(4, 7))      # 28
+
+    # Recursion
+    print(factorial(5))        # 120
+    print(fib(10))             # 55
+
+    # String functions
+    print(greet("Jet"))        # Hello, Jet!
+
+    # Nested calls
+    print(add(multiply(2, 3), 4))  # 10

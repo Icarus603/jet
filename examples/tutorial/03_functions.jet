@@ -1,0 +1,69 @@
+# Tutorial 3: Functions
+# Functions are reusable blocks of code that perform specific tasks.
+
+# Basic function - no parameters, no return value
+fn say_hello():
+    print("Hello!")
+
+# Function with parameters
+# Parameters specify the type after a colon
+fn greet(name: string):
+    print(f"Hello, {name}!")
+
+# Function with return value
+# The return type is specified after ->
+fn add(a: int, b: int) -> int:
+    return a + b
+
+# Function with multiple parameters of different types
+fn describe(name: string, age: int, is_student: bool):
+    let status = if is_student: "student" else: "not a student"
+    print(f"{name} is {age} years old and is {status}")
+
+# Function returning multiple values (using tuple)
+fn divide_and_remainder(dividend: int, divisor: int) -> (int, int):
+    let quotient = dividend / divisor
+    let remainder = dividend % divisor
+    return (quotient, remainder)
+
+# Function with default parameter values (using overloading pattern)
+fn greet_formal(name: string, title: string) -> string:
+    return f"Greetings, {title} {name}"
+
+fn greet_formal_default(name: string) -> string:
+    return greet_formal(name, "Mr./Ms.")
+
+# Early return with condition
+fn max(a: int, b: int) -> int:
+    if a > b:
+        return a
+    return b
+
+# Recursive function - calls itself
+fn factorial(n: int) -> int:
+    if n <= 1:
+        return 1
+    return n * factorial(n - 1)
+
+fn main():
+    say_hello()
+
+    greet("Alice")
+    greet("Bob")
+
+    let sum = add(5, 3)
+    print(f"5 + 3 = {sum}")
+
+    describe("Charlie", 25, true)
+
+    let (quot, rem) = divide_and_remainder(17, 5)
+    print(f"17 / 5 = {quot} remainder {rem}")
+
+    let formal = greet_formal("Smith", "Dr.")
+    print(formal)
+
+    print(f"max(10, 5) = {max(10, 5)}")
+    print(f"5! = {factorial(5)}")
+
+    # Exercise: Write a function that calculates the area of a rectangle
+    # given width and height as parameters

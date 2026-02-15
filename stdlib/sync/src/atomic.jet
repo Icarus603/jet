@@ -1,0 +1,207 @@
+### Atomic types for Jet.
+###
+### Atomic types provide thread-safe operations without locks.
+
+### An atomic boolean.
+type AtomicBool = {
+    value: bool
+}
+
+### An atomic integer (64-bit).
+type AtomicInt = {
+    value: int64
+}
+
+### An atomic pointer.
+type AtomicPtr[T] = {
+    value: *mut T
+}
+
+### Ordering for atomic operations.
+enum Ordering:
+    Relaxed
+    Acquire
+    Release
+    AcqRel
+    SeqCst
+
+impl AtomicBool:
+    ### Creates a new atomic boolean.
+    fn new(value: bool) -> AtomicBool:
+        AtomicBool { value: value }
+
+    ### Loads the value.
+    fn load(self, order: Ordering = Ordering::SeqCst) -> bool:
+        self.value
+
+    ### Stores a value.
+    fn store(mut self, value: bool, order: Ordering = Ordering::SeqCst):
+        self.value = value
+
+    ### Atomically swaps the value.
+    fn swap(mut self, value: bool, order: Ordering = Ordering::SeqCst) -> bool:
+        let old = self.value
+        self.value = value
+        old
+
+    ### Compares and exchanges the value.
+    fn compare_exchange(
+        mut self,
+        expected: bool,
+        new: bool,
+        order: Ordering = Ordering::SeqCst
+    ) -> bool:
+        if self.value == expected:
+            self.value = new
+            true
+        else:
+            false
+
+    ### Logical AND with the current value.
+    fn fetch_and(mut self, value: bool, order: Ordering = Ordering::SeqCst) -> bool:
+        let old = self.value
+        self.value = self.value and value
+        old
+
+    ### Logical OR with the current value.
+    fn fetch_or(mut self, value: bool, order: Ordering = Ordering::SeqCst) -> bool:
+        let old = self.value
+        self.value = self.value or value
+        old
+
+    ### Logical XOR with the current value.
+    fn fetch_xor(mut self, value: bool, order: Ordering = Ordering::SeqCst) -> bool:
+        let old = self.value
+        self.value = self.value != value
+        old
+
+impl AtomicInt:
+    ### Creates a new atomic integer.
+    fn new(value: int64) -> AtomicInt:
+        AtomicInt { value: value }
+
+    ### Loads the value.
+    fn load(self, order: Ordering = Ordering::SeqCst) -> int64:
+        self.value
+
+    ### Stores a value.
+    fn store(mut self, value: int64, order: Ordering = Ordering::SeqCst):
+        self.value = value
+
+    ### Atomically swaps the value.
+    fn swap(mut self, value: int64, order: Ordering = Ordering::SeqCst) -> int64:
+        let old = self.value
+        self.value = value
+        old
+
+    ### Compares and exchanges the value.
+    fn compare_exchange(
+        mut self,
+        expected: int64,
+        new: int64,
+        order: Ordering = Ordering::SeqCst
+    ) -> int64:
+        if self.value == expected:
+            self.value = new
+            expected
+        else:
+            self.value
+
+    ### Atomically adds to the value.
+    fn fetch_add(mut self, value: int64, order: Ordering = Ordering::SeqCst) -> int64:
+        let old = self.value
+        self.value += value
+        old
+
+    ### Atomically subtracts from the value.
+    fn fetch_sub(mut self, value: int64, order: Ordering = Ordering::SeqCst) -> int64:
+        let old = self.value
+        self.value -= value
+        old
+
+    ### Atomically ANDs with the value.
+    fn fetch_and(mut self, value: int64, order: Ordering = Ordering::SeqCst) -> int64:
+        let old = self.value
+        self.value = self.value & value
+        old
+
+    ### Atomically ORs with the value.
+    fn fetch_or(mut self, value: int64, order: Ordering = Ordering::SeqCst) -> int64:
+        let old = self.value
+        self.value = self.value | value
+        old
+
+    ### Atomically XORs with the value.
+    fn fetch_xor(mut self, value: int64, order: Ordering = Ordering::SeqCst) -> int64:
+        let old = self.value
+        self.value = self.value ^ value
+        old
+
+    ### Atomically finds the maximum.
+    fn fetch_max(mut self, value: int64, order: Ordering = Ordering::SeqCst) -> int64:
+        let old = self.value
+        if value > self.value:
+            self.value = value
+        old
+
+    ### Atomically finds the minimum.
+    fn fetch_min(mut self, value: int64, order: Ordering = Ordering::SeqCst) -> int64:
+        let old = self.value
+        if value < self.value:
+            self.value = value
+        old
+
+impl[T] AtomicPtr[T]:
+    ### Creates a new atomic pointer.
+    fn new(value: *mut T) -> AtomicPtr[T]:
+        AtomicPtr { value: value }
+
+    ### Loads the pointer.
+    fn load(self, order: Ordering = Ordering::SeqCst) -> *mut T:
+        self.value
+
+    ### Stores a pointer.
+    fn store(mut self, value: *mut T, order: Ordering = Ordering::SeqCst):
+        self.value = value
+
+    ### Atomically swaps the pointer.
+    fn swap(mut self, value: *mut T, order: Ordering = Ordering::SeqCst) -> *mut T:
+        let old = self.value
+        self.value = value
+        old
+
+    ### Compares and exchanges the pointer.
+    fn compare_exchange(
+        mut self,
+        expected: *mut T,
+        new: *mut T,
+        order: Ordering = Ordering::SeqCst
+    ) -> *mut T:
+        if self.value == expected:
+            self.value = new
+            expected
+        else:
+            self.value
+
+    ### Returns true if the pointer is null.
+    fn is_null(self) -> bool:
+        self.value == null
+
+### Atomic operations on integers.
+trait AtomicOps:
+    fn fetch_add(self, value: Self) -> Self
+    fn fetch_sub(self, value: Self) -> Self
+    fn fetch_and(self, value: Self) -> Self
+    fn fetch_or(self, value: Self) -> Self
+    fn fetch_xor(self, value: Self) -> Self
+    fn compare_exchange(self, expected: Self, new: Self) -> Self
+
+### Fence operation for synchronization.
+fn fence(order: Ordering):
+    # In a real implementation, emit a memory fence instruction
+    ()
+
+### Compiler fence (prevents reordering).
+fn compiler_fence(order: Ordering):
+    # In a real implementation, emit a compiler barrier
+    ()

@@ -1,0 +1,18 @@
+[package]
+name = "jet-effect"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+jet-diagnostics = { path = "../diagnostics" }
+jet-lexer = { path = "../lexer" }
+jet-parser = { path = "../parser" }
+jet-ir = { path = "../ir" }
+thiserror = { workspace = true }
+indexmap = "2.0"
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }

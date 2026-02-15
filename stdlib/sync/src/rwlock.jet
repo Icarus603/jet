@@ -1,0 +1,128 @@
+### RwLock (read-write lock) for Jet.
+###
+### A read-write lock allows multiple readers or a single writer.
+
+import core::option::{Option, Some, None}
+import core::result::{Result, Ok, Err}
+
+### A read-write lock.
+###
+### This type allows multiple readers or a single writer at any point in time.
+### Writers are given priority to prevent starvation.
+type RwLock[T] = {
+    data: T
+    readers: AtomicInt
+    writer: AtomicBool
+}
+
+### A guard that releases the read lock when dropped.
+type RwLockReadGuard[T] = {
+    lock: RwLock[T]
+}
+
+### A guard that releases the write lock when dropped.
+type RwLockWriteGuard[T] = {
+    lock: RwLock[T]
+}
+
+### Error type for RwLock operations.
+type RwLockError = {
+    message: string
+    kind: RwLockErrorKind
+}
+
+### Kinds of RwLock errors.
+enum RwLockErrorKind:
+    Poisoned
+    WouldBlock
+
+impl Show for RwLockError:
+    fn show(self) -> string:
+        f"RwLock error ({self.kind.show()}): {self.message}"
+
+impl Show for RwLockErrorKind:
+    fn show(self) -> string:
+        match self:
+            Poisoned -> "poisoned"
+            WouldBlock -> "would block"
+
+impl[T] RwLock[T]:
+    ### Creates a new read-write lock.
+    fn new(data: T) -> RwLock[T]:
+        RwLock {
+            data: data,
+            readers: AtomicInt.new(0),
+            writer: AtomicBool.new(false)
+        }
+
+    ### Acquires a read lock.
+    fn read(self) -> Result[RwLockReadGuard[T], RwLockError] ! async:
+        # Wait until no writer is active
+        while self.writer.load():
+            yield_now().await
+        self.readers.fetch_add(1)
+        Ok(RwLockReadGuard { lock: self })
+
+    ### Attempts to acquire a read lock without blocking.
+    fn try_read(self) -> Option[RwLockReadGuard[T]]:
+        if not self.writer.load():
+            self.readers.fetch_add(1)
+            Some(RwLockReadGuard { lock: self })
+        else:
+            None
+
+    ### Acquires a write lock.
+    fn write(self) -> Result[RwLockWriteGuard[T], RwLockError] ! async:
+        # Wait until no readers or writers
+        while self.writer.load() or self.readers.load() > 0:
+            yield_now().await
+        self.writer.store(true)
+        Ok(RwLockWriteGuard { lock: self })
+
+    ### Attempts to acquire a write lock without blocking.
+    fn try_write(self) -> Option[RwLockWriteGuard[T]]:
+        if not self.writer.load() and self.readers.load() == 0:
+            self.writer.store(true)
+            Some(RwLockWriteGuard { lock: self })
+        else:
+            None
+
+    ### Returns the number of active readers.
+    fn reader_count(self) -> usize:
+        self.readers.load() as usize
+
+    ### Returns true if a writer is active.
+    fn is_write_locked(self) -> bool:
+        self.writer.load()
+
+    ### Returns a mutable reference to the underlying data.
+    fn get_mut(self) -> T:
+        self.data
+
+impl[T] RwLockReadGuard[T]:
+    ### Returns a reference to the protected data.
+    fn deref(self) -> T:
+        self.lock.data
+
+    ### Releases the lock early.
+    fn unlock(self):
+        self.lock.readers.fetch_sub(1)
+
+impl[T] RwLockWriteGuard[T]:
+    ### Returns a reference to the protected data.
+    fn deref(self) -> T:
+        self.lock.data
+
+    ### Returns a mutable reference to the protected data.
+    fn deref_mut(self) -> T:
+        self.lock.data
+
+    ### Releases the lock early.
+    fn unlock(self):
+        self.lock.writer.store(false)
+
+    ### Downgrades the write lock to a read lock.
+    fn downgrade(self) -> RwLockReadGuard[T]:
+        self.lock.readers.fetch_add(1)
+        self.lock.writer.store(false)
+        RwLockReadGuard { lock: self.lock }

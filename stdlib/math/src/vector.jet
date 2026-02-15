@@ -1,0 +1,426 @@
+### Vector types for Jet.
+###
+### This module provides 2D, 3D, and 4D vector types for graphics and math.
+
+import basic::{sqrt, pow, abs, min, max}
+import trig::{sin, cos}
+
+### A 2-dimensional vector.
+type Vec2 = {
+    x: float64
+    y: float64
+}
+
+### A 3-dimensional vector.
+type Vec3 = {
+    x: float64
+    y: float64
+    z: float64
+}
+
+### A 4-dimensional vector (useful for homogeneous coordinates).
+type Vec4 = {
+    x: float64
+    y: float64
+    z: float64
+    w: float64
+}
+
+impl Vec2:
+    ### Creates a new Vec2.
+    fn new(x: float64, y: float64) -> Vec2:
+        Vec2 { x: x, y: y }
+
+    ### Creates a Vec2 with all components set to zero.
+    fn zero() -> Vec2:
+        Vec2 { x: 0.0, y: 0.0 }
+
+    ### Creates a Vec2 with all components set to one.
+    fn one() -> Vec2:
+        Vec2 { x: 1.0, y: 1.0 }
+
+    ### Creates a Vec2 pointing right (1, 0).
+    fn right() -> Vec2:
+        Vec2 { x: 1.0, y: 0.0 }
+
+    ### Creates a Vec2 pointing up (0, 1).
+    fn up() -> Vec2:
+        Vec2 { x: 0.0, y: 1.0 }
+
+    ### Returns the length (magnitude) of the vector.
+    fn length(self) -> float64:
+        sqrt(self.x * self.x + self.y * self.y)
+
+    ### Returns the squared length of the vector.
+    fn length_squared(self) -> float64:
+        self.x * self.x + self.y * self.y
+
+    ### Returns a normalized copy of the vector.
+    fn normalize(self) -> Vec2:
+        let len = self.length()
+        if len == 0.0:
+            Vec2.zero()
+        else:
+            Vec2 { x: self.x / len, y: self.y / len }
+
+    ### Returns the dot product with another vector.
+    fn dot(self, other: Vec2) -> float64:
+        self.x * other.x + self.y * other.y
+
+    ### Returns the cross product (scalar) with another vector.
+    fn cross(self, other: Vec2) -> float64:
+        self.x * other.y - self.y * other.x
+
+    ### Returns the distance to another vector.
+    fn distance(self, other: Vec2) -> float64:
+        (self - other).length()
+
+    ### Returns the squared distance to another vector.
+    fn distance_squared(self, other: Vec2) -> float64:
+        (self - other).length_squared()
+
+    ### Linearly interpolates between this vector and another.
+    fn lerp(self, other: Vec2, t: float64) -> Vec2:
+        Vec2 {
+            x: self.x + (other.x - self.x) * t,
+            y: self.y + (other.y - self.y) * t
+        }
+
+    ### Returns a vector with components clamped between min and max.
+    fn clamp(self, min_val: float64, max_val: float64) -> Vec2:
+        Vec2 {
+            x: max(min_val, min(self.x, max_val)),
+            y: max(min_val, min(self.y, max_val))
+        }
+
+    ### Returns true if this vector is approximately equal to another.
+    fn approx_eq(self, other: Vec2, epsilon: float64) -> bool:
+        abs(self.x - other.x) < epsilon and abs(self.y - other.y) < epsilon
+
+    ### Returns a copy of this vector with x component set.
+    fn with_x(self, x: float64) -> Vec2:
+        Vec2 { x: x, y: self.y }
+
+    ### Returns a copy of this vector with y component set.
+    fn with_y(self, y: float64) -> Vec2:
+        Vec2 { x: self.x, y: y }
+
+    ### Returns a perpendicular vector (rotated 90 degrees counter-clockwise).
+    fn perpendicular(self) -> Vec2:
+        Vec2 { x: -self.y, y: self.x }
+
+    ### Returns the angle of this vector in radians.
+    fn angle(self) -> float64:
+        atan2(self.y, self.x)
+
+    ### Returns a vector rotated by the given angle in radians.
+    fn rotate(self, angle: float64) -> Vec2:
+        let c = cos(angle)
+        let s = sin(angle)
+        Vec2 {
+            x: self.x * c - self.y * s,
+            y: self.x * s + self.y * c
+        }
+
+    ### Reflects this vector across a normal.
+    fn reflect(self, normal: Vec2) -> Vec2:
+        self - normal * (2.0 * self.dot(normal))
+
+    ### Projects this vector onto another vector.
+    fn project(self, onto: Vec2) -> Vec2:
+        let onto_len_sq = onto.length_squared()
+        if onto_len_sq == 0.0:
+            Vec2.zero()
+        else:
+            onto * (self.dot(onto) / onto_len_sq)
+
+    ### Returns the component-wise absolute value.
+    fn abs(self) -> Vec2:
+        Vec2 { x: abs(self.x), y: abs(self.y) }
+
+    ### Returns the component-wise minimum with another vector.
+    fn min(self, other: Vec2) -> Vec2:
+        Vec2 { x: min(self.x, other.x), y: min(self.y, other.y) }
+
+    ### Returns the component-wise maximum with another vector.
+    fn max(self, other: Vec2) -> Vec2:
+        Vec2 { x: max(self.x, other.x), y: max(self.y, other.y) }
+
+impl Add for Vec2:
+    type Output = Vec2
+    fn add(self, other: Vec2) -> Vec2:
+        Vec2 { x: self.x + other.x, y: self.y + other.y }
+
+impl Sub for Vec2:
+    type Output = Vec2
+    fn sub(self, other: Vec2) -> Vec2:
+        Vec2 { x: self.x - other.x, y: self.y - other.y }
+
+impl Mul[float64] for Vec2:
+    type Output = Vec2
+    fn mul(self, scalar: float64) -> Vec2:
+        Vec2 { x: self.x * scalar, y: self.y * scalar }
+
+impl Div[float64] for Vec2:
+    type Output = Vec2
+    fn div(self, scalar: float64) -> Vec2:
+        Vec2 { x: self.x / scalar, y: self.y / scalar }
+
+impl Neg for Vec2:
+    type Output = Vec2
+    fn neg(self) -> Vec2:
+        Vec2 { x: -self.x, y: -self.y }
+
+impl Eq for Vec2:
+    fn eq(self, other: Vec2) -> bool:
+        self.x == other.x and self.y == other.y
+
+impl Show for Vec2:
+    fn show(self) -> string:
+        f"Vec2({self.x}, ${self.y})"
+
+impl Vec3:
+    ### Creates a new Vec3.
+    fn new(x: float64, y: float64, z: float64) -> Vec3:
+        Vec3 { x: x, y: y, z: z }
+
+    ### Creates a Vec3 with all components set to zero.
+    fn zero() -> Vec3:
+        Vec3 { x: 0.0, y: 0.0, z: 0.0 }
+
+    ### Creates a Vec3 with all components set to one.
+    fn one() -> Vec3:
+        Vec3 { x: 1.0, y: 1.0, z: 1.0 }
+
+    ### Creates a Vec3 pointing right (1, 0, 0).
+    fn right() -> Vec3:
+        Vec3 { x: 1.0, y: 0.0, z: 0.0 }
+
+    ### Creates a Vec3 pointing up (0, 1, 0).
+    fn up() -> Vec3:
+        Vec3 { x: 0.0, y: 1.0, z: 0.0 }
+
+    ### Creates a Vec3 pointing forward (0, 0, 1).
+    fn forward() -> Vec3:
+        Vec3 { x: 0.0, y: 0.0, z: 1.0 }
+
+    ### Returns the length (magnitude) of the vector.
+    fn length(self) -> float64:
+        sqrt(self.x * self.x + self.y * self.y + self.z * self.z)
+
+    ### Returns the squared length of the vector.
+    fn length_squared(self) -> float64:
+        self.x * self.x + self.y * self.y + self.z * self.z
+
+    ### Returns a normalized copy of the vector.
+    fn normalize(self) -> Vec3:
+        let len = self.length()
+        if len == 0.0:
+            Vec3.zero()
+        else:
+            Vec3 { x: self.x / len, y: self.y / len, z: self.z / len }
+
+    ### Returns the dot product with another vector.
+    fn dot(self, other: Vec3) -> float64:
+        self.x * other.x + self.y * other.y + self.z * other.z
+
+    ### Returns the cross product with another vector.
+    fn cross(self, other: Vec3) -> Vec3:
+        Vec3 {
+            x: self.y * other.z - self.z * other.y,
+            y: self.z * other.x - self.x * other.z,
+            z: self.x * other.y - self.y * other.x
+        }
+
+    ### Returns the distance to another vector.
+    fn distance(self, other: Vec3) -> float64:
+        (self - other).length()
+
+    ### Returns the squared distance to another vector.
+    fn distance_squared(self, other: Vec3) -> float64:
+        (self - other).length_squared()
+
+    ### Linearly interpolates between this vector and another.
+    fn lerp(self, other: Vec3, t: float64) -> Vec3:
+        Vec3 {
+            x: self.x + (other.x - self.x) * t,
+            y: self.y + (other.y - self.y) * t,
+            z: self.z + (other.z - self.z) * t
+        }
+
+    ### Returns a vector with components clamped between min and max.
+    fn clamp(self, min_val: float64, max_val: float64) -> Vec3:
+        Vec3 {
+            x: max(min_val, min(self.x, max_val)),
+            y: max(min_val, min(self.y, max_val)),
+            z: max(min_val, min(self.z, max_val))
+        }
+
+    ### Returns true if this vector is approximately equal to another.
+    fn approx_eq(self, other: Vec3, epsilon: float64) -> bool:
+        abs(self.x - other.x) < epsilon and
+        abs(self.y - other.y) < epsilon and
+        abs(self.z - other.z) < epsilon
+
+    ### Returns a copy of this vector with x component set.
+    fn with_x(self, x: float64) -> Vec3:
+        Vec3 { x: x, y: self.y, z: self.z }
+
+    ### Returns a copy of this vector with y component set.
+    fn with_y(self, y: float64) -> Vec3:
+        Vec3 { x: self.x, y: y, z: self.z }
+
+    ### Returns a copy of this vector with z component set.
+    fn with_z(self, z: float64) -> Vec3:
+        Vec3 { x: self.x, y: self.y, z: z }
+
+    ### Reflects this vector across a normal.
+    fn reflect(self, normal: Vec3) -> Vec3:
+        self - normal * (2.0 * self.dot(normal))
+
+    ### Projects this vector onto another vector.
+    fn project(self, onto: Vec3) -> Vec3:
+        let onto_len_sq = onto.length_squared()
+        if onto_len_sq == 0.0:
+            Vec3.zero()
+        else:
+            onto * (self.dot(onto) / onto_len_sq)
+
+    ### Returns the component-wise absolute value.
+    fn abs(self) -> Vec3:
+        Vec3 { x: abs(self.x), y: abs(self.y), z: abs(self.z) }
+
+    ### Returns the component-wise minimum with another vector.
+    fn min(self, other: Vec3) -> Vec3:
+        Vec3 { x: min(self.x, other.x), y: min(self.y, other.y), z: min(self.z, other.z) }
+
+    ### Returns the component-wise maximum with another vector.
+    fn max(self, other: Vec3) -> Vec3:
+        Vec3 { x: max(self.x, other.x), y: max(self.y, other.y), z: max(self.z, other.z) }
+
+impl Add for Vec3:
+    type Output = Vec3
+    fn add(self, other: Vec3) -> Vec3:
+        Vec3 { x: self.x + other.x, y: self.y + other.y, z: self.z + other.z }
+
+impl Sub for Vec3:
+    type Output = Vec3
+    fn sub(self, other: Vec3) -> Vec3:
+        Vec3 { x: self.x - other.x, y: self.y - other.y, z: self.z - other.z }
+
+impl Mul[float64] for Vec3:
+    type Output = Vec3
+    fn mul(self, scalar: float64) -> Vec3:
+        Vec3 { x: self.x * scalar, y: self.y * scalar, z: self.z * scalar }
+
+impl Div[float64] for Vec3:
+    type Output = Vec3
+    fn div(self, scalar: float64) -> Vec3:
+        Vec3 { x: self.x / scalar, y: self.y / scalar, z: self.z / scalar }
+
+impl Neg for Vec3:
+    type Output = Vec3
+    fn neg(self) -> Vec3:
+        Vec3 { x: -self.x, y: -self.y, z: -self.z }
+
+impl Eq for Vec3:
+    fn eq(self, other: Vec3) -> bool:
+        self.x == other.x and self.y == other.y and self.z == other.z
+
+impl Show for Vec3:
+    fn show(self) -> string:
+        f"Vec3(${self.x}, ${self.y}, ${self.z})"
+
+impl Vec4:
+    ### Creates a new Vec4.
+    fn new(x: float64, y: float64, z: float64, w: float64) -> Vec4:
+        Vec4 { x: x, y: y, z: z, w: w }
+
+    ### Creates a Vec4 with all components set to zero.
+    fn zero() -> Vec4:
+        Vec4 { x: 0.0, y: 0.0, z: 0.0, w: 0.0 }
+
+    ### Creates a Vec4 with all components set to one.
+    fn one() -> Vec4:
+        Vec4 { x: 1.0, y: 1.0, z: 1.0, w: 1.0 }
+
+    ### Creates a Vec4 from a Vec3 and w component.
+    fn from_vec3(v: Vec3, w: float64) -> Vec4:
+        Vec4 { x: v.x, y: v.y, z: v.z, w: w }
+
+    ### Returns the length (magnitude) of the vector.
+    fn length(self) -> float64:
+        sqrt(self.x * self.x + self.y * self.y + self.z * self.z + self.w * self.w)
+
+    ### Returns the squared length of the vector.
+    fn length_squared(self) -> float64:
+        self.x * self.x + self.y * self.y + self.z * self.z + self.w * self.w
+
+    ### Returns a normalized copy of the vector.
+    fn normalize(self) -> Vec4:
+        let len = self.length()
+        if len == 0.0:
+            Vec4.zero()
+        else:
+            Vec4 { x: self.x / len, y: self.y / len, z: self.z / len, w: self.w / len }
+
+    ### Returns the dot product with another vector.
+    fn dot(self, other: Vec4) -> float64:
+        self.x * other.x + self.y * other.y + self.z * other.z + self.w * other.w
+
+    ### Returns the distance to another vector.
+    fn distance(self, other: Vec4) -> float64:
+        (self - other).length()
+
+    ### Linearly interpolates between this vector and another.
+    fn lerp(self, other: Vec4, t: float64) -> Vec4:
+        Vec4 {
+            x: self.x + (other.x - self.x) * t,
+            y: self.y + (other.y - self.y) * t,
+            z: self.z + (other.z - self.z) * t,
+            w: self.w + (other.w - self.w) * t
+        }
+
+    ### Returns the xyz components as a Vec3.
+    fn xyz(self) -> Vec3:
+        Vec3 { x: self.x, y: self.y, z: self.z }
+
+    ### Returns the xyz components divided by w (perspective divide).
+    fn to_vec3(self) -> Vec3:
+        if self.w == 0.0:
+            Vec3 { x: self.x, y: self.y, z: self.z }
+        else:
+            Vec3 { x: self.x / self.w, y: self.y / self.w, z: self.z / self.w }
+
+impl Add for Vec4:
+    type Output = Vec4
+    fn add(self, other: Vec4) -> Vec4:
+        Vec4 { x: self.x + other.x, y: self.y + other.y, z: self.z + other.z, w: self.w + other.w }
+
+impl Sub for Vec4:
+    type Output = Vec4
+    fn sub(self, other: Vec4) -> Vec4:
+        Vec4 { x: self.x - other.x, y: self.y - other.y, z: self.z - other.z, w: self.w - other.w }
+
+impl Mul[float64] for Vec4:
+    type Output = Vec4
+    fn mul(self, scalar: float64) -> Vec4:
+        Vec4 { x: self.x * scalar, y: self.y * scalar, z: self.z * scalar, w: self.w * scalar }
+
+impl Div[float64] for Vec4:
+    type Output = Vec4
+    fn div(self, scalar: float64) -> Vec4:
+        Vec4 { x: self.x / scalar, y: self.y / scalar, z: self.z / scalar, w: self.w / scalar }
+
+impl Neg for Vec4:
+    type Output = Vec4
+    fn neg(self) -> Vec4:
+        Vec4 { x: -self.x, y: -self.y, z: -self.z, w: -self.w }
+
+impl Eq for Vec4:
+    fn eq(self, other: Vec4) -> bool:
+        self.x == other.x and self.y == other.y and self.z == other.z and self.w == other.w
+
+impl Show for Vec4:
+    fn show(self) -> string:
+        f"Vec4(${self.x}, ${self.y}, ${self.z}, ${self.w})"

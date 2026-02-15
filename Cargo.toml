@@ -1,0 +1,81 @@
+[workspace]
+resolver = "2"
+members = [
+    # Compiler frontend
+    "compiler/lexer",
+    "compiler/parser",
+    "compiler/resolve",
+    "compiler/typeck",
+    "compiler/effect",
+    "compiler/diagnostics",
+    "compiler/ir",
+    "compiler/lower",
+    "compiler/opt",
+    "compiler/codegen",
+    "compiler/linker",
+
+    # Runtime
+    "runtime",
+    "runtime/gc",
+    "runtime/sched",
+    "runtime/sync",
+    "runtime/ffi",
+
+    # Standard library
+    "stdlib",
+
+    # Tools
+    "tools/cli",
+    "tools/lsp",
+    "tools/fmt",
+    "tools/jetpkg",
+
+    # Integration tests
+    "tests",
+]
+
+[workspace.package]
+version = "1.0.0"
+edition = "2021"
+authors = ["Jet Language Team"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/jet-lang/jet"
+
+[workspace.dependencies]
+# Core dependencies
+thiserror = "1.0"
+anyhow = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+
+# Lexer/parser
+logos = "0.14"
+rowan = "0.15"
+
+# Type system
+ena = "0.14"
+
+# LLVM
+inkwell = { version = "0.8", features = ["llvm21-1"] }
+
+# Runtime
+libc = "0.2"
+crossbeam = "0.8"
+once_cell = "1.19"
+parking_lot = "0.12"
+tracing = "0.1"
+
+# Testing
+pretty_assertions = "1.4"
+proptest = "1.4"
+
+# CLI
+clap = { version = "4.5", features = ["derive"] }
+toml = "0.8"
+
+# LSP
+tower-lsp = "0.20"
+lsp-types = "0.95"
+
+[profile.release]
+opt-level = 3
+lto = "thin"

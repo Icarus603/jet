@@ -1,0 +1,200 @@
+# Tutorial 8: Traits
+# Traits define shared behavior (similar to interfaces in other languages).
+
+# Define a trait
+trait Drawable:
+    fn draw(self)
+    fn area(self) -> float
+    fn describe(self) -> string:
+        # Default implementation
+        return f"Shape with area {self.area()}"
+
+# Another trait
+trait Comparable:
+    fn compare(self, other: Self) -> int
+        # Returns: negative if self < other
+        #          zero if self == other
+        #          positive if self > other
+
+    fn less_than(self, other: Self) -> bool:
+        return self.compare(other) < 0
+
+    fn greater_than(self, other: Self) -> bool:
+        return self.compare(other) > 0
+
+    fn equals(self, other: Self) -> bool:
+        return self.compare(other) == 0
+
+# Trait with generic method
+trait Summable:
+    fn sum(self) -> int
+
+# Trait for display
+trait Display:
+    fn display(self) -> string
+
+# ========== IMPLEMENTING TRAITS ==========
+
+struct Circle:
+    radius: float
+
+impl Drawable for Circle:
+    fn draw(self):
+        print(f"Drawing circle with radius {self.radius}")
+
+    fn area(self) -> float:
+        return 3.14159 * self.radius * self.radius
+
+impl Display for Circle:
+    fn display(self) -> string:
+        return f"Circle(r={self.radius})"
+
+struct Rectangle:
+    width: float
+    height: float
+
+impl Drawable for Rectangle:
+    fn draw(self):
+        print(f"Drawing rectangle {self.width} x {self.height}")
+
+    fn area(self) -> float:
+        return self.width * self.height
+
+impl Comparable for Rectangle:
+    fn compare(self, other: Rectangle) -> int:
+        let self_area = self.area()
+        let other_area = other.area()
+        if self_area < other_area:
+            return -1
+        elif self_area > other_area:
+            return 1
+        else:
+            return 0
+
+impl Display for Rectangle:
+    fn display(self) -> string:
+        return f"Rectangle({self.width} x {self.height})"
+
+# Implement trait for built-in type
+impl Summable for [int]:
+    fn sum(self) -> int:
+        let total = 0
+        for x in self:
+            total = total + x
+        return total
+
+impl Summable for [float]:
+    fn sum(self) -> float:
+        let total = 0.0
+        for x in self:
+            total = total + x
+        return total
+
+# ========== GENERIC FUNCTIONS WITH TRAITS ==========
+
+# Function that works with any Drawable
+fn render[T: Drawable](shape: T):
+    print("Rendering:")
+    shape.draw()
+    print(f"  Area: {shape.area()}")
+
+# Function that works with any Comparable
+fn max[T: Comparable](a: T, b: T) -> T:
+    if a.greater_than(b):
+        return a
+    else:
+        return b
+
+# Function with multiple trait bounds
+fn process_and_display[T: Drawable + Display](item: T):
+    print(f"Processing: {item.display()}")
+    item.draw()
+    print(f"  {item.describe()}")
+
+# Generic data structure with trait bounds
+struct SortedList[T: Comparable]:
+    items: [T]
+
+impl[T: Comparable] SortedList[T]:
+    fn new() -> SortedList[T]:
+        return SortedList { items: [] }
+
+    fn insert(self, item: T) -> SortedList[T]:
+        let mut new_items = self.items
+        # Find insertion point
+        let mut inserted = false
+        let mut result = []
+
+        for existing in new_items:
+            if not inserted and item.less_than(existing):
+                result.push(item)
+                inserted = true
+            result.push(existing)
+
+        if not inserted:
+            result.push(item)
+
+        return SortedList { items: result }
+
+    fn contains(self, item: T) -> bool:
+        for existing in self.items:
+            if existing.equals(item):
+                return true
+        return false
+
+    fn len(self) -> int:
+        return self.items.len()
+
+# ========== TRAIT OBJECTS ==========
+# Dynamic dispatch with trait objects
+
+fn draw_any(items: [dyn Drawable]):
+    for item in items:
+        item.draw()
+
+fn main():
+    print("=== Traits Demo ===\n")
+
+    # Using trait implementations
+    let circle = Circle { radius: 5.0 }
+    let rect = Rectangle { width: 10.0, height: 20.0 }
+
+    print("1. Drawing shapes:")
+    circle.draw()
+    rect.draw()
+
+    print("\n2. Using generic functions:")
+    render(circle)
+    render(rect)
+
+    print("\n3. Comparable trait:")
+    let rect2 = Rectangle { width: 5.0, height: 5.0 }
+    print(f"  rect area: {rect.area()}")
+    print(f"  rect2 area: {rect2.area()}")
+    print(f"  rect > rect2: {rect.greater_than(rect2)}")
+    print(f"  max: {max(rect, rect2).display()}")
+
+    print("\n4. Default trait methods:")
+    print(f"  Circle: {circle.describe()}")
+
+    print("\n5. Trait for built-in types:")
+    let numbers = [1, 2, 3, 4, 5]
+    print(f"  Sum of {numbers}: {numbers.sum()}")
+
+    let floats = [1.5, 2.5, 3.0]
+    print(f"  Sum of {floats}: {floats.sum()}")
+
+    print("\n6. Generic sorted list:")
+    let sorted = SortedList::new()
+        .insert(Rectangle { width: 3.0, height: 3.0 })
+        .insert(Rectangle { width: 5.0, height: 5.0 })
+        .insert(Rectangle { width: 2.0, height: 2.0 })
+
+    print(f"  Sorted list has {sorted.len()} items")
+
+    print("\n7. Multiple trait bounds:")
+    process_and_display(circle)
+
+    # Exercise: Create a trait called 'Printable' with a 'to_string' method
+    # Implement it for Circle and Rectangle
+    # Then write a function that takes any Printable and prints it

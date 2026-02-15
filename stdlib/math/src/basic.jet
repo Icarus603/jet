@@ -1,0 +1,228 @@
+### Basic mathematical functions for Jet.
+###
+### This module provides fundamental math operations like abs, min, max,
+### exponentiation, logarithms, and rounding.
+
+import core::option::{Option, Some, None}
+import core::traits::{Ord, PartialOrd}
+
+### Mathematical constant: pi (π)
+###
+### The ratio of a circle's circumference to its diameter.
+### Approximately 3.141592653589793
+const pi: float64 = 3.14159265358979323846
+
+### Mathematical constant: e (Euler's number)
+###
+### The base of the natural logarithm.
+### Approximately 2.718281828459045
+const e: float64 = 2.71828182845904523536
+
+### Mathematical constant: tau (τ)
+###
+### The ratio of a circle's circumference to its radius (2π).
+### Approximately 6.283185307179586
+const tau: float64 = 6.28318530717958647692
+
+### Mathematical constant: phi (φ)
+###
+### The golden ratio.
+### Approximately 1.618033988749895
+const phi: float64 = 1.61803398874989484820
+
+### Returns the absolute value of a number.
+fn abs[T: Abs](x: T) -> T:
+    x.abs()
+
+### Returns the smaller of two values.
+fn min[T: Ord](a: T, b: T) -> T:
+    if a.lt(b) then a else b
+
+### Returns the larger of two values.
+fn max[T: Ord](a: T, b: T) -> T:
+    if a.gt(b) then a else b
+
+### Clamps a value between min and max.
+fn clamp[T: Ord](value: T, min_val: T, max_val: T) -> T:
+    if value.lt(min_val):
+        min_val
+    else if value.gt(max_val):
+        max_val
+    else:
+        value
+
+### Returns the square root of a number.
+fn sqrt(x: float64) -> float64:
+    # In a real implementation, this would use hardware sqrt instruction
+    # or a numerical approximation algorithm
+    x ** 0.5
+
+### Returns the cube root of a number.
+fn cbrt(x: float64) -> float64:
+    if x >= 0.0:
+        x ** (1.0 / 3.0)
+    else:
+        -((-x) ** (1.0 / 3.0))
+
+### Returns base raised to the power of exp.
+fn pow(base: float64, exp: float64) -> float64:
+    # In a real implementation, this would use the pow instruction
+    # or a numerical approximation
+    base ** exp
+
+### Returns e raised to the power of x.
+fn exp(x: float64) -> float64:
+    # In a real implementation, use Taylor series or hardware instruction
+    pow(e, x)
+
+### Returns the natural logarithm of x.
+fn ln(x: float64) -> float64 ! InvalidArgumentError:
+    if x <= 0.0:
+        raise InvalidArgumentError("ln requires positive argument")
+    # In a real implementation, use numerical approximation
+    log_base(x, e)
+
+### Returns the logarithm of x with the given base.
+fn log(x: float64, base: float64) -> float64 ! InvalidArgumentError:
+    if x <= 0.0:
+        raise InvalidArgumentError("log requires positive argument")
+    if base <= 0.0 or base == 1.0:
+        raise InvalidArgumentError("log requires positive base != 1")
+    log_base(x, base)
+
+### Returns the base-2 logarithm of x.
+fn log2(x: float64) -> float64 ! InvalidArgumentError:
+    if x <= 0.0:
+        raise InvalidArgumentError("log2 requires positive argument")
+    log_base(x, 2.0)
+
+### Returns the base-10 logarithm of x.
+fn log10(x: float64) -> float64 ! InvalidArgumentError:
+    if x <= 0.0:
+        raise InvalidArgumentError("log10 requires positive argument")
+    log_base(x, 10.0)
+
+### Private: Helper function for logarithms.
+private fn log_base(x: float64, base: float64) -> float64:
+    # In a real implementation, use change of base formula with ln
+    # ln(x) / ln(base)
+    0.0  # Placeholder
+
+### Returns the largest integer less than or equal to x.
+fn floor(x: float64) -> float64:
+    # In a real implementation, use truncation or bit manipulation
+    let int_part = x as int64 as float64
+    if x < 0.0 and x != int_part:
+        int_part - 1.0
+    else:
+        int_part
+
+### Returns the smallest integer greater than or equal to x.
+fn ceil(x: float64) -> float64:
+    let int_part = x as int64 as float64
+    if x > 0.0 and x != int_part:
+        int_part + 1.0
+    else:
+        int_part
+
+### Returns the nearest integer to x.
+fn round(x: float64) -> float64:
+    if x >= 0.0:
+        floor(x + 0.5)
+    else:
+        ceil(x - 0.5)
+
+### Returns the integer part of x (truncates toward zero).
+fn trunc(x: float64) -> float64:
+    x as int64 as float64
+
+### Returns the fractional part of x.
+fn fract(x: float64) -> float64:
+    x - trunc(x)
+
+### Returns the sign of x (-1.0, 0.0, or 1.0).
+fn signum(x: float64) -> float64:
+    if x > 0.0:
+        1.0
+    else if x < 0.0:
+        -1.0
+    else:
+        0.0
+
+### Returns true if x is positive.
+fn is_positive(x: float64) -> bool:
+    x > 0.0
+
+### Returns true if x is negative.
+fn is_negative(x: float64) -> bool:
+    x < 0.0
+
+### Returns true if x is zero.
+fn is_zero(x: float64) -> bool:
+    x == 0.0
+
+### Returns true if x is finite (not infinite or NaN).
+fn is_finite(x: float64) -> bool:
+    # In a real implementation, check exponent bits
+    true  # Placeholder
+
+### Returns true if x is infinite.
+fn is_infinite(x: float64) -> bool:
+    not is_finite(x) and not is_nan(x)
+
+### Returns true if x is NaN (not a number).
+fn is_nan(x: float64) -> bool:
+    # In a real implementation, check for NaN bit pattern
+    false  # Placeholder
+
+### Returns true if x is a normal floating-point number.
+fn is_normal(x: float64) -> bool:
+    is_finite(x) and x != 0.0
+
+### Returns the hypotenuse of a right triangle with sides x and y.
+fn hypot(x: float64, y: float64) -> float64:
+    sqrt(x * x + y * y)
+
+### Linear interpolation between a and b by factor t.
+fn lerp(a: float64, b: float64, t: float64) -> float64:
+    a + (b - a) * t
+
+### Smooth step interpolation (Hermite curve).
+fn smoothstep(edge0: float64, edge1: float64, x: float64) -> float64:
+    let t = clamp((x - edge0) / (edge1 - edge0), 0.0, 1.0)
+    t * t * (3.0 - 2.0 * t)
+
+### Smoother step interpolation.
+fn smootherstep(edge0: float64, edge1: float64, x: float64) -> float64:
+    let t = clamp((x - edge0) / (edge1 - edge0), 0.0, 1.0)
+    t * t * t * (t * (t * 6.0 - 15.0) + 10.0)
+
+### Returns the factorial of n.
+fn factorial(n: uint64) -> uint64:
+    if n == 0 or n == 1:
+        1
+    else:
+        n * factorial(n - 1)
+
+### Returns the greatest common divisor of a and b.
+fn gcd(a: int64, b: int64) -> int64:
+    let aa = abs(a)
+    let bb = abs(b)
+    while bb != 0:
+        let temp = bb
+        bb = aa % bb
+        aa = temp
+    aa
+
+### Returns the least common multiple of a and b.
+fn lcm(a: int64, b: int64) -> int64:
+    abs(a * b) / gcd(a, b)
+
+### Returns the binomial coefficient "n choose k".
+fn binomial(n: uint64, k: uint64) -> uint64:
+    if k > n:
+        0
+    else if k == 0 or k == n:
+        1
+    else:
+        factorial(n) / (factorial(k) * factorial(n - k))

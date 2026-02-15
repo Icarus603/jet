@@ -1,0 +1,130 @@
+### Async runtime for Jet.
+###
+### This module provides the core runtime functionality for async execution.
+
+import core::option::{Option, Some, None}
+import core::result::{Result, Ok, Err}
+
+### The async runtime.
+###
+### The runtime manages task scheduling, timers, and I/O operations.
+type Runtime = {
+    # Internal runtime state
+}
+
+### Configuration for the runtime.
+type RuntimeConfig = {
+    worker_threads: Option[usize],
+    max_blocking_threads: Option[usize],
+    thread_stack_size: Option[usize],
+    enable_io: bool,
+    enable_time: bool,
+}
+
+impl RuntimeConfig:
+    ### Creates a new runtime configuration with defaults.
+    fn new() -> RuntimeConfig:
+        RuntimeConfig {
+            worker_threads: None,
+            max_blocking_threads: None,
+            thread_stack_size: None,
+            enable_io: true,
+            enable_time: true,
+        }
+
+    ### Sets the number of worker threads.
+    fn worker_threads(mut self, n: usize) -> RuntimeConfig:
+        self.worker_threads = Some(n)
+        self
+
+    ### Sets the maximum number of blocking threads.
+    fn max_blocking_threads(mut self, n: usize) -> RuntimeConfig:
+        self.max_blocking_threads = Some(n)
+        self
+
+    ### Sets the thread stack size.
+    fn thread_stack_size(mut self, size: usize) -> RuntimeConfig:
+        self.thread_stack_size = Some(size)
+        self
+
+    ### Enables or disables I/O operations.
+    fn enable_io(mut self, enable: bool) -> RuntimeConfig:
+        self.enable_io = enable
+        self
+
+    ### Enables or disables time operations.
+    fn enable_time(mut self, enable: bool) -> RuntimeConfig:
+        self.enable_time = enable
+        self
+
+impl Runtime:
+    ### Creates a new runtime with default configuration.
+    fn new() -> Runtime:
+        Runtime::with_config(RuntimeConfig::new())
+
+    ### Creates a new runtime with the given configuration.
+    fn with_config(config: RuntimeConfig) -> Runtime:
+        # In a real implementation, initialize the runtime
+        Runtime {}
+
+    ### Spawns a task onto the runtime.
+    fn spawn[T](self, future: Future[T]) -> TaskHandle[T]:
+        # In a real implementation, submit to the scheduler
+        TaskHandle { id: 0 }
+
+    ### Blocks the current thread until the future completes.
+    fn block_on[T](self, future: Future[T]) -> T:
+        # In a real implementation, run the event loop
+        panic("block_on not implemented")
+
+    ### Shuts down the runtime.
+    fn shutdown(self):
+        # In a real implementation, shut down gracefully
+        ()
+
+    ### Returns true if the runtime is running.
+    fn is_running(self) -> bool:
+        true
+
+### The global runtime handle.
+###
+### This provides access to the runtime without explicitly passing it around.
+type Handle = {
+    # Internal handle state
+}
+
+impl Handle:
+    ### Returns the current runtime handle.
+    fn current() -> Option[Handle]:
+        # In a real implementation, get the current runtime handle
+        None
+
+    ### Spawns a task onto the runtime.
+    fn spawn[T](self, future: Future[T]) -> TaskHandle[T]:
+        # In a real implementation, submit to the scheduler
+        TaskHandle { id: 0 }
+
+    ### Enters the runtime context.
+    fn enter(self):
+        # In a real implementation, set the current runtime
+        ()
+
+### Spawns a future onto the current runtime.
+fn spawn[T](future: Future[T]) -> TaskHandle[T]:
+    # In a real implementation, submit to the current runtime
+    TaskHandle { id: 0 }
+
+### Blocks the current thread until the future completes.
+fn block_on[T](future: Future[T]) -> T:
+    # In a real implementation, create a temporary runtime and block
+    panic("block_on not implemented")
+
+### Returns true if running inside a runtime context.
+fn in_runtime_context() -> bool:
+    # In a real implementation, check if we're in a runtime
+    false
+
+### Enters a runtime context for the duration of a closure.
+fn enter_runtime[T](f: fn() -> T) -> T:
+    # In a real implementation, set up and tear down runtime context
+    f()

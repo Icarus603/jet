@@ -1,0 +1,166 @@
+### StringBuilder - Efficient string construction for Jet.
+###
+### StringBuilder provides an efficient way to build strings incrementally
+### without creating many intermediate string allocations.
+
+import core::option::{Option, Some, None}
+import collections::Vec
+
+### A builder for constructing strings efficiently.
+###
+### StringBuilder uses an internal buffer to accumulate string pieces,
+### only creating the final string when `to_string()` is called.
+type StringBuilder = {
+    buffer: Vec[char]
+    initial_capacity: usize
+}
+
+impl StringBuilder:
+    ### Creates a new empty StringBuilder.
+    fn new() -> StringBuilder:
+        StringBuilder { buffer: Vec.new(), initial_capacity: 16 }
+
+    ### Creates a new StringBuilder with the specified initial capacity.
+    fn with_capacity(capacity: usize) -> StringBuilder:
+        StringBuilder { buffer: Vec.with_capacity(capacity), initial_capacity: capacity }
+
+    ### Creates a StringBuilder from an initial string.
+    fn from_string(s: string) -> StringBuilder:
+        let sb = StringBuilder.with_capacity(s.char_len() + 16)
+        for c in s.chars():
+            sb.buffer.push(c)
+        sb
+
+    ### Appends a character to the builder.
+    fn append_char(mut self, c: char):
+        self.buffer.push(c)
+
+    ### Appends a string to the builder.
+    fn append(mut self, s: string):
+        for c in s.chars():
+            self.buffer.push(c)
+
+    ### Appends a string slice to the builder.
+    fn append_str(mut self, s: &string):
+        for c in s.chars():
+            self.buffer.push(c)
+
+    ### Appends a formatted value to the builder.
+    fn append_fmt[T: Show](mut self, value: T):
+        self.append(value.show())
+
+    ### Appends a newline character.
+    fn append_newline(mut self):
+        self.buffer.push('\n')
+
+    ### Appends a character if the builder is not empty.
+    fn append_separator(mut self, sep: char):
+        if not self.buffer.is_empty():
+            self.buffer.push(sep)
+
+    ### Appends all elements from an iterator, separated by a delimiter.
+    fn append_joined[I, T](mut self, iter: I, delimiter: string) where I: IntoIter[Item = T], T: Show:
+        let first = true
+        for item in iter:
+            if not first:
+                self.append(delimiter)
+            first = false
+            self.append_fmt(item)
+
+    ### Returns the current length in characters.
+    fn len(self) -> usize:
+        self.buffer.len()
+
+    ### Returns true if the builder is empty.
+    fn is_empty(self) -> bool:
+        self.buffer.is_empty()
+
+    ### Returns the current capacity.
+    fn capacity(self) -> usize:
+        self.buffer.capacity()
+
+    ### Clears the builder, removing all characters.
+    fn clear(mut self):
+        self.buffer.clear()
+
+    ### Returns the character at the given index.
+    fn char_at(self, index: usize) -> Option[char]:
+        self.buffer.get(index)
+
+    ### Removes and returns the last character.
+    fn pop(mut self) -> Option[char]:
+        self.buffer.pop()
+
+    ### Truncates the builder to the specified length.
+    fn truncate(mut self, len: usize):
+        while self.buffer.len() > len:
+            self.buffer.pop()
+
+    ### Shrinks the capacity to fit the current length.
+    fn shrink_to_fit(mut self):
+        self.buffer.shrink_to_fit()
+
+    ### Reserves capacity for at least `additional` more characters.
+    fn reserve(mut self, additional: usize):
+        self.buffer.reserve(additional)
+
+    ### Converts the builder to a string.
+    fn to_string(self) -> string:
+        # In a real implementation, this would efficiently convert
+        # the character buffer to a UTF-8 string
+        let result = ""
+        for c in self.buffer:
+            result += c.to_string()
+        result
+
+    ### Returns a string slice of the current content.
+    ###
+    ### Note: This may need to allocate in some implementations.
+    fn as_string(self) -> string:
+        self.to_string()
+
+    ### Returns true if the content equals the given string.
+    fn content_equals(self, s: string) -> bool:
+        if self.buffer.len() != s.char_len():
+            return false
+        let i = 0
+        for c in s.chars():
+            match self.buffer.get(i):
+                Some(bc) ->
+                    if bc != c:
+                        return false
+                None -> return false
+            i += 1
+        true
+
+    ### Creates a copy of this builder.
+    fn clone(self) -> StringBuilder:
+        StringBuilder { buffer: self.buffer.clone(), initial_capacity: self.initial_capacity }
+
+### Extension trait for converting collections to strings.
+trait JoinToString:
+    ### Joins elements into a string with a delimiter.
+    fn join(self, delimiter: string) -> string
+
+    ### Joins elements into a string using a StringBuilder.
+    fn join_to_string(self, builder: StringBuilder, delimiter: string) -> StringBuilder
+
+impl[T: Show] JoinToString for Vec[T]:
+    fn join(self, delimiter: string) -> string:
+        let sb = StringBuilder.new()
+        let first = true
+        for item in self:
+            if not first:
+                sb.append(delimiter)
+            first = false
+            sb.append_fmt(item)
+        sb.to_string()
+
+    fn join_to_string(self, builder: StringBuilder, delimiter: string) -> StringBuilder:
+        let first = true
+        for item in self:
+            if not first:
+                builder.append(delimiter)
+            first = false
+            builder.append_fmt(item)
+        builder

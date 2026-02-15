@@ -1,0 +1,64 @@
+### Panic and assertion utilities for Jet.
+###
+### This module provides functions for unrecoverable errors and debugging assertions.
+
+### Error type raised when a panic occurs.
+type PanicError = {
+    message: string
+    file: string
+    line: int
+}
+
+impl Show for PanicError:
+    fn show(self) -> string:
+        "Panic at " + self.file + ":" + self.line.show() + ": " + self.message
+
+impl Eq for PanicError:
+    fn eq(self, other: PanicError) -> bool:
+        self.message == other.message and self.file == other.file and self.line == other.line
+
+impl Clone for PanicError:
+    fn clone(self) -> PanicError:
+        PanicError {
+            message: self.message,
+            file: self.file,
+            line: self.line
+        }
+
+### Marker for unreachable code.
+### Raises an error indicating that this code path should never be reached.
+fn unreachable() -> Never ! PanicError:
+    panic("unreachable code")
+
+### Marker for unimplemented functionality.
+### Raises an error indicating that this feature is not yet implemented.
+fn unimplemented() -> Never ! PanicError:
+    panic("not implemented")
+
+### Marker for TODO items.
+### Raises an error indicating that this code is not yet complete.
+fn todo() -> Never ! PanicError:
+    panic("not yet implemented")
+
+### Panics with the given message.
+### This function never returns and stops execution immediately.
+fn panic(message: string) -> Never ! PanicError:
+    # In a real implementation, this would:
+    # 1. Print the panic message with file/line info
+    # 2. Print a stack trace
+    # 3. Abort the program
+    raise PanicError { message: message, file: "", line: 0 }
+
+### Panics with a formatted message.
+fn panic_fmt(format: string, args: &[Show]) -> Never ! PanicError:
+    # In a real implementation, this would format the message
+    panic(format)
+
+### Catches a panic and returns it as a Result.
+### Useful for testing and recovering from panics.
+fn catch_panic[T](f: fn() -> T) -> Result[T, PanicError]:
+    # In a real implementation, this would:
+    # 1. Set up a panic handler
+    # 2. Execute the function
+    # 3. Return Ok(result) if successful, Err(panic) if panic occurred
+    Ok(f())

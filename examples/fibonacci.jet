@@ -1,0 +1,36 @@
+# Fibonacci sequence example
+# Demonstrates recursion and iteration
+
+# Recursive fibonacci
+fn fib_recursive(n: int) -> int:
+    if n <= 1:
+        return n
+    return fib_recursive(n - 1) + fib_recursive(n - 2)
+
+# Iterative fibonacci
+fn fib_iterative(n: int) -> int:
+    if n <= 1:
+        return n
+    let mut a = 0
+    let mut b = 1
+    for _ in 2..n + 1:
+        let temp = a + b
+        a = b
+        b = temp
+    return b
+
+# Generate fibonacci sequence
+fn fib_sequence(count: int) -> [int]:
+    let mut result = []
+    for i in 0..count:
+        result.push(fib_iterative(i))
+    return result
+
+fn main():
+    print("Fibonacci (recursive):")
+    for i in 0..10:
+        print(f"fib({i}) = {fib_recursive(i)}")
+
+    print("\nFibonacci (iterative):")
+    let sequence = fib_sequence(10)
+    print(f"First 10 numbers: {sequence}")

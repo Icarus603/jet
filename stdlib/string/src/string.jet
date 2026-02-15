@@ -1,0 +1,215 @@
+### String operations for the Jet programming language.
+###
+### This module provides utility functions for string manipulation.
+
+import core::option::{Option, Some, None}
+import collections::Vec
+
+### Splits a string by a delimiter pattern.
+###
+### Returns a vector of substrings.
+fn split(s: string, delimiter: string) -> Vec[string]:
+    let result = Vec.new()
+    let current = ""
+    let delim_len = delimiter.len()
+
+    if delim_len == 0:
+        # Split by characters
+        for c in s.chars():
+            result.push(c.to_string())
+        return result
+
+    let i = 0
+    while i < s.len():
+        if s.slice(i, i + delim_len) == delimiter:
+            result.push(current)
+            current = ""
+            i += delim_len
+        else:
+            current += s.slice(i, i + 1)
+            i += 1
+
+    result.push(current)
+    result
+
+### Joins a collection of strings with a separator.
+###
+### Returns the joined string.
+fn join(strings: &[string], separator: string) -> string:
+    if strings.is_empty():
+        return ""
+
+    let result = strings[0]
+    for i in 1..strings.len():
+        result += separator
+        result += strings[i]
+    result
+
+### Trims whitespace from both ends of a string.
+fn trim(s: string) -> string:
+    trim_end(trim_start(s))
+
+### Trims whitespace from the start of a string.
+fn trim_start(s: string) -> string:
+    let start = 0
+    while start < s.len() and s.char_at(start).is_whitespace():
+        start += 1
+    s.slice(start, s.len())
+
+### Trims whitespace from the end of a string.
+fn trim_end(s: string) -> string:
+    let end = s.len()
+    while end > 0 and s.char_at(end - 1).is_whitespace():
+        end -= 1
+    s.slice(0, end)
+
+### Returns true if the string starts with the given prefix.
+fn starts_with(s: string, prefix: string) -> bool:
+    if prefix.len() > s.len():
+        return false
+    s.slice(0, prefix.len()) == prefix
+
+### Returns true if the string ends with the given suffix.
+fn ends_with(s: string, suffix: string) -> bool:
+    if suffix.len() > s.len():
+        return false
+    s.slice(s.len() - suffix.len(), s.len()) == suffix
+
+### Returns true if the string contains the given substring.
+fn contains(s: string, substring: string) -> bool:
+    if substring.len() == 0:
+        return true
+    if substring.len() > s.len():
+        return false
+
+    for i in 0..(s.len() - substring.len() + 1):
+        if s.slice(i, i + substring.len()) == substring:
+            return true
+    false
+
+### Replaces all occurrences of a pattern with a replacement string.
+fn replace(s: string, pattern: string, replacement: string) -> string:
+    let result = ""
+    let i = 0
+    let pattern_len = pattern.len()
+
+    if pattern_len == 0:
+        return s
+
+    while i < s.len():
+        if i + pattern_len <= s.len() and s.slice(i, i + pattern_len) == pattern:
+            result += replacement
+            i += pattern_len
+        else:
+            result += s.slice(i, i + 1)
+            i += 1
+    result
+
+### Converts a string to uppercase.
+fn to_upper(s: string) -> string:
+    # In a real implementation, this would use Unicode case mapping
+    s  # Placeholder
+
+### Converts a string to lowercase.
+fn to_lower(s: string) -> string:
+    # In a real implementation, this would use Unicode case mapping
+    s  # Placeholder
+
+### Extension methods for the built-in string type.
+trait StringExt:
+    ### Returns the length of the string in bytes.
+    fn byte_len(self) -> usize
+
+    ### Returns the length of the string in characters.
+    fn char_len(self) -> usize
+
+    ### Returns the character at the given index.
+    fn char_at(self, index: usize) -> char
+
+    ### Returns a slice of the string.
+    fn slice(self, start: usize, end: usize) -> string
+
+    ### Returns true if the string is empty.
+    fn is_empty(self) -> bool
+
+    ### Returns true if all characters are whitespace.
+    fn is_whitespace(self) -> bool
+
+    ### Returns true if all characters are numeric.
+    fn is_numeric(self) -> bool
+
+    ### Returns true if all characters are alphabetic.
+    fn is_alphabetic(self) -> bool
+
+    ### Returns true if all characters are alphanumeric.
+    fn is_alphanumeric(self) -> bool
+
+    ### Returns an iterator over the characters.
+    fn chars(self) -> CharIter
+
+    ### Returns an iterator over the lines.
+    fn lines(self) -> LinesIter
+
+    ### Returns an iterator over substrings split by whitespace.
+    fn words(self) -> WordsIter
+
+### Iterator over characters in a string.
+struct CharIter:
+    string: string
+    index: usize
+
+impl CharIter:
+    fn next(mut self) -> Option[char]:
+        if self.index >= self.string.byte_len():
+            return None
+        # In a real implementation, handle UTF-8 properly
+        let c = self.string.char_at(self.index)
+        self.index += 1
+        Some(c)
+
+### Iterator over lines in a string.
+struct LinesIter:
+    string: string
+    index: usize
+
+impl LinesIter:
+    fn next(mut self) -> Option[string]:
+        if self.index >= self.string.byte_len():
+            return None
+
+        let start = self.index
+        while self.index < self.string.byte_len():
+            let c = self.string.char_at(self.index)
+            if c == '\n':
+                let line = self.string.slice(start, self.index)
+                self.index += 1
+                return Some(line)
+            self.index += 1
+
+        let line = self.string.slice(start, self.string.byte_len())
+        self.index = self.string.byte_len()
+        Some(line)
+
+### Iterator over words in a string.
+struct WordsIter:
+    string: string
+    index: usize
+
+impl WordsIter:
+    fn next(mut self) -> Option[string]:
+        # Skip leading whitespace
+        while self.index < self.string.byte_len():
+            if not self.string.char_at(self.index).is_whitespace():
+                break
+            self.index += 1
+
+        if self.index >= self.string.byte_len():
+            return None
+
+        let start = self.index
+        while self.index < self.string.byte_len():
+            if self.string.char_at(self.index).is_whitespace():
+                break
+            self.index += 1
+
+        Some(self.string.slice(start, self.index))

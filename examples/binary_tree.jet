@@ -1,0 +1,201 @@
+# Binary Tree Implementation
+# Demonstrates recursive data structures, generic types, and tree algorithms
+
+# Generic binary search tree node
+enum Tree[T]:
+    | Node(value: T, left: Tree[T], right: Tree[T])
+    | Empty
+
+# Tree operations
+impl[T: Comparable] Tree[T]:
+    # Create an empty tree
+    fn new() -> Tree[T]:
+        return Empty
+
+    # Insert a value into the tree
+    fn insert(self, value: T) -> Tree[T]:
+        match self:
+            | Empty => Node(value, Empty, Empty)
+            | Node(v, left, right) =>
+                if value < v:
+                    Node(v, left.insert(value), right)
+                else if value > v:
+                    Node(v, left, right.insert(value))
+                else:
+                    # Value already exists, return unchanged
+                    Node(v, left, right)
+
+    # Check if tree contains a value
+    fn contains(self, value: T) -> bool:
+        match self:
+            | Empty => false
+            | Node(v, left, right) =>
+                if value == v:
+                    true
+                else if value < v:
+                    left.contains(value)
+                else:
+                    right.contains(value)
+
+    # Get the height of the tree
+    fn height(self) -> int:
+        match self:
+            | Empty => 0
+            | Node(_, left, right) =>
+                1 + max(left.height(), right.height())
+
+    # Get the number of nodes in the tree
+    fn size(self) -> int:
+        match self:
+            | Empty => 0
+            | Node(_, left, right) =>
+                1 + left.size() + right.size()
+
+    # In-order traversal collecting values
+    fn inorder(self) -> [T]:
+        match self:
+            | Empty => []
+            | Node(v, left, right) =>
+                let mut result = left.inorder()
+                result.push(v)
+                result.extend(right.inorder())
+                result
+
+    # Pre-order traversal
+    fn preorder(self) -> [T]:
+        match self:
+            | Empty => []
+            | Node(v, left, right) =>
+                let mut result = [v]
+                result.extend(left.preorder())
+                result.extend(right.preorder())
+                result
+
+    # Post-order traversal
+    fn postorder(self) -> [T]:
+        match self:
+            | Empty => []
+            | Node(v, left, right) =>
+                let mut result = left.postorder()
+                result.extend(right.postorder())
+                result.push(v)
+                result
+
+    # Find minimum value in tree
+    fn min(self) -> Option[T]:
+        match self:
+            | Empty => None
+            | Node(v, left, _) =>
+                match left.min():
+                    | Some(m) => Some(m)
+                    | None => Some(v)
+
+    # Find maximum value in tree
+    fn max(self) -> Option[T]:
+        match self:
+            | Empty => None
+            | Node(v, _, right) =>
+                match right.max():
+                    | Some(m) => Some(m)
+                    | None => Some(v)
+
+    # Map function over tree (creates new tree with transformed values)
+    fn map[U](self, f: fn(T) -> U) -> Tree[U]:
+        match self:
+            | Empty => Empty
+            | Node(v, left, right) =>
+                Node(f(v), left.map(f), right.map(f))
+
+    # Filter tree by predicate (returns list, not tree)
+    fn filter(self, pred: fn(T) -> bool) -> [T]:
+        match self:
+            | Empty => []
+            | Node(v, left, right) =>
+                let mut result = left.filter(pred)
+                if pred(v):
+                    result.push(v)
+                result.extend(right.filter(pred))
+                result
+
+    # Check if tree is balanced
+    fn is_balanced(self) -> bool:
+        match self:
+            | Empty => true
+            | Node(_, left, right) =>
+                let diff = abs(left.height() - right.height())
+                diff <= 1 and left.is_balanced() and right.is_balanced()
+
+# Trait for comparable types
+trait Comparable:
+    fn compare(self, other: Self) -> int
+
+# Implement Comparable for int
+impl Comparable for int:
+    fn compare(self, other: int) -> int:
+        self - other
+
+# Implement Comparable for string
+impl Comparable for string:
+    fn compare(self, other: string) -> int:
+        # Simplified string comparison
+        if self == other: 0
+        else if self < other: -1
+        else: 1
+
+# Helper functions
+fn max(a: int, b: int) -> int:
+    if a > b: a else: b
+
+fn abs(n: int) -> int:
+    if n < 0: -n else: n
+
+# Demo program
+fn main():
+    # Build a tree of integers
+    let mut numbers = Tree::new()
+    let values = [50, 30, 70, 20, 40, 60, 80, 10, 25, 35, 45]
+
+    print("Building tree with values: {values}")
+    for v in values:
+        numbers = numbers.insert(v)
+
+    print("\nTree statistics:")
+    print(f"  Size: {numbers.size()}")
+    print(f"  Height: {numbers.height()}")
+    print(f"  Is balanced: {numbers.is_balanced()}")
+
+    print("\nTraversal results:")
+    print(f"  In-order: {numbers.inorder()}")
+    print(f"  Pre-order: {numbers.preorder()}")
+    print(f"  Post-order: {numbers.postorder()}")
+
+    print("\nMin/Max values:")
+    match numbers.min():
+        | Some(m) => print(f"  Minimum: {m}")
+        | None => print("  Tree is empty")
+
+    match numbers.max():
+        | Some(m) => print(f"  Maximum: {m}")
+        | None => print("  Tree is empty")
+
+    print("\nSearch tests:")
+    print(f"  Contains 25: {numbers.contains(25)}")
+    print(f"  Contains 100: {numbers.contains(100)}")
+
+    print("\nFilter (even numbers only):")
+    let evens = numbers.filter(fn(x: int) -> bool { x % 2 == 0 })
+    print(f"  Even values: {evens}")
+
+    print("\nMap (double all values):")
+    let doubled = numbers.map(fn(x: int) -> int { x * 2 })
+    print(f"  Doubled values: {doubled.inorder()}")
+
+    # String tree example
+    print("\n--- String Tree Example ---")
+    let mut words = Tree::new()
+    let word_list = ["cherry", "apple", "banana", "date", "elderberry"]
+
+    for w in word_list:
+        words = words.insert(w)
+
+    print(f"Words in order: {words.inorder()}")

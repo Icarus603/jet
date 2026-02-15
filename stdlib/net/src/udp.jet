@@ -1,0 +1,150 @@
+### UDP networking for Jet.
+###
+### This module provides UDP socket types.
+
+import core::option::{Option, Some, None}
+import core::result::{Result, Ok, Err}
+import addr::{SocketAddr, NetworkError}
+
+### A UDP socket.
+type UdpSocket = {
+    local_addr: Option[SocketAddr]
+    # Internal socket handle
+}
+
+### Error type for UDP operations.
+type UdpError = {
+    message: string
+    kind: UdpErrorKind
+}
+
+### Kinds of UDP errors.
+enum UdpErrorKind:
+    AddrInUse
+    AddrNotAvailable
+    TimedOut
+    Interrupted
+    Other
+
+impl Show for UdpError:
+    fn show(self) -> string:
+        f"UDP error ({self.kind.show()}): {self.message}"
+
+impl Show for UdpErrorKind:
+    fn show(self) -> string:
+        match self:
+            AddrInUse -> "address in use"
+            AddrNotAvailable -> "address not available"
+            TimedOut -> "timed out"
+            Interrupted -> "interrupted"
+            Other -> "other"
+
+impl UdpSocket:
+    ### Creates a new UDP socket bound to the given address.
+    fn bind(addr: SocketAddr) -> Result[UdpSocket, UdpError] ! async:
+        # In a real implementation, bind to the address
+        Ok(UdpSocket { local_addr: Some(addr) })
+
+    ### Creates an unbound UDP socket.
+    fn unbound() -> Result[UdpSocket, UdpError]:
+        Ok(UdpSocket { local_addr: None })
+
+    ### Returns the local address.
+    fn local_addr(self) -> Option[SocketAddr]:
+        self.local_addr
+
+    ### Sends data to the given address.
+    fn send_to(self, buf: &[u8], addr: SocketAddr) -> Result<usize, UdpError] ! async:
+        Ok(buf.len())
+
+    ### Receives data from the socket.
+    fn recv_from(self, buf: &mut [u8]) -> Result<(usize, SocketAddr), UdpError] ! async:
+        Ok((0, SocketAddr::V4(SocketAddrV4 { ip: Ipv4Addr::localhost(), port: 0 })))
+
+    ### Sends data to the connected peer.
+    fn send(self, buf: &[u8]) -> Result<usize, UdpError] ! async:
+        Ok(buf.len())
+
+    ### Receives data from the connected peer.
+    fn recv(self, buf: &mut [u8]) -> Result<usize, UdpError] ! async:
+        Ok(0)
+
+    ### Connects the socket to a remote address.
+    fn connect(self, addr: SocketAddr) -> Result<unit, UdpError]:
+        Ok(())
+
+    ### Returns true if the socket is connected.
+    fn is_connected(self) -> bool:
+        false
+
+    ### Sets the broadcast option.
+    fn set_broadcast(self, broadcast: bool) -> Result<unit, UdpError]:
+        Ok(())
+
+    ### Returns true if broadcast is enabled.
+    fn broadcast(self) -> bool:
+        false
+
+    ### Sets the multicast TTL.
+    fn set_multicast_ttl(self, ttl: u32) -> Result<unit, UdpError]:
+        Ok(())
+
+    ### Returns the multicast TTL.
+    fn multicast_ttl(self) -> u32:
+        1
+
+    ### Joins a multicast group.
+    fn join_multicast(self, multiaddr: IpAddr, interface: IpAddr) -> Result<unit, UdpError]:
+        Ok(())
+
+    ### Leaves a multicast group.
+    fn leave_multicast(self, multiaddr: IpAddr, interface: IpAddr) -> Result<unit, UdpError]:
+        Ok(())
+
+    ### Sets the TTL.
+    fn set_ttl(self, ttl: u32) -> Result<unit, UdpError]:
+        Ok(())
+
+    ### Returns the TTL.
+    fn ttl(self) -> u32:
+        64
+
+    ### Sets the read timeout.
+    fn set_read_timeout(self, timeout: Option[float64]) -> Result<unit, UdpError]:
+        Ok(())
+
+    ### Sets the write timeout.
+    fn set_write_timeout(self, timeout: Option[float64]) -> Result<unit, UdpError]:
+        Ok(())
+
+    ### Sets the non-blocking mode.
+    fn set_nonblocking(self, nonblocking: bool) -> Result<unit, UdpError]:
+        Ok(())
+
+    ### Returns the number of bytes available to read.
+    fn peek(self, buf: &mut [u8]) -> Result<usize, UdpError]:
+        Ok(0)
+
+    ### Returns the number of bytes available to read without consuming them.
+    fn peek_from(self, buf: &mut [u8]) -> Result<(usize, SocketAddr), UdpError]:
+        Ok((0, SocketAddr::V4(SocketAddrV4 { ip: Ipv4Addr::localhost(), port: 0 })))
+
+    ### Duplicates the socket.
+    fn try_clone(self) -> Result[UdpSocket, UdpError]:
+        Ok(UdpSocket { local_addr: self.local_addr })
+
+    ### Sets the socket option to reuse the address.
+    fn set_reuse_addr(self, reuse: bool) -> Result<unit, UdpError]:
+        Ok(())
+
+    ### Returns true if address reuse is enabled.
+    fn reuse_addr(self) -> bool:
+        false
+
+### Creates a UDP socket bound to the given address.
+fn bind(addr: SocketAddr) -> Result[UdpSocket, UdpError] ! async:
+    UdpSocket.bind(addr)
+
+### Creates an unbound UDP socket.
+fn unbound() -> Result[UdpSocket, UdpError]:
+    UdpSocket.unbound()

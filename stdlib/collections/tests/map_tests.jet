@@ -1,0 +1,261 @@
+### Tests for the Map type
+
+import collections::map
+import core::option::{Some, None}
+
+@test
+fn test_map_new():
+    let m = Map.new()
+    assert m.len() == 0
+    assert m.is_empty() == true
+
+@test
+fn test_map_with_capacity():
+    let m = Map.with_capacity(100)
+    assert m.len() == 0
+    assert m.is_empty() == true
+    assert m.capacity() >= 100
+
+@test
+fn test_map_insert():
+    let mut m = Map.new()
+    let old = m.insert("key", 42)
+    assert old == None
+    assert m.len() == 1
+
+@test
+fn test_map_insert_update():
+    let mut m = Map.new()
+    m.insert("key", 42)
+    let old = m.insert("key", 100)
+    assert old == Some(42)
+    assert m.len() == 1
+
+@test
+fn test_map_get():
+    let mut m = Map.new()
+    m.insert("key", 42)
+    assert m.get("key") == Some(42)
+    assert m.get("missing") == None
+
+@test
+fn test_map_contains_key():
+    let mut m = Map.new()
+    m.insert("key", 42)
+    assert m.contains_key("key") == true
+    assert m.contains_key("missing") == false
+
+@test
+fn test_map_remove():
+    let mut m = Map.new()
+    m.insert("key", 42)
+    let removed = m.remove("key")
+    assert removed == Some(42)
+    assert m.len() == 0
+    assert m.contains_key("key") == false
+
+@test
+fn test_map_remove_missing():
+    let mut m = Map.new()
+    let removed = m.remove("missing")
+    assert removed == None
+
+@test
+fn test_map_clear():
+    let mut m = Map.new()
+    m.insert("a", 1)
+    m.insert("b", 2)
+    m.clear()
+    assert m.len() == 0
+    assert m.is_empty() == true
+    assert m.contains_key("a") == false
+
+@test
+fn test_map_multiple_inserts():
+    let mut m = Map.new()
+    m.insert("one", 1)
+    m.insert("two", 2)
+    m.insert("three", 3)
+    assert m.len() == 3
+    assert m.get("one") == Some(1)
+    assert m.get("two") == Some(2)
+    assert m.get("three") == Some(3)
+
+@test
+fn test_map_get_or():
+    let mut m = Map.new()
+    m.insert("key", 42)
+    assert m.get_or("key", 0) == 42
+    assert m.get_or("missing", 100) == 100
+
+@test
+fn test_map_get_or_else():
+    let mut m = Map.new()
+    m.insert("key", 42)
+    assert m.get_or_else("key", || 0) == 42
+    assert m.get_or_else("missing", || 100) == 100
+
+@test
+fn test_map_insert_if_absent():
+    let mut m = Map.new()
+    m.insert("key", 42)
+    let existing = m.insert_if_absent("key", 100)
+    assert existing == Some(42)
+    assert m.get("key") == Some(42)
+    let new_val = m.insert_if_absent("new_key", 200)
+    assert new_val == None
+    assert m.get("new_key") == Some(200)
+
+@test
+fn test_map_update():
+    let mut m = Map.new()
+    m.insert("counter", 0)
+    m.update("counter", |v| match v:
+        Some(val) -> val + 1
+        None -> 1
+    )
+    assert m.get("counter") == Some(1)
+
+@test
+fn test_map_keys_iteration():
+    let mut m = Map.new()
+    m.insert("a", 1)
+    m.insert("b", 2)
+    m.insert("c", 3)
+    let mut count = 0
+    for key in m.keys():
+        count += 1
+    assert count == 3
+
+@test
+fn test_map_values_iteration():
+    let mut m = Map.new()
+    m.insert("a", 1)
+    m.insert("b", 2)
+    m.insert("c", 3)
+    let mut sum = 0
+    for value in m.values():
+        sum += value
+    assert sum == 6
+
+@test
+fn test_map_entries_iteration():
+    let mut m = Map.new()
+    m.insert("a", 1)
+    m.insert("b", 2)
+    let mut count = 0
+    for (k, v) in m.entries():
+        count += 1
+    assert count == 2
+
+@test
+fn test_map_for_loop():
+    let mut m = Map.new()
+    m.insert("x", 10)
+    m.insert("y", 20)
+    let mut sum = 0
+    for (k, v) in m:
+        sum += v
+    assert sum == 30
+
+@test
+fn test_map_all_keys():
+    let mut m = Map.new()
+    m.insert("a", 1)
+    m.insert("b", 2)
+    assert m.all_keys(|k| k.len() == 1) == true
+    assert m.all_keys(|k| k == "a") == false
+
+@test
+fn test_map_any_key():
+    let mut m = Map.new()
+    m.insert("a", 1)
+    m.insert("b", 2)
+    assert m.any_key(|k| k == "a") == true
+    assert m.any_key(|k| k == "z") == false
+
+@test
+fn test_map_all_values():
+    let mut m = Map.new()
+    m.insert("a", 2)
+    m.insert("b", 4)
+    assert m.all_values(|v| v % 2 == 0) == true
+    assert m.all_values(|v| v > 5) == false
+
+@test
+fn test_map_any_value():
+    let mut m = Map.new()
+    m.insert("a", 1)
+    m.insert("b", 2)
+    assert m.any_value(|v| v == 1) == true
+    assert m.any_value(|v| v > 10) == false
+
+@test
+fn test_map_map_values():
+    let mut m = Map.new()
+    m.insert("a", 1)
+    m.insert("b", 2)
+    let doubled = m.map_values(|v| v * 2)
+    assert doubled.get("a") == Some(2)
+    assert doubled.get("b") == Some(4)
+
+@test
+fn test_map_filter():
+    let mut m = Map.new()
+    m.insert("a", 1)
+    m.insert("b", 2)
+    m.insert("c", 3)
+    let evens = m.filter(|k, v| v % 2 == 0)
+    assert evens.len() == 1
+    assert evens.contains_key("b") == true
+
+@test
+fn test_map_merge():
+    let mut m1 = Map.new()
+    m1.insert("a", 1)
+    let mut m2 = Map.new()
+    m2.insert("b", 2)
+    m1.merge(m2)
+    assert m1.len() == 2
+    assert m1.get("a") == Some(1)
+    assert m1.get("b") == Some(2)
+
+@test
+fn test_map_retain():
+    let mut m = Map.new()
+    m.insert("a", 1)
+    m.insert("b", 2)
+    m.insert("c", 3)
+    m.insert("d", 4)
+    m.retain(|k, v| v % 2 == 0)
+    assert m.len() == 2
+    assert m.contains_key("a") == false
+    assert m.contains_key("b") == true
+    assert m.contains_key("c") == false
+    assert m.contains_key("d") == true
+
+@test
+fn test_map_growth():
+    let mut m = Map.new()
+    for i in 0..100:
+        m.insert(i, i * 2)
+    assert m.len() == 100
+    for i in 0..100:
+        assert m.get(i) == Some(i * 2)
+
+@test
+fn test_map_string_keys():
+    let mut m = Map.new()
+    m.insert("hello", "world")
+    m.insert("foo", "bar")
+    assert m.get("hello") == Some("world")
+    assert m.get("foo") == Some("bar")
+
+@test
+fn test_map_integer_keys():
+    let mut m = Map.new()
+    m.insert(1, "one")
+    m.insert(2, "two")
+    m.insert(3, "three")
+    assert m.get(2) == Some("two")
+    assert m.contains_key(4) == false

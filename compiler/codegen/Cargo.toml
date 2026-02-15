@@ -1,0 +1,16 @@
+[package]
+name = "jet-codegen"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+jet-ir = { path = "../ir" }
+jet-diagnostics = { path = "../diagnostics" }
+inkwell = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+pretty_assertions.workspace = true

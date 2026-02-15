@@ -1,0 +1,222 @@
+### Channels for Jet's async runtime.
+###
+### Channels provide type-safe message passing between tasks.
+
+import core::option::{Option, Some, None}
+import core::result::{Result, Ok, Err}
+
+### A channel for sending values between tasks.
+###
+/// Channels are the primary mechanism for communication and synchronization
+/// in Jet's async runtime. They are similar to Go channels.
+type Channel[T] = {
+    sender: Sender[T]
+    receiver: Receiver[T]
+}
+
+/// The sending half of a channel.
+type Sender[T] = {
+    id: ChannelId
+    # Internal sender state
+}
+
+/// The receiving half of a channel.
+type Receiver[T] = {
+    id: ChannelId
+    # Internal receiver state
+}
+
+/// Unique identifier for a channel.
+type ChannelId = u64
+
+/// Error type for channel operations.
+type ChannelError = {
+    message: string
+    kind: ChannelErrorKind
+}
+
+/// Kinds of channel errors.
+enum ChannelErrorKind:
+    Closed
+    Full
+    Empty
+    Disconnected
+
+impl Show for ChannelError:
+    fn show(self) -> string:
+        f"Channel error ({self.kind.show()}): {self.message}"
+
+impl Show for ChannelErrorKind:
+    fn show(self) -> string:
+        match self:
+            Closed -> "closed"
+            Full -> "full"
+            Empty -> "empty"
+            Disconnected -> "disconnected"
+
+/// Creates a new unbounded channel.
+fn channel[T]() -> (Sender[T], Receiver[T]):
+    let id = next_channel_id()
+    let sender = Sender[T] { id: id }
+    let receiver = Receiver[T] { id: id }
+    (sender, receiver)
+
+/// Creates a new bounded channel with the specified capacity.
+fn bounded_channel[T](capacity: usize) -> (Sender[T], Receiver[T]):
+    # In a real implementation, create a bounded channel
+    channel()
+
+/// Creates a rendezvous channel (capacity 0).
+fn rendezvous_channel[T]() -> (Sender[T], Receiver[T]):
+    bounded_channel(0)
+
+static mut next_id: u64 = 0
+
+fn next_channel_id() -> u64:
+    let id = next_id
+    next_id += 1
+    id
+
+impl Sender[T]:
+    /// Sends a value into the channel.
+    ///
+    /// Returns an error if the channel is closed.
+    fn send(self, value: T) -> Result[unit, ChannelError] ! async:
+        # In a real implementation, send the value
+        Ok(())
+
+    /// Attempts to send without blocking.
+    ///
+    /// Returns immediately with an error if the channel is full.
+    fn try_send(self, value: T) -> Result[unit, ChannelError]:
+        # In a real implementation, try to send
+        Ok(())
+
+    /// Returns true if the channel is closed.
+    fn is_closed(self) -> bool:
+        false  # Placeholder
+
+    /// Closes the channel.
+    fn close(self):
+        # In a real implementation, close the channel
+        ()
+
+    /// Returns the number of waiting receivers.
+    fn receiver_count(self) -> usize:
+        0  # Placeholder
+
+    /// Converts this sender into a future that completes when the value is sent.
+    fn send_future(self, value: T) -> Future[Result[unit, ChannelError]]:
+        Future::send(self, value)
+
+impl Receiver[T]:
+    /// Receives a value from the channel.
+    ///
+    /// Returns None if the channel is closed and empty.
+    fn recv(self) -> Option[T] ! async:
+        # In a real implementation, receive a value
+        None
+
+    /// Attempts to receive without blocking.
+    ///
+    /// Returns immediately with None if no value is available.
+    fn try_recv(self) -> Option[T]:
+        None  # Placeholder
+
+    /// Returns true if the channel is closed.
+    fn is_closed(self) -> bool:
+        false  # Placeholder
+
+    /// Closes the channel.
+    fn close(self):
+        # In a real implementation, close the channel
+        ()
+
+    /// Returns the number of waiting senders.
+    fn sender_count(self) -> usize:
+        0  # Placeholder
+
+    /// Returns an iterator over received values.
+    fn iter(self) -> ChannelIter[T]:
+        ChannelIter { receiver: self }
+
+    /// Converts this receiver into a future that completes when a value is received.
+    fn recv_future(self) -> Future[Option[T]]:
+        Future::recv(self)
+
+/// Iterator over channel values.
+struct ChannelIter[T]:
+    receiver: Receiver[T]
+
+impl ChannelIter[T]:
+    fn next(mut self) -> Option[T] ! async:
+        self.receiver.recv().await
+
+/// Selects from multiple channel operations.
+///
+/// Similar to Go's select statement, this waits until one of the
+/// operations can proceed.
+macro select:
+    # In a real implementation, this would be a macro
+    pass
+
+/// Select result for channel operations.
+enum SelectResult:
+    Send(SenderId)
+    Recv(ReceiverId, Value)
+    Default
+
+/// Waits for multiple channel operations.
+fn select(ops: &[SelectOp]) -> SelectResult ! async:
+    # In a real implementation, wait for first ready operation
+    SelectResult::Default
+
+/// A single operation for select.
+enum SelectOp:
+    Send(Sender, Value)
+    Recv(Receiver)
+    Default
+
+/// Broadcast channel - one sender, multiple receivers.
+type BroadcastSender[T] = {
+    # Internal state
+}
+
+type BroadcastReceiver[T] = {
+    # Internal state
+}
+
+/// Creates a broadcast channel.
+fn broadcast_channel[T](capacity: usize) -> (BroadcastSender[T], BroadcastReceiver[T]):
+    # In a real implementation, create a broadcast channel
+    (BroadcastSender {}, BroadcastReceiver {})
+
+impl BroadcastSender[T]:
+    fn send(self, value: T) -> Result[usize, ChannelError] ! async:
+        # Returns number of receivers that received the value
+        Ok(0)
+
+    fn receiver_count(self) -> usize:
+        0
+
+impl BroadcastReceiver[T]:
+    fn recv(self) -> Result[T, ChannelError] ! async:
+        Err(ChannelError { message: "Not implemented", kind: ChannelErrorKind::Closed })
+
+/// MPSC (Multi-Producer Single-Consumer) channel.
+///
+/// This is the standard channel type - multiple senders, single receiver.
+type MpscSender[T] = Sender[T]
+type MpscReceiver[T] = Receiver[T]
+
+fn mpsc_channel[T]() -> (MpscSender[T], MpscReceiver[T]):
+    channel()
+
+/// SPSC (Single-Producer Single-Consumer) channel.
+///
+/// Optimized for the case where there is only one sender and one receiver.
+type SpscSender[T] = Sender[T]
+type SpscReceiver[T] = Receiver[T]
+
+fn spsc_channel[T]() -> (SpscSender[T], SpscReceiver[T]):
+    channel()

@@ -1,0 +1,15 @@
+[package]
+name = "jet-diagnostics"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+termcolor = "1.4"
+thiserror = "1.0"
+unicode-width = "0.1"
+
+[dev-dependencies]
+pretty_assertions.workspace = true

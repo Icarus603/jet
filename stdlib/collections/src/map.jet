@@ -1,0 +1,455 @@
+### Map - A hash map implementation.
+###
+### Map provides an associative array data structure with O(1) average-case
+### lookup, insertion, and deletion.
+
+import core::option::{Option, Some, None}
+import core::traits::{Hash, Eq}
+
+### A bucket entry in the hash map.
+###
+### Stores the key, value, and precomputed hash for efficient lookups.
+type Bucket[K, V] = {
+    key: K
+    value: V
+    hash: u64
+}
+
+### A hash map implementation.
+###
+### Map stores key-value pairs and provides efficient lookup based on keys.
+### It uses separate chaining with dynamic resizing for collision handling.
+type Map[K, V] = {
+    buckets: Vec[Option[Bucket[K, V]]]
+    len: usize
+    load_factor: f64
+}
+
+### Iterator over map keys.
+struct KeysIter[K, V]:
+    map: Map[K, V]
+    bucket_idx: usize
+    current: Option[Bucket[K, V]]
+
+### Iterator over map values.
+struct ValuesIter[K, V]:
+    map: Map[K, V]
+    bucket_idx: usize
+    current: Option[Bucket[K, V]]
+
+### Iterator over map entries (key-value pairs).
+struct EntriesIter[K, V]:
+    map: Map[K, V]
+    bucket_idx: usize
+    current: Option[Bucket[K, V]]
+
+impl[K, V] Map[K, V] where K: Hash + Eq:
+    ### Creates an empty map.
+    ###
+    ### The map will have an initial capacity of 16 buckets.
+    fn new() -> Map[K, V]:
+        Map { buckets: Vec.with_capacity(16), len: 0, load_factor: 0.75 }
+
+    ### Creates an empty map with the specified initial capacity.
+    fn with_capacity(capacity: usize) -> Map[K, V]:
+        let buckets = Vec.with_capacity(capacity)
+        for _ in 0..capacity:
+            buckets.push(None)
+        Map { buckets: buckets, len: 0, load_factor: 0.75 }
+
+    ### Returns the number of elements in the map.
+    fn len(self) -> usize:
+        self.len
+
+    ### Returns true if the map contains no elements.
+    fn is_empty(self) -> bool:
+        self.len == 0
+
+    ### Returns the number of buckets in the map.
+    fn capacity(self) -> usize:
+        self.buckets.len()
+
+    ### Inserts a key-value pair into the map.
+    ###
+    ### If the map already had this key present, the value is updated and the
+    ### old value is returned. Otherwise, None is returned.
+    fn insert(mut self, key: K, value: V) -> Option[V]:
+        if self.buckets.is_empty():
+            self.grow()
+
+        let hash = key.hash()
+        let index = self.bucket_index(hash)
+
+        # Check if key already exists
+        match self.buckets.get(index):
+            Some(bucket_opt) ->
+                match bucket_opt:
+                    Some(bucket) ->
+                        if bucket.key == key:
+                            # Key exists, update value
+                            let old_value = bucket.value
+                            self.buckets.set(index, Some(Bucket { key: key, value: value, hash: hash }))
+                            return Some(old_value)
+                    None -> ()
+            None -> ()
+
+        # Key doesn't exist, insert new bucket
+        if (self.len as f64) / (self.buckets.len() as f64) > self.load_factor:
+            self.grow()
+            return self.insert(key, value)
+
+        self.buckets.set(index, Some(Bucket { key: key, value: value, hash: hash }))
+        self.len += 1
+        None
+
+    ### Gets a reference to the value associated with the key.
+    ###
+    ### Returns None if the key is not present in the map.
+    fn get(self, key: K) -> Option[V]:
+        if self.buckets.is_empty():
+            return None
+
+        let hash = key.hash()
+        let index = self.bucket_index(hash)
+
+        match self.buckets.get(index):
+            Some(bucket_opt) ->
+                match bucket_opt:
+                    Some(bucket) ->
+                        if bucket.key == key:
+                            Some(bucket.value)
+                        else:
+                            # Handle collision with linear probing
+                            self.probe_get(key, hash, index)
+                    None -> None
+            None -> None
+
+    ### Returns true if the map contains the specified key.
+    fn contains_key(self, key: K) -> bool:
+        self.get(key).is_some()
+
+    ### Removes a key from the map, returning the value if it existed.
+    fn remove(mut self, key: K) -> Option[V]:
+        if self.buckets.is_empty():
+            return None
+
+        let hash = key.hash()
+        let index = self.bucket_index(hash)
+
+        match self.buckets.get(index):
+            Some(bucket_opt) ->
+                match bucket_opt:
+                    Some(bucket) ->
+                        if bucket.key == key:
+                            self.buckets.set(index, None)
+                            self.len -= 1
+                            return Some(bucket.value)
+                        else:
+                            # Handle collision with linear probing
+                            self.probe_remove(key, hash, index)
+                    None -> None
+            None -> None
+
+    ### Returns an iterator over the keys of the map.
+    fn keys(self) -> KeysIter[K, V]:
+        KeysIter { map: self, bucket_idx: 0, current: None }
+
+    ### Returns an iterator over the values of the map.
+    fn values(self) -> ValuesIter[K, V]:
+        ValuesIter { map: self, bucket_idx: 0, current: None }
+
+    ### Returns an iterator over the key-value pairs of the map.
+    fn entries(self) -> EntriesIter[K, V]:
+        EntriesIter { map: self, bucket_idx: 0, current: None }
+
+    ### Clears the map, removing all key-value pairs.
+    fn clear(mut self):
+        self.buckets.clear()
+        self.len = 0
+
+    ### Returns a copy of the value associated with the key, or a default.
+    fn get_or(self, key: K, default: V) -> V:
+        match self.get(key):
+            Some(value) -> value
+            None -> default
+
+    ### Returns a copy of the value or computes it from a closure.
+    fn get_or_else(self, key: K, f: fn() -> V) -> V:
+        match self.get(key):
+            Some(value) -> value
+            None -> f()
+
+    ### Inserts a key-value pair only if the key is not already present.
+    fn insert_if_absent(mut self, key: K, value: V) -> Option[V]:
+        match self.get(key):
+            Some(existing) -> Some(existing)
+            None ->
+                self.insert(key, value)
+                None
+
+    ### Updates the value associated with the key using a function.
+    fn update(mut self, key: K, f: fn(Option[V]) -> V):
+        let new_value = f(self.get(key))
+        self.insert(key, new_value)
+
+    ### Returns true if all keys satisfy the predicate.
+    fn all_keys(self, f: fn(K) -> bool) -> bool:
+        for key in self.keys():
+            if not f(key):
+                return false
+        true
+
+    ### Returns true if any key satisfies the predicate.
+    fn any_key(self, f: fn(K) -> bool) -> bool:
+        for key in self.keys():
+            if f(key):
+                return true
+        false
+
+    ### Returns true if all values satisfy the predicate.
+    fn all_values(self, f: fn(V) -> bool) -> bool:
+        for value in self.values():
+            if not f(value):
+                return false
+        true
+
+    ### Returns true if any value satisfies the predicate.
+    fn any_value(self, f: fn(V) -> bool) -> bool:
+        for value in self.values():
+            if f(value):
+                return true
+        false
+
+    ### Retains only the elements specified by the predicate.
+    fn retain(mut self, f: fn(K, V) -> bool):
+        let keys_to_remove = Vec.new()
+        for entry in self.entries():
+            if not f(entry.key, entry.value):
+                keys_to_remove.push(entry.key)
+        for key in keys_to_remove:
+            self.remove(key)
+
+    ### Maps values while keeping the same keys.
+    fn map_values[U](self, f: fn(V) -> U) -> Map[K, U]:
+        let result = Map.with_capacity(self.buckets.len())
+        for entry in self.entries():
+            result.insert(entry.key, f(entry.value))
+        result
+
+    ### Filters entries by a predicate.
+    fn filter(self, f: fn(K, V) -> bool) -> Map[K, V]:
+        let result = Map.new()
+        for entry in self.entries():
+            if f(entry.key, entry.value):
+                result.insert(entry.key, entry.value)
+        result
+
+    ### Merges another map into this one.
+    fn merge(mut self, other: Map[K, V]):
+        for entry in other.entries():
+            self.insert(entry.key, entry.value)
+
+    ### Private: Computes the bucket index from a hash.
+    private fn bucket_index(self, hash: u64) -> usize:
+        (hash % (self.buckets.len() as u64)) as usize
+
+    ### Private: Grows the bucket array when load factor is exceeded.
+    private fn grow(mut self):
+        let old_buckets = self.buckets
+        let new_capacity = if old_buckets.len() == 0 { 16 } else { old_buckets.len() * 2 }
+
+        self.buckets = Vec.with_capacity(new_capacity)
+        for _ in 0..new_capacity:
+            self.buckets.push(None)
+
+        self.len = 0
+        for bucket_opt in old_buckets:
+            match bucket_opt:
+                Some(bucket) ->
+                    self.insert(bucket.key, bucket.value)
+                None -> ()
+
+    ### Private: Linear probing for get operation.
+    private fn probe_get(self, key: K, hash: u64, start_idx: usize) -> Option[V]:
+        let capacity = self.buckets.len()
+        let mut idx = (start_idx + 1) % capacity
+        let mut checked = 1
+
+        while checked < capacity:
+            match self.buckets.get(idx):
+                Some(bucket_opt) ->
+                    match bucket_opt:
+                        Some(bucket) ->
+                            if bucket.key == key:
+                                return Some(bucket.value)
+                        None -> ()
+                None -> ()
+            idx = (idx + 1) % capacity
+            checked += 1
+
+        None
+
+    ### Private: Linear probing for remove operation.
+    private fn probe_remove(mut self, key: K, hash: u64, start_idx: usize) -> Option[V]:
+        let capacity = self.buckets.len()
+        let mut idx = (start_idx + 1) % capacity
+        let mut checked = 1
+
+        while checked < capacity:
+            match self.buckets.get(idx):
+                Some(bucket_opt) ->
+                    match bucket_opt:
+                        Some(bucket) ->
+                            if bucket.key == key:
+                                let value = bucket.value
+                                self.buckets.set(idx, None)
+                                self.len -= 1
+                                return Some(value)
+                        None -> ()
+                None -> ()
+            idx = (idx + 1) % capacity
+            checked += 1
+
+        None
+
+### Implements IntoIter for Map entries.
+impl[K, V] IntoIter for Map[K, V]:
+    type Item = (K, V)
+    type IntoIter = EntriesIter[K, V]
+
+    fn into_iter(self) -> EntriesIter[K, V]:
+        self.entries()
+
+### Implements Len trait for Map.
+impl[K, V] Len for Map[K, V]:
+    fn len(self) -> usize:
+        self.len
+
+    fn is_empty(self) -> bool:
+        self.len == 0
+
+impl[K, V] KeysIter[K, V]:
+    ### Returns the next key from the iterator.
+    fn next(mut self) -> Option[K]:
+        while self.bucket_idx < self.map.buckets.len():
+            match self.map.buckets.get(self.bucket_idx):
+                Some(bucket_opt) ->
+                    self.bucket_idx += 1
+                    match bucket_opt:
+                        Some(bucket) ->
+                            return Some(bucket.key)
+                        None -> ()
+                None ->
+                    self.bucket_idx += 1
+        None
+
+    ### Returns the remaining length of the iterator.
+    fn len(self) -> usize:
+        let remaining = self.map.len
+        let mut count = 0
+        let mut idx = 0
+        while idx < self.bucket_idx:
+            match self.map.buckets.get(idx):
+                Some(bucket_opt) ->
+                    match bucket_opt:
+                        Some(_) -> count += 1
+                        None -> ()
+                None -> ()
+            idx += 1
+        remaining - count
+
+    ### Returns true if the iterator has no more elements.
+    fn is_empty(self) -> bool:
+        self.len() == 0
+
+impl[K, V] ValuesIter[K, V]:
+    ### Returns the next value from the iterator.
+    fn next(mut self) -> Option[V]:
+        while self.bucket_idx < self.map.buckets.len():
+            match self.map.buckets.get(self.bucket_idx):
+                Some(bucket_opt) ->
+                    self.bucket_idx += 1
+                    match bucket_opt:
+                        Some(bucket) ->
+                            return Some(bucket.value)
+                        None -> ()
+                None ->
+                    self.bucket_idx += 1
+        None
+
+    ### Returns the remaining length of the iterator.
+    fn len(self) -> usize:
+        let remaining = self.map.len
+        let mut count = 0
+        let mut idx = 0
+        while idx < self.bucket_idx:
+            match self.map.buckets.get(idx):
+                Some(bucket_opt) ->
+                    match bucket_opt:
+                        Some(_) -> count += 1
+                        None -> ()
+                None -> ()
+            idx += 1
+        remaining - count
+
+    ### Returns true if the iterator has no more elements.
+    fn is_empty(self) -> bool:
+        self.len() == 0
+
+impl[K, V] EntriesIter[K, V]:
+    ### Returns the next entry (key-value pair) from the iterator.
+    fn next(mut self) -> Option[(K, V)]:
+        while self.bucket_idx < self.map.buckets.len():
+            match self.map.buckets.get(self.bucket_idx):
+                Some(bucket_opt) ->
+                    self.bucket_idx += 1
+                    match bucket_opt:
+                        Some(bucket) ->
+                            return Some((bucket.key, bucket.value))
+                        None -> ()
+                None ->
+                    self.bucket_idx += 1
+        None
+
+    ### Returns the remaining length of the iterator.
+    fn len(self) -> usize:
+        let remaining = self.map.len
+        let mut count = 0
+        let mut idx = 0
+        while idx < self.bucket_idx:
+            match self.map.buckets.get(idx):
+                Some(bucket_opt) ->
+                    match bucket_opt:
+                        Some(_) -> count += 1
+                        None -> ()
+                None -> ()
+            idx += 1
+        remaining - count
+
+    ### Returns true if the iterator has no more elements.
+    fn is_empty(self) -> bool:
+        self.len() == 0
+
+### Implements IntoIter for KeysIter.
+impl[K, V] IntoIter for KeysIter[K, V]:
+    type Item = K
+    type IntoIter = KeysIter[K, V]
+
+    fn into_iter(self) -> KeysIter[K, V]:
+        self
+
+### Implements IntoIter for ValuesIter.
+impl[K, V] IntoIter for ValuesIter[K, V]:
+    type Item = V
+    type IntoIter = ValuesIter[K, V]
+
+    fn into_iter(self) -> ValuesIter[K, V]:
+        self
+
+### Implements IntoIter for EntriesIter.
+impl[K, V] IntoIter for EntriesIter[K, V]:
+    type Item = (K, V)
+    type IntoIter = EntriesIter[K, V]
+
+    fn into_iter(self) -> EntriesIter[K, V]:
+        self

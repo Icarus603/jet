@@ -1,0 +1,592 @@
+### Types that can be compared for equality.
+###
+### Two values are equal if they represent the same value.
+### Types implementing Eq must ensure:
+### - Reflexivity: a == a is always true
+### - Symmetry: a == b implies b == a
+### - Transitivity: a == b and b == c implies a == c
+trait Eq:
+    ### Returns true if self is equal to other.
+    fn eq(self, other: Self) -> bool
+
+    ### Returns true if self is not equal to other.
+    ### Default implementation uses eq.
+    fn ne(self, other: Self) -> bool:
+        not self.eq(other)
+
+### Ordering of values.
+enum Ordering:
+    Less
+    Equal
+    Greater
+
+impl Eq for Ordering:
+    fn eq(self, other: Ordering) -> bool:
+        match (self, other):
+            (Less, Less) -> true
+            (Equal, Equal) -> true
+            (Greater, Greater) -> true
+            _ -> false
+
+### Types that can be ordered.
+###
+### Types implementing Ord must ensure:
+### - Totality: for any a, b: exactly one of a < b, a == b, a > b is true
+### - Antisymmetry: a < b implies not b < a
+### - Transitivity: a < b and b < c implies a < c
+trait Ord:
+    ### Compares self to other and returns the ordering.
+    fn compare(self, other: Self) -> Ordering
+
+    ### Returns true if self is less than other.
+    ### Default implementation uses compare.
+    fn lt(self, other: Self) -> bool:
+        self.compare(other) == Ordering::Less
+
+    ### Returns true if self is less than or equal to other.
+    ### Default implementation uses compare.
+    fn le(self, other: Self) -> bool:
+        let cmp = self.compare(other)
+        cmp == Ordering::Less or cmp == Ordering::Equal
+
+    ### Returns true if self is greater than other.
+    ### Default implementation uses compare.
+    fn gt(self, other: Self) -> bool:
+        self.compare(other) == Ordering::Greater
+
+    ### Returns true if self is greater than or equal to other.
+    ### Default implementation uses compare.
+    fn ge(self, other: Self) -> bool:
+        let cmp = self.compare(other)
+        cmp == Ordering::Greater or cmp == Ordering::Equal
+
+    ### Returns the minimum of self and other.
+    ### Default implementation uses lt.
+    fn min(self, other: Self) -> Self:
+        if self.lt(other) then self else other
+
+    ### Returns the maximum of self and other.
+    ### Default implementation uses gt.
+    fn max(self, other: Self) -> Self:
+        if self.gt(other) then self else other
+
+    ### Clamps self between min and max.
+    fn clamp(self, min: Self, max: Self) -> Self:
+        if self.lt(min) then
+            min
+        else if self.gt(max) then
+            max
+        else
+            self
+
+### Types that can be displayed as strings.
+###
+### Show is used for user-facing output and debugging.
+trait Show:
+    ### Returns a string representation of self.
+    fn show(self) -> string
+
+### Types that can be converted to strings.
+###
+### ToString is for types that can be converted to a string representation.
+trait ToString:
+    ### Converts self to a string.
+    fn to_string(self) -> string
+
+### Types that can be parsed from strings.
+###
+### FromStr is for types that can be parsed from string input.
+trait FromStr:
+    ### The error type returned when parsing fails.
+    type Err
+
+    ### Parses a string to produce a value.
+    fn from_str(s: string) -> Result[Self, Self::Err]
+
+### Types that can be cloned.
+###
+### Clone creates a deep copy of a value.
+### Types implementing Clone must ensure the new value is independent.
+trait Clone:
+    ### Returns a clone of self.
+    fn clone(self) -> Self
+
+### Types that can be copied bit-for-bit.
+###
+### Copy is a marker trait for types that can be duplicated by simple bitwise copy.
+### All Copy types are also Clone.
+trait Copy:
+    # Marker trait - no methods required
+    # Types implementing Copy must also implement Clone
+
+### Types that can be hashed.
+###
+### Hash produces a deterministic hash code for a value.
+### Types implementing Hash must ensure:
+### - If a == b, then hash(a) == hash(b)
+### - The hash is consistent for the lifetime of the value
+trait Hash:
+    ### Returns a 64-bit hash of self.
+    fn hash(self) -> u64
+
+    ### Hashes self into a hasher.
+    ### Default implementation uses hash.
+    fn hash_with[H](self, hasher: H) -> H where H: Hasher:
+        hasher.write_u64(self.hash())
+        hasher
+
+### A trait for hashing state.
+###
+### Hasher is used to incrementally build a hash value.
+trait Hasher:
+    ### Writes a single byte.
+    fn write_u8(self, byte: u8) -> Self
+
+    ### Writes a 64-bit integer.
+    fn write_u64(self, value: u64) -> Self
+
+    ### Writes a slice of bytes.
+    fn write_bytes(self, bytes: &[u8]) -> Self
+
+    ### Finishes and returns the hash value.
+    fn finish(self) -> u64
+
+### Types that can be sent between threads.
+###
+### Send is a marker trait indicating that values of this type can be safely
+### transferred across thread boundaries.
+trait Send:
+    # Marker trait - no methods required
+
+### Types that can be shared between threads.
+###
+### Sync is a marker trait indicating that references to values of this type
+### can be safely shared between threads.
+trait Sync:
+    # Marker trait - no methods required
+
+### Types that can be dropped.
+###
+### Drop is called when a value goes out of scope.
+trait Drop:
+    ### Called when the value is dropped.
+    fn drop(self) -> unit
+
+### Types that have a default value.
+###
+### Default provides a way to create a default instance of a type.
+trait Default:
+    ### Returns the default value.
+    fn default() -> Self
+
+### Types that can be converted from another type.
+###
+### From represents a conversion that always succeeds.
+trait From[T]:
+    ### Converts from T to Self.
+    fn from(value: T) -> Self
+
+### Types that can be converted into another type.
+###
+### Into represents a conversion that always succeeds.
+### The inverse of From.
+trait Into[T]:
+    ### Converts self into T.
+    fn into(self) -> T
+
+### Types that can be converted from another type, possibly failing.
+###
+### TryFrom represents a conversion that may fail.
+trait TryFrom[T]:
+    ### The error type returned when conversion fails.
+    type Error
+
+    ### Attempts to convert from T to Self.
+    fn try_from(value: T) -> Result[Self, Self::Error]
+
+### Types that can be converted into another type, possibly failing.
+###
+### TryInto represents a conversion that may fail.
+### The inverse of TryFrom.
+trait TryInto[T]:
+    ### The error type returned when conversion fails.
+    type Error
+
+    ### Attempts to convert self into T.
+    fn try_into(self) -> Result[T, Self::Error]
+
+### Types that can be dereferenced.
+###
+### Deref is used for smart pointer types.
+trait Deref:
+    ### The type of the value that Self dereferences to.
+    type Target
+
+    ### Dereferences self to return a reference to Target.
+    fn deref(self) -> &Self::Target
+
+### Types that can be mutably dereferenced.
+###
+### DerefMut is used for mutable smart pointer types.
+trait DerefMut:
+    ### The type of the value that Self dereferences to.
+    type Target
+
+    ### Mutably dereferences self.
+    fn deref_mut(self) -> &mut Self::Target
+
+### Types that can be iterated over.
+###
+### IntoIter consumes the collection to produce an iterator.
+trait IntoIter:
+    ### The type of item yielded by the iterator.
+    type Item
+
+    ### The type of the iterator.
+    type IntoIter: Iter[Self::Item]
+
+    ### Converts self into an iterator.
+    fn into_iter(self) -> Self::IntoIter
+
+### Types that can be iterated over by reference.
+###
+### Iter produces an iterator over references.
+trait Iter:
+    ### The type of item yielded by the iterator.
+    type Item
+
+    ### The type of the iterator.
+    type Iter: Iter[&Self::Item]
+
+    ### Returns an iterator over references.
+    fn iter(self) -> Self::Iter
+
+### Types that can be iterated over by mutable reference.
+###
+### IterMut produces an iterator over mutable references.
+trait IterMut:
+    ### The type of item yielded by the iterator.
+    type Item
+
+    ### The type of the iterator.
+    type IterMut: Iter[&mut Self::Item]
+
+    ### Returns an iterator over mutable references.
+    fn iter_mut(self) -> Self::IterMut
+
+### Types that can be indexed.
+###
+### Index provides immutable indexed access.
+trait Index[Idx]:
+    ### The type of the value returned by indexing.
+    type Output
+
+    ### Returns a reference to the value at index.
+    fn index(self, index: Idx) -> &Self::Output
+
+### Types that can be mutably indexed.
+###
+### IndexMut provides mutable indexed access.
+trait IndexMut[Idx]:
+    ### The type of the value returned by indexing.
+    type Output
+
+    ### Returns a mutable reference to the value at index.
+    fn index_mut(self, index: Idx) -> &mut Self::Output
+
+### Types that have a length.
+###
+### Len provides a way to get the number of elements.
+trait Len:
+    ### Returns the number of elements.
+    fn len(self) -> uint
+
+    ### Returns true if there are no elements.
+    ### Default implementation uses len.
+    fn is_empty(self) -> bool:
+        self.len() == 0
+
+### Types that can be extended with elements.
+###
+### Extend adds elements from an iterator to a collection.
+trait Extend[T]:
+    ### Extends self with elements from the iterator.
+    fn extend[I](self, iter: I) where I: IntoIter[Item = T]:
+        for item in iter:
+            self.push(item)
+
+### Types that can be collected from an iterator.
+###
+### FromIter creates a collection from an iterator.
+trait FromIter[T]:
+    ### Creates a collection from an iterator.
+    fn from_iter[I](iter: I) -> Self where I: IntoIter[Item = T]
+
+### Types that can be compared partially.
+###
+### PartialEq is for types where not all values can be compared.
+trait PartialEq:
+    ### Returns true if self is equal to other.
+    fn eq(self, other: Self) -> bool
+
+    ### Returns true if self is not equal to other.
+    fn ne(self, other: Self) -> bool:
+        not self.eq(other)
+
+### Types that can be partially ordered.
+###
+### PartialOrd is for types where not all values can be ordered.
+trait PartialOrd:
+    ### Compares self to other and returns the ordering if comparable.
+    fn partial_compare(self, other: Self) -> Option[Ordering]
+
+    ### Returns true if self is less than other.
+    fn partial_lt(self, other: Self) -> bool:
+        match self.partial_compare(other):
+            Some(Ordering::Less) -> true
+            _ -> false
+
+    ### Returns true if self is less than or equal to other.
+    fn partial_le(self, other: Self) -> bool:
+        match self.partial_compare(other):
+            Some(Ordering::Less) -> true
+            Some(Ordering::Equal) -> true
+            _ -> false
+
+    ### Returns true if self is greater than other.
+    fn partial_gt(self, other: Self) -> bool:
+        match self.partial_compare(other):
+            Some(Ordering::Greater) -> true
+            _ -> false
+
+    ### Returns true if self is greater than or equal to other.
+    fn partial_ge(self, other: Self) -> bool:
+        match self.partial_compare(other):
+            Some(Ordering::Greater) -> true
+            Some(Ordering::Equal) -> true
+            _ -> false
+
+### Types that can be added.
+###
+### Add is the trait for the + operator.
+trait Add[Rhs = Self]:
+    ### The type of the result.
+    type Output
+
+    ### Adds self and rhs.
+    fn add(self, rhs: Rhs) -> Self::Output
+
+### Types that can be subtracted.
+###
+### Sub is the trait for the - operator.
+trait Sub[Rhs = Self]:
+    ### The type of the result.
+    type Output
+
+    ### Subtracts rhs from self.
+    fn sub(self, rhs: Rhs) -> Self::Output
+
+### Types that can be multiplied.
+###
+### Mul is the trait for the * operator.
+trait Mul[Rhs = Self]:
+    ### The type of the result.
+    type Output
+
+    ### Multiplies self by rhs.
+    fn mul(self, rhs: Rhs) -> Self::Output
+
+### Types that can be divided.
+###
+### Div is the trait for the / operator.
+trait Div[Rhs = Self]:
+    ### The type of the result.
+    type Output
+
+    ### Divides self by rhs.
+    fn div(self, rhs: Rhs) -> Self::Output
+
+### Types that can have a remainder.
+###
+### Rem is the trait for the % operator.
+trait Rem[Rhs = Self]:
+    ### The type of the result.
+    type Output
+
+    ### Returns the remainder of self divided by rhs.
+    fn rem(self, rhs: Rhs) -> Self::Output
+
+### Types that can be negated.
+###
+### Neg is the trait for unary -.
+trait Neg:
+    ### The type of the result.
+    type Output
+
+    ### Negates self.
+    fn neg(self) -> Self::Output
+
+### Types that can be bitwise NOTed.
+###
+### Not is the trait for unary ~.
+trait Not:
+    ### The type of the result.
+    type Output
+
+    ### Returns the bitwise NOT of self.
+    fn not(self) -> Self::Output
+
+### Types that can be bitwise ANDed.
+###
+### BitAnd is the trait for the & operator.
+trait BitAnd[Rhs = Self]:
+    ### The type of the result.
+    type Output
+
+    ### Returns the bitwise AND of self and rhs.
+    fn bitand(self, rhs: Rhs) -> Self::Output
+
+### Types that can be bitwise ORed.
+###
+### BitOr is the trait for the | operator.
+trait BitOr[Rhs = Self]:
+    ### The type of the result.
+    type Output
+
+    ### Returns the bitwise OR of self and rhs.
+    fn bitor(self, rhs: Rhs) -> Self::Output
+
+### Types that can be bitwise XORed.
+###
+### BitXor is the trait for the ^ operator.
+trait BitXor[Rhs = Self]:
+    ### The type of the result.
+    type Output
+
+    ### Returns the bitwise XOR of self and rhs.
+    fn bitxor(self, rhs: Rhs) -> Self::Output
+
+### Types that can be left-shifted.
+###
+### Shl is the trait for the << operator.
+trait Shl[Rhs = Self]:
+    ### The type of the result.
+    type Output
+
+    ### Shifts self left by rhs bits.
+    fn shl(self, rhs: Rhs) -> Self::Output
+
+### Types that can be right-shifted.
+###
+### Shr is the trait for the >> operator.
+trait Shr[Rhs = Self]:
+    ### The type of the result.
+    type Output
+
+    ### Shifts self right by rhs bits.
+    fn shr(self, rhs: Rhs) -> Self::Output
+
+### Types that can be incremented.
+###
+### Inc is for types that support incrementing.
+trait Inc:
+    ### Increments self by 1.
+    fn inc(self) -> Self
+
+### Types that can be decremented.
+###
+### Dec is for types that support decrementing.
+trait Dec:
+    ### Decrements self by 1.
+    fn dec(self) -> Self
+
+### Types that have an absolute value.
+###
+### Abs returns the absolute value.
+trait Abs:
+    ### Returns the absolute value of self.
+    fn abs(self) -> Self
+
+### Types that can be squared.
+###
+### Sqr returns the square of a value.
+trait Sqr:
+    ### Returns the square of self.
+    fn sqr(self) -> Self
+
+### Types that can be square rooted.
+###
+### Sqrt returns the square root.
+trait Sqrt:
+    ### The type of the result (may be different for integers).
+    type Output
+
+    ### Returns the square root of self.
+    fn sqrt(self) -> Self::Output
+
+### Types that can be raised to a power.
+###
+### Pow raises self to a power.
+trait Pow:
+    ### The type of the exponent.
+    type Exp
+
+    ### The type of the result.
+    type Output
+
+    ### Raises self to the power of exp.
+    fn pow(self, exp: Self::Exp) -> Self::Output
+
+### Types that can be compared and return min/max.
+###
+### MinMax provides min and max operations.
+trait MinMax:
+    ### Returns the minimum of self and other.
+    fn min(self, other: Self) -> Self
+
+    ### Returns the maximum of self and other.
+    fn max(self, other: Self) -> Self
+
+### Types that can be bounded.
+###
+### Bounded has minimum and maximum values.
+trait Bounded:
+    ### Returns the minimum possible value.
+    fn min_value() -> Self
+
+    ### Returns the maximum possible value.
+    fn max_value() -> Self
+
+### Types that have a zero value.
+###
+### Zero provides a zero value.
+trait Zero:
+    ### Returns zero.
+    fn zero() -> Self
+
+    ### Returns true if self is zero.
+    fn is_zero(self) -> bool
+
+### Types that have a one value.
+###
+### One provides a one value.
+trait One:
+    ### Returns one.
+    fn one() -> Self
+
+    ### Returns true if self is one.
+    fn is_one(self) -> bool
+
+### Types that can be summed.
+###
+### Sum is for types that can be summed over an iterator.
+trait Sum:
+    ### Returns the sum of an iterator.
+    fn sum[I](iter: I) -> Self where I: IntoIter[Item = Self]
+
+### Types that can be multiplied together.
+###
+### Product is for types that can be multiplied over an iterator.
+trait Product:
+    ### Returns the product of an iterator.
+    fn product[I](iter: I) -> Self where I: IntoIter[Item = Self]

@@ -1,0 +1,18 @@
+[package]
+name = "jet-rt-gc"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+libc.workspace = true
+crossbeam = { version = "0.8", optional = true }
+
+[features]
+default = ["scheduler-integration"]
+scheduler-integration = ["crossbeam"]
+
+[dev-dependencies]
+pretty_assertions.workspace = true

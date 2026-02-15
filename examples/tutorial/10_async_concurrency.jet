@@ -1,0 +1,278 @@
+# Tutorial 10: Async and Concurrency
+# Jet supports both async/await and structured concurrency.
+
+# ========== ASYNC FUNCTIONS ==========
+
+# An async function returns a Future that can be awaited
+async fn fetch_data(url: string) -> string ! NetworkError:
+    # Simulate network delay
+    await sleep(100)  # 100ms
+    return f"Data from {url}"
+
+async fn calculate_value(input: int) -> int:
+    await sleep(50)
+    return input * 2
+
+async fn process_items(items: [string]) -> [int] ! ProcessingError:
+    let mut results = []
+    for item in items:
+        let processed = await process_single(item)?
+        results.push(processed)
+    return results
+
+async fn process_single(item: string) -> int ! ProcessingError:
+    # Simulate processing
+    await sleep(10)
+    return item.len()
+
+# ========== CONCURRENT EXECUTION ==========
+
+# Spawn multiple tasks concurrently
+async fn fetch_multiple(urls: [string]) -> [string]:
+    concurrent:
+        # All spawns run concurrently
+        let task1 = spawn fetch_data(urls[0])
+        let task2 = spawn fetch_data(urls[1])
+        let task3 = spawn fetch_data(urls[2])
+
+        # Await all results
+        let result1 = await task1
+        let result2 = await task2
+        let result3 = await task3
+
+        return [result1, result2, result3]
+
+# Concurrent with error handling
+async fn fetch_with_fallback(urls: [string]) -> string:
+    concurrent:
+        # Race to get first successful result
+        let tasks = []
+        for url in urls:
+            tasks.push(spawn fetch_data(url))
+
+        # Wait for any to complete
+        let mut result = ""
+        for task in tasks:
+            match await task:
+                | Ok(data) =>
+                    result = data
+                    break  # Use first successful
+                | Err(_) => continue
+
+        return result
+
+# ========== CHANNELS ==========
+
+# Channels for communication between tasks
+async fn producer(tx: Sender[int]):
+    for i in 0..10:
+        await tx.send(i)
+        await sleep(10)
+    tx.close()
+
+async fn consumer(rx: Receiver[int]):
+    let mut sum = 0
+    while let Some(value) = await rx.recv():
+        sum = sum + value
+        print(f"Received: {value}, Sum: {sum}")
+    print(f"Final sum: {sum}")
+
+async fn channel_example():
+    let (tx, rx) = channel[int]()
+
+    concurrent:
+        spawn producer(tx)
+        spawn consumer(rx)
+
+# ========== SYNCHRONIZATION PRIMITIVES ==========
+
+# Mutex for shared state
+async fn mutex_example():
+    let counter = Mutex::new(0)
+
+    concurrent:
+        # Spawn 10 tasks that increment counter
+        for _ in 0..10:
+            spawn increment(counter)
+
+async fn increment(counter: Mutex[int]):
+    # Lock mutex, increment, auto-release
+    let mut guard = await counter.lock()
+    let current = *guard
+    *guard = current + 1
+    print(f"Counter: {*guard}")
+    # Lock released when guard goes out of scope
+
+# Read-Write Lock
+async fn rwlock_example():
+    let data = RwLock::new([1, 2, 3, 4, 5])
+
+    concurrent:
+        # Multiple readers
+        for _ in 0..5:
+            spawn reader(data)
+
+        # Single writer
+        spawn writer(data)
+
+async fn reader(data: RwLock[[int]]):
+    let guard = await data.read()
+    print(f"Read: {*guard}")
+
+async fn writer(data: RwLock[[int]]):
+    let mut guard = await data.write()
+    guard.push(6)
+    print(f"Wrote: {*guard}")
+
+# ========== STRUCTURED CONCURRENCY ==========
+
+# Tasks in a concurrent block complete together
+async fn structured_example():
+    concurrent:
+        # Parent waits for all children
+        spawn task_a()
+        spawn task_b()
+        spawn task_c()
+
+    print("All tasks completed!")
+
+async fn task_a():
+    await sleep(100)
+    print("Task A done")
+
+async fn task_b():
+    await sleep(150)
+    print("Task B done")
+
+async fn task_c():
+    await sleep(50)
+    print("Task C done")
+
+# Scoped concurrency with results
+async fn parallel_map[T, U](items: [T], f: async fn(T) -> U) -> [U]:
+    concurrent:
+        let mut tasks = []
+        for item in items:
+            tasks.push(spawn f(item))
+
+        let mut results = []
+        for task in tasks:
+            results.push(await task)
+
+        return results
+
+# ========== ERROR HANDLING IN ASYNC ==========
+
+enum NetworkError:
+    | Timeout
+    | ConnectionFailed
+    | InvalidResponse
+
+enum ProcessingError:
+    | InvalidInput
+    | ComputationFailed
+
+# Propagating errors through async
+async fn retry_with_backoff[T](
+    operation: async fn() -> T ! NetworkError,
+    max_retries: int
+) -> T ! NetworkError:
+    let mut delay = 100  # Start with 100ms
+
+    for attempt in 0..max_retries:
+        match await operation():
+            | Ok(result) => return result
+            | Err(e) =>
+                if attempt == max_retries - 1:
+                    raise e
+                print(f"Attempt {attempt + 1} failed, retrying in {delay}ms...")
+                await sleep(delay)
+                delay = delay * 2  # Exponential backoff
+
+# ========== SELECT ==========
+
+# Wait for multiple operations, respond to first ready
+async fn select_example():
+    let (tx1, rx1) = channel[string]()
+    let (tx2, rx2) = channel[string]()
+
+    concurrent:
+        spawn slow_sender(tx1, "from first", 200)
+        spawn slow_sender(tx2, "from second", 100)
+
+        # Select waits for first available
+        select:
+            | msg = rx1.recv() => print(f"Got from first: {msg}")
+            | msg = rx2.recv() => print(f"Got from second: {msg}")
+
+async fn slow_sender(tx: Sender[string], msg: string, delay: int):
+    await sleep(delay)
+    await tx.send(msg)
+
+# ========== TIMEOUTS ==========
+
+async fn with_timeout[T](
+    operation: async fn() -> T,
+    timeout_ms: int
+) -> Result[T, TimeoutError]:
+    select:
+        | result = operation() => Ok(result)
+        | _ = sleep(timeout_ms) => Err(TimeoutError)
+
+enum TimeoutError:
+    | TimedOut
+
+# ========== MAIN DEMO ==========
+
+fn main():
+    print("=== Async and Concurrency Demo ===\n")
+
+    print("Note: This demo shows async syntax.")
+    print("In a real runtime, these would execute concurrently.\n")
+
+    print("1. Basic async function:")
+    print("   async fn fetch_data(url) -> string")
+    print("   Returns a Future that can be awaited\n")
+
+    print("2. Concurrent execution with 'concurrent' block:")
+    print("   concurrent:")
+    print("       spawn task1()")
+    print("       spawn task2()")
+    print("       spawn task3()")
+    print("   # All tasks run concurrently, block waits for all\n")
+
+    print("3. Channels for task communication:")
+    print("   let (tx, rx) = channel[int]()")
+    print("   await tx.send(value)")
+    print("   let value = await rx.recv()\n")
+
+    print("4. Mutex for shared state:")
+    print("   let counter = Mutex::new(0)")
+    print("   let guard = await counter.lock()")
+    print("   *guard = *guard + 1")
+    print("   # Auto-released when guard drops\n")
+
+    print("5. Select for multiple operations:")
+    print("   select:")
+    print("       | msg = rx1.recv() => handle(msg)")
+    print("       | msg = rx2.recv() => handle(msg)")
+    print("       | _ = timeout()    => handle_timeout()\n")
+
+    print("6. Error handling in async:")
+    print("   async fn may_fail() -> Result[T, Error]:")
+    print("       let result = await operation()?")
+    print("       # ? propagates errors\n")
+
+    print("Key concepts:")
+    print("- async fn returns a Future (not yet executing)")
+    print("- await yields control, resumes when ready")
+    print("- concurrent blocks provide structured concurrency")
+    print("- Tasks spawned in concurrent block are children")
+    print("- Parent waits for all children to complete")
+    print("- Cancellation propagates through task hierarchy\n")
+
+    # Exercise: Write an async function that:
+    # 1. Fetches data from 3 URLs concurrently
+    # 2. Uses a channel to send results to a processor
+    # 3. The processor counts total bytes received
+    # 4. Returns the count, or times out after 5 seconds

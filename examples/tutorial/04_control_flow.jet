@@ -1,0 +1,100 @@
+# Tutorial 4: Control Flow
+# Control flow determines which code runs and when.
+
+fn main():
+    # ========== IF/ELSE ==========
+    let score = 85
+
+    if score >= 90:
+        print("Grade: A")
+    elif score >= 80:
+        print("Grade: B")
+    elif score >= 70:
+        print("Grade: C")
+    elif score >= 60:
+        print("Grade: D")
+    else:
+        print("Grade: F")
+
+    # If as an expression
+    let age = 20
+    let category = if age < 13:
+        "child"
+    elif age < 20:
+        "teenager"
+    else:
+        "adult"
+    print(f"Category: {category}")
+
+    # ========== LOOPS ==========
+
+    # While loop - continues while condition is true
+    print("\nWhile loop:")
+    let mut count = 0
+    while count < 5:
+        print(f"Count: {count}")
+        count = count + 1
+
+    # For loop with range
+    print("\nFor loop with range:")
+    for i in 0..5:
+        print(f"i = {i}")
+
+    # Range inclusive (includes end value)
+    print("\nInclusive range:")
+    for i in 0..=5:
+        print(f"i = {i}")
+
+    # Iterate over array
+    print("\nIterating over array:")
+    let colors = ["red", "green", "blue"]
+    for color in colors:
+        print(f"Color: {color}")
+
+    # Iterate with index
+    print("\nWith index:")
+    for i, color in colors.enumerate():
+        print(f"{i}: {color}")
+
+    # ========== LOOP CONTROL ==========
+
+    # 'break' exits the loop
+    print("\nBreak example:")
+    for i in 0..10:
+        if i == 5:
+            break
+        print(f"{i}")
+
+    # 'continue' skips to next iteration
+    print("\nContinue example (skip evens):")
+    for i in 0..10:
+        if i % 2 == 0:
+            continue
+        print(f"{i}")
+
+    # ========== MATCH ==========
+    print("\nMatch statement:")
+    let day = "Tuesday"
+
+    match day:
+        | "Monday" => print("Start of work week")
+        | "Friday" => print("Almost weekend!")
+        | "Saturday" | "Sunday" => print("Weekend!")
+        | _ => print("Mid-week day")
+
+    # Match with guards
+    print("\nMatch with guards:")
+    let temperature = 75
+
+    match temperature:
+        | t if t < 32 => print("Freezing!")
+        | t if t < 60 => print("Cold")
+        | t if t < 80 => print("Comfortable")
+        | t if t < 100 => print("Hot")
+        | _ => print("Extreme!")
+
+    # Exercise: Write a FizzBuzz program using a loop and if/else
+    # Print numbers 1-30, but:
+    #   - "Fizz" for multiples of 3
+    #   - "Buzz" for multiples of 5
+    #   - "FizzBuzz" for multiples of both

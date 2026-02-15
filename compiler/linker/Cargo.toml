@@ -1,0 +1,32 @@
+[package]
+name = "jet-linker"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+jet-diagnostics = { path = "../diagnostics" }
+jet-ir = { path = "../ir" }
+jet-lexer = { path = "../lexer" }
+jet-parser = { path = "../parser" }
+jet-resolve = { path = "../resolve" }
+jet-typeck = { path = "../typeck" }
+jet-lower = { path = "../lower" }
+jet-codegen = { path = "../codegen" }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+serde = { workspace = true }
+serde_json = "1.0"
+tokio = { version = "1", features = ["process", "rt", "macros", "sync"] }
+sha2 = "0.10"
+hex = "0.4"
+walkdir = "2"
+tempfile = "3"
+num_cpus = "1"
+inkwell = { workspace = true }
+
+[dev-dependencies]
+pretty_assertions.workspace = true
+tempfile = "3"

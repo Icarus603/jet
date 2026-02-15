@@ -1,0 +1,18 @@
+# Default owners for everything in the repo
+* @jet-lang/core-team
+
+# CI/CD workflows require infrastructure team review
+/.github/workflows/ @jet-lang/infrastructure-team
+/.github/CODEOWNERS @jet-lang/infrastructure-team
+
+# Cargo and build configuration
+/Cargo.toml @jet-lang/core-team @jet-lang/infrastructure-team
+/Cargo.lock @jet-lang/core-team @jet-lang/infrastructure-team
+/packaging/ @jet-lang/infrastructure-team
+/scripts/ @jet-lang/infrastructure-team
+
+# Security-sensitive files
+/.cargo/ @jet-lang/infrastructure-team
+/runtime/ffi/ @jet-lang/security-team @jet-lang/core-team
+/runtime/gc/ @jet-lang/core-team
+/runtime/sched/ @jet-lang/core-team

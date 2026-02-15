@@ -1,0 +1,25 @@
+# Build artifacts
+/target/
+**/*.rmeta
+**/*.profraw
+**/*.profdata
+
+# Temporary local test projects and scratch outputs
+/test_project/
+/warnings.txt
+/test_*.jet
+
+# OS/editor noise
+.DS_Store
+*.swp
+*.swo
+*.tmp
+
+# Local AI/IDE settings
+.claude/settings.local.json
+.idea/
+.zed/
+
+# Keep shared workspace settings if intentionally versioned
+.vscode/*
+!.vscode/settings.json

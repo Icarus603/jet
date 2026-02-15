@@ -1,0 +1,113 @@
+# Concurrency example
+# Demonstrates spawn, channels, and structured concurrency
+
+import std::sync::chan
+import std::time
+
+# Worker function that processes items
+fn worker(id: int, receiver: chan[int]) -> string ! chan::RecvError:
+    let mut processed = 0
+    loop:
+        match receiver.recv():
+            Ok(item):
+                print(f"Worker {id} processing item {item}")
+                time::sleep(100)  # Simulate work
+                processed += 1
+            Err(chan::RecvError::Closed):
+                break
+    return f"Worker {id} processed {processed} items"
+
+# Producer function that generates work
+fn producer(sender: chan[int], count: int) -> int ! chan::SendError:
+    for i in 0..count:
+        sender.send(i)?
+        print(f"Produced item {i}")
+    return count
+
+# Example: Basic spawn
+fn basic_spawn_example():
+    print("=== Basic Spawn Example ===")
+
+    let handle = spawn:
+        print("Hello from spawned task!")
+        42
+
+    match handle.await():
+        Ok(result) -> print(f"Spawned task returned: {result}")
+        Err(e) -> print(f"Task failed: {e}")
+
+# Example: Channel communication
+fn channel_example():
+    print("\n=== Channel Example ===")
+
+    let (sender, receiver) = chan::new(10)  # Buffer size 10
+
+    # Spawn producer
+    let producer_handle = spawn producer(sender, 5)
+
+    # Spawn consumers
+    let worker1 = spawn worker(1, receiver.clone())
+    let worker2 = spawn worker(2, receiver.clone())
+
+    # Wait for producer to finish
+    let produced = producer_handle.await()?
+    print(f"Total produced: {produced}")
+
+    # Close channel to signal workers to stop
+    receiver.close()
+
+    # Collect results from workers
+    let result1 = worker1.await()?
+    let result2 = worker2.await()?
+    print(result1)
+    print(result2)
+
+# Example: Structured concurrency
+fn concurrent_example():
+    print("\n=== Structured Concurrency Example ===")
+
+    let results = concurrent:
+        # All tasks in this block run concurrently
+        let task1 = spawn compute_value(1, 100)
+        let task2 = spawn compute_value(2, 200)
+        let task3 = spawn compute_value(3, 300)
+
+        # Results are collected when block ends
+        [task1.await()?, task2.await()?, task3.await()?]
+
+    print(f"Concurrent results: {results}")
+
+# Helper function for concurrent example
+fn compute_value(id: int, delay_ms: int) -> int:
+    print(f"Task {id} starting...")
+    time::sleep(delay_ms)
+    print(f"Task {id} done!")
+    return id * 10
+
+# Example: Select statement
+fn select_example():
+    print("\n=== Select Example ===")
+
+    let (ch1, ch2) = (chan::new(1), chan::new(1))
+
+    spawn:
+        time::sleep(100)
+        ch1.send(1)
+
+    spawn:
+        time::sleep(200)
+        ch2.send(2)
+
+    # Wait for first channel to receive
+    select:
+        ch1.recv() as value -> print(f"Received from ch1: {value}")
+        ch2.recv() as value -> print(f"Received from ch2: {value}")
+        500ms -> print("Timeout!")
+
+fn main():
+    basic_spawn_example()
+    channel_example()
+    concurrent_example()
+    select_example()
+
+    print("\nAll concurrency examples completed!")

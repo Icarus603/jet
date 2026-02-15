@@ -1,0 +1,303 @@
+### Tests for the Vec type
+
+import collections::vec
+import core::option::{Some, None}
+
+@test
+fn test_vec_new():
+    let v = Vec.new()
+    assert v.len() == 0
+    assert v.is_empty() == true
+
+@test
+fn test_vec_with_capacity():
+    let v = Vec.with_capacity(10)
+    assert v.len() == 0
+    assert v.is_empty() == true
+    assert v.capacity() >= 10
+
+@test
+fn test_vec_push():
+    let mut v = Vec.new()
+    v.push(1)
+    assert v.len() == 1
+    assert v.is_empty() == false
+    v.push(2)
+    assert v.len() == 2
+
+@test
+fn test_vec_pop():
+    let mut v = Vec.new()
+    v.push(1)
+    v.push(2)
+    v.push(3)
+    assert v.len() == 3
+    assert v.pop() == Some(3)
+    assert v.pop() == Some(2)
+    assert v.pop() == Some(1)
+    assert v.pop() == None
+    assert v.len() == 0
+
+@test
+fn test_vec_get():
+    let mut v = Vec.new()
+    v.push(10)
+    v.push(20)
+    v.push(30)
+    assert v.get(0) == Some(10)
+    assert v.get(1) == Some(20)
+    assert v.get(2) == Some(30)
+    assert v.get(3) == None
+
+@test
+fn test_vec_first():
+    let mut v = Vec.new()
+    assert v.first() == None
+    v.push(42)
+    assert v.first() == Some(42)
+    v.push(100)
+    assert v.first() == Some(42)
+
+@test
+fn test_vec_last():
+    let mut v = Vec.new()
+    assert v.last() == None
+    v.push(42)
+    assert v.last() == Some(42)
+    v.push(100)
+    assert v.last() == Some(100)
+
+@test
+fn test_vec_clear():
+    let mut v = Vec.new()
+    v.push(1)
+    v.push(2)
+    v.push(3)
+    v.clear()
+    assert v.len() == 0
+    assert v.is_empty() == true
+
+@test
+fn test_vec_reserve():
+    let mut v = Vec.new()
+    v.reserve(100)
+    assert v.capacity() >= 100
+
+@test
+fn test_vec_from_array():
+    let arr = [1, 2, 3, 4, 5]
+    let v = Vec.from_array(arr)
+    assert v.len() == 5
+    assert v.get(0) == Some(1)
+    assert v.get(4) == Some(5)
+
+@test
+fn test_vec_remove():
+    let mut v = Vec.new()
+    v.push(1)
+    v.push(2)
+    v.push(3)
+    assert v.remove(1) == Some(2)
+    assert v.len() == 2
+    assert v.get(0) == Some(1)
+    assert v.get(1) == Some(3)
+
+@test
+fn test_vec_remove_out_of_bounds():
+    let mut v = Vec.new()
+    v.push(1)
+    assert v.remove(5) == None
+
+@test
+fn test_vec_insert():
+    let mut v = Vec.new()
+    v.push(1)
+    v.push(3)
+    v.insert(1, 2)
+    assert v.len() == 3
+    assert v.get(0) == Some(1)
+    assert v.get(1) == Some(2)
+    assert v.get(2) == Some(3)
+
+@test
+fn test_vec_append():
+    let mut v1 = Vec.new()
+    v1.push(1)
+    v1.push(2)
+    let mut v2 = Vec.new()
+    v2.push(3)
+    v2.push(4)
+    v1.append(v2)
+    assert v1.len() == 4
+    assert v1.get(0) == Some(1)
+    assert v1.get(3) == Some(4)
+
+@test
+fn test_vec_contains():
+    let mut v = Vec.new()
+    v.push(1)
+    v.push(2)
+    v.push(3)
+    assert v.contains(2) == true
+    assert v.contains(5) == false
+
+@test
+fn test_vec_index_of():
+    let mut v = Vec.new()
+    v.push(10)
+    v.push(20)
+    v.push(30)
+    assert v.index_of(20) == Some(1)
+    assert v.index_of(50) == None
+
+@test
+fn test_vec_map():
+    let mut v = Vec.new()
+    v.push(1)
+    v.push(2)
+    v.push(3)
+    let doubled = v.map(|x| x * 2)
+    assert doubled.len() == 3
+    assert doubled.get(0) == Some(2)
+    assert doubled.get(1) == Some(4)
+    assert doubled.get(2) == Some(6)
+
+@test
+fn test_vec_filter():
+    let mut v = Vec.new()
+    v.push(1)
+    v.push(2)
+    v.push(3)
+    v.push(4)
+    let evens = v.filter(|x| x % 2 == 0)
+    assert evens.len() == 2
+    assert evens.get(0) == Some(2)
+    assert evens.get(1) == Some(4)
+
+@test
+fn test_vec_find():
+    let mut v = Vec.new()
+    v.push(1)
+    v.push(2)
+    v.push(3)
+    assert v.find(|x| x > 1) == Some(2)
+    assert v.find(|x| x > 5) == None
+
+@test
+fn test_vec_fold():
+    let mut v = Vec.new()
+    v.push(1)
+    v.push(2)
+    v.push(3)
+    let sum = v.fold(0, |acc, x| acc + x)
+    assert sum == 6
+
+@test
+fn test_vec_reverse():
+    let mut v = Vec.new()
+    v.push(1)
+    v.push(2)
+    v.push(3)
+    v.reverse()
+    assert v.get(0) == Some(3)
+    assert v.get(1) == Some(2)
+    assert v.get(2) == Some(1)
+
+@test
+fn test_vec_slice():
+    let mut v = Vec.new()
+    v.push(1)
+    v.push(2)
+    v.push(3)
+    v.push(4)
+    v.push(5)
+    let s = v.slice(1, 4)
+    assert s.len() == 3
+    assert s.get(0) == Some(2)
+    assert s.get(1) == Some(3)
+    assert s.get(2) == Some(4)
+
+@test
+fn test_vec_sort():
+    let mut v = Vec.new()
+    v.push(3)
+    v.push(1)
+    v.push(4)
+    v.push(1)
+    v.push(5)
+    v.sort()
+    assert v.get(0) == Some(1)
+    assert v.get(1) == Some(1)
+    assert v.get(2) == Some(3)
+    assert v.get(3) == Some(4)
+    assert v.get(4) == Some(5)
+
+@test
+fn test_vec_iteration():
+    let mut v = Vec.new()
+    v.push(1)
+    v.push(2)
+    v.push(3)
+    let mut sum = 0
+    for item in v:
+        sum += item
+    assert sum == 6
+
+@test
+fn test_vec_iter():
+    let mut v = Vec.new()
+    v.push(1)
+    v.push(2)
+    v.push(3)
+    let mut iter = v.iter()
+    assert iter.next() == Some(1)
+    assert iter.next() == Some(2)
+    assert iter.next() == Some(3)
+    assert iter.next() == None
+
+@test
+fn test_vec_extend():
+    let mut v = Vec.new()
+    v.push(1)
+    let other = Vec.new()
+    other.push(2)
+    other.push(3)
+    v.extend(other)
+    assert v.len() == 3
+    assert v.get(0) == Some(1)
+    assert v.get(1) == Some(2)
+    assert v.get(2) == Some(3)
+
+@test
+fn test_vec_from_iter():
+    let mut source = Vec.new()
+    source.push(1)
+    source.push(2)
+    source.push(3)
+    let v = Vec.from_iter(source)
+    assert v.len() == 3
+    assert v.get(0) == Some(1)
+    assert v.get(2) == Some(3)
+
+@test
+fn test_vec_growth():
+    let mut v = Vec.new()
+    for i in 0..100:
+        v.push(i)
+    assert v.len() == 100
+    for i in 0..100:
+        assert v.get(i) == Some(i)
+
+@test
+fn test_vec_empty_pop():
+    let mut v: Vec[int] = Vec.new()
+    assert v.pop() == None
+
+@test
+fn test_vec_shrink_to_fit():
+    let mut v = Vec.with_capacity(100)
+    v.push(1)
+    v.push(2)
+    v.shrink_to_fit()
+    assert v.len() == 2
+    assert v.capacity() >= 2

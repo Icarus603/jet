@@ -1,0 +1,92 @@
+### Jet Standard Library - Core Module
+###
+### This module provides the fundamental types and traits for the Jet programming language.
+### It includes Option, Result, core traits, and common error types.
+
+# Core types for handling optional values
+export Option
+export Some
+export None
+
+# Core types for handling fallible operations
+export Result
+export Ok
+export Err
+
+# Core traits for type capabilities
+export Eq
+export Ord
+export Ordering
+export Show
+export ToString
+export FromStr
+export Clone
+export Copy
+export Hash
+export Hasher
+export Send
+export Sync
+export Drop
+export Default
+export From
+export Into
+export TryFrom
+export TryInto
+export Deref
+export DerefMut
+export IntoIter
+export Iter
+export IterMut
+export Index
+export IndexMut
+export Len
+export Extend
+export FromIter
+export PartialEq
+export PartialOrd
+
+# Operator traits
+export Add
+export Sub
+export Mul
+export Div
+export Rem
+export Neg
+export Not
+export BitAnd
+export BitOr
+export BitXor
+export Shl
+export Shr
+
+# Numeric traits
+export Inc
+export Dec
+export Abs
+export Sqr
+export Sqrt
+export Pow
+export MinMax
+export Bounded
+export Zero
+export One
+export Sum
+export Product
+
+# Error types
+export UnwrapError
+export Error
+export InvalidArgumentError
+export UnsupportedOperationError
+export OutOfBoundsError
+export EmptyError
+export ConversionError
+export IOError
+export TimeoutError
+export CancelledError
+
+# Import the modules
+import option
+import result
+import traits
+import error

@@ -1,0 +1,16 @@
+[package]
+name = "jet-lower"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+jet-ir = { path = "../ir" }
+jet-parser = { path = "../parser" }
+jet-lexer = { path = "../lexer" }
+jet-diagnostics = { path = "../diagnostics" }
+
+[dev-dependencies]
+pretty_assertions.workspace = true

@@ -1,0 +1,10 @@
+{
+  "rust-analyzer.check.command": "check",
+  "rust-analyzer.cargo.allFeatures": false,
+  "rust-analyzer.cargo.extraEnv": {
+    "LLVM_SYS_211_PREFIX": "/opt/homebrew/opt/llvm@21"
+  },
+  "rust-analyzer.check.extraEnv": {
+    "LLVM_SYS_211_PREFIX": "/opt/homebrew/opt/llvm@21"
+  }
+}

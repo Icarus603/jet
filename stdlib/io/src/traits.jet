@@ -1,0 +1,281 @@
+### I/O traits for Jet.
+###
+### This module provides the core I/O traits: Read, Write, and Seek.
+
+import core::option::{Option, Some, None}
+import core::result::{Result, Ok, Err}
+import collections::Vec
+
+### The Read trait allows reading bytes from a source.
+###
+### Types that implement Read can be used with buffered readers and
+### provide methods for reading bytes into buffers.
+trait Read:
+    ### Reads bytes from the source into a buffer.
+    ###
+    ### Returns the number of bytes read, or 0 if the end of the source is reached.
+    fn read(self, buf: &mut [u8]) -> Result[usize, Error] ! io
+
+    ### Reads exactly enough bytes to fill the buffer.
+    ###
+    ### Returns an error if the source ends before filling the buffer.
+    fn read_exact(self, buf: &mut [u8]) -> Result[unit, Error] ! io:
+        let mut total_read = 0
+        let buf_len = buf.len()
+
+        while total_read < buf_len:
+            match self.read(buf[total_read..]):
+                Ok(0) -> return Err(Error.unexpected_eof())
+                Ok(n) -> total_read += n
+                Err(e) -> return Err(e)
+
+        Ok(())
+
+    ### Reads all bytes from the source into a vector.
+    fn read_to_end(self) -> Result[Vec[u8], Error] ! io:
+        let result = Vec.new()
+        let mut buf = [0u8; 1024]
+
+        loop:
+            match self.read(&mut buf):
+                Ok(0) -> break
+                Ok(n) ->
+                    for i in 0..n:
+                        result.push(buf[i])
+                Err(e) -> return Err(e)
+
+        Ok(result)
+
+    ### Reads all bytes from the source into a string.
+    fn read_to_string(self) -> Result[string, Error] ! io:
+        let bytes = self.read_to_end()?
+        # Convert bytes to string (UTF-8 validation would happen here)
+        Ok("")  # Placeholder - would convert bytes to string
+
+    ### Returns an iterator over the bytes of this source.
+    fn bytes(self) -> Bytes[Self]:
+        Bytes { reader: self }
+
+    /// Chains this reader with another reader.
+    fn chain[R](self, next: R) -> Chain[Self, R]:
+        Chain { first: self, second: next, first_done: false }
+
+    ### Takes a limited number of bytes from this reader.
+    fn take(self, limit: u64) -> Take[Self]:
+        Take { reader: self, limit: limit, remaining: limit }
+
+### The Write trait allows writing bytes to a destination.
+###
+### Types that implement Write can be used with buffered writers and
+### provide methods for writing bytes from buffers.
+trait Write:
+    ### Writes a buffer to the destination.
+    ###
+    ### Returns the number of bytes written.
+    fn write(self, buf: &[u8]) -> Result[usize, Error] ! io
+
+    ### Flushes the destination, ensuring all written data is persisted.
+    fn flush(self) -> Result[unit, Error] ! io
+
+    ### Writes all bytes from the buffer.
+    ###
+    ### Returns an error if not all bytes could be written.
+    fn write_all(self, buf: &[u8]) -> Result[unit, Error] ! io:
+        let mut total_written = 0
+        let buf_len = buf.len()
+
+        while total_written < buf_len:
+            match self.write(buf[total_written..]):
+                Ok(0) -> return Err(Error.write_zero())
+                Ok(n) -> total_written += n
+                Err(e) -> return Err(e)
+
+        Ok(())
+
+    ### Writes a formatted string.
+    fn write_fmt(self, fmt: Formatter) -> Result[unit, Error] ! io:
+        let s = fmt.to_string()
+        self.write_all(s.as_bytes())
+
+    ### Returns a reference to this writer.
+    fn by_ref(self) -> &Self:
+        &self
+
+### The Seek trait allows seeking to positions in a byte stream.
+###
+### Types that implement Seek can navigate to specific positions
+### within the stream.
+trait Seek:
+    ### Seeks to a position in the stream.
+    ###
+    ### Returns the new position from the start of the stream.
+    fn seek(self, pos: SeekFrom) -> Result[u64, Error] ! io
+
+    ### Rewinds to the beginning of the stream.
+    fn rewind(self) -> Result[unit, Error] ! io:
+        self.seek(SeekFrom::Start(0))?
+        Ok(())
+
+    ### Returns the current position in the stream.
+    fn stream_position(self) -> Result[u64, Error] ! io:
+        self.seek(SeekFrom::Current(0))
+
+### Specifies a seek position.
+enum SeekFrom:
+    ### Seek from the start of the stream.
+    Start(u64)
+    ### Seek from the end of the stream.
+    End(i64)
+    ### Seek from the current position.
+    Current(i64)
+
+### An iterator over the bytes of a reader.
+struct Bytes[R]:
+    reader: R
+
+impl[R: Read] Bytes[R]:
+    ### Returns the next byte from the reader.
+    fn next(mut self) -> Option[Result[u8, Error] ! io]:
+        let mut buf = [0u8; 1]
+        match self.reader.read(&mut buf):
+            Ok(0) -> None
+            Ok(_) -> Some(Ok(buf[0]))
+            Err(e) -> Some(Err(e))
+
+### A chain of two readers.
+struct Chain[R1, R2]:
+    first: R1
+    second: R2
+    first_done: bool
+
+impl[R1: Read, R2: Read] Chain[R1, R2]:
+    ### Reads from the chain.
+    fn read(mut self, buf: &mut [u8]) -> Result[usize, Error] ! io:
+        if not self.first_done:
+            match self.first.read(buf):
+                Ok(0) ->
+                    self.first_done = true
+                    self.second.read(buf)
+                Ok(n) -> Ok(n)
+                Err(e) -> Err(e)
+        else:
+            self.second.read(buf)
+
+### A reader that limits the number of bytes read.
+struct Take[R]:
+    reader: R
+    limit: u64
+    remaining: u64
+
+impl[R: Read] Take[R]:
+    ### Reads from the limited reader.
+    fn read(mut self, buf: &mut [u8]) -> Result[usize, Error] ! io:
+        if self.remaining == 0:
+            return Ok(0)
+
+        let max_read = min(buf.len() as u64, self.remaining) as usize
+        let mut limited_buf = &mut buf[0..max_read]
+
+        match self.reader.read(limited_buf):
+            Ok(n) ->
+                self.remaining -= n as u64
+                Ok(n)
+            Err(e) -> Err(e)
+
+    ### Returns the number of bytes remaining.
+    fn limit(self) -> u64:
+        self.remaining
+
+    ### Sets the limit for this reader.
+    fn set_limit(mut self, limit: u64):
+        self.remaining = limit
+
+    ### Returns the inner reader.
+    fn into_inner(self) -> R:
+        self.reader
+
+### A slice of bytes that implements Read.
+struct Cursor[T]:
+    inner: T
+    pos: u64
+
+impl Cursor[Vec[u8]]:
+    ### Creates a new cursor over a byte vector.
+    fn new(vec: Vec[u8]) -> Cursor[Vec[u8]]:
+        Cursor { inner: vec, pos: 0 }
+
+    ### Returns the current position.
+    fn position(self) -> u64:
+        self.pos
+
+    ### Sets the current position.
+    fn set_position(mut self, pos: u64):
+        self.pos = pos
+
+    ### Returns the inner vector.
+    fn into_inner(self) -> Vec[u8]:
+        self.inner
+
+impl Read for Cursor[Vec[u8]]:
+    fn read(mut self, buf: &mut [u8]) -> Result[usize, Error] ! io:
+        let inner_len = self.inner.len() as u64
+        let start = self.pos
+
+        if start >= inner_len:
+            return Ok(0)
+
+        let remaining = inner_len - start
+        let to_read = min(buf.len() as u64, remaining) as usize
+
+        for i in 0..to_read:
+            buf[i] = self.inner[(start as usize) + i]
+
+        self.pos += to_read as u64
+        Ok(to_read)
+
+impl Write for Cursor[Vec[u8]]:
+    fn write(mut self, buf: &[u8]) -> Result[usize, Error] ! io:
+        let start = self.pos as usize
+        let buf_len = buf.len()
+
+        # Ensure the vector has enough capacity
+        let required_len = start + buf_len
+        if required_len > self.inner.len():
+            self.inner.reserve(required_len - self.inner.len())
+            # In a real implementation, we'd extend the vector
+
+        for i in 0..buf_len:
+            if start + i < self.inner.len():
+                self.inner[start + i] = buf[i]
+            else:
+                self.inner.push(buf[i])
+
+        self.pos += buf_len as u64
+        Ok(buf_len)
+
+    fn flush(self) -> Result[unit, Error] ! io:
+        Ok(())
+
+impl Seek for Cursor[Vec[u8]]:
+    fn seek(mut self, pos: SeekFrom) -> Result[u64, Error] ! io:
+        let new_pos = match pos:
+            SeekFrom::Start(n) -> n
+            SeekFrom::End(n) ->
+                let inner_len = self.inner.len() as i64
+                let target = inner_len + n
+                if target < 0:
+                    return Err(Error.invalid_input("seek before start"))
+                target as u64
+            SeekFrom::Current(n) ->
+                let current = self.pos as i64
+                let target = current + n
+                if target < 0:
+                    return Err(Error.invalid_input("seek before start"))
+                target as u64
+
+        self.pos = new_pos
+        Ok(new_pos)
+
+### Helper function to get the minimum of two values.
+fn min[T: Ord](a: T, b: T) -> T:
+    if a < b { a } else { b }

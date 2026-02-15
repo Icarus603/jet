@@ -1,0 +1,320 @@
+### Path manipulation for Jet.
+###
+### This module provides cross-platform path handling.
+
+import core::option::{Option, Some, None}
+import collections::Vec
+
+### A path slice (borrowed).
+###
+### Similar to &str for strings, Path is a borrowed path.
+type Path = {
+    # In a real implementation, this would be a reference to path data
+    path: string
+}
+
+### An owned, mutable path.
+###
+### Similar to String for strings, PathBuf is an owned path.
+type PathBuf = {
+    path: string
+}
+
+impl Path:
+    ### Creates a Path from a string.
+    fn new(path: string) -> Path:
+        Path { path: path }
+
+    ### Returns the path as a string.
+    fn as_str(self) -> string:
+        self.path
+
+    ### Returns true if the path is absolute.
+    fn is_absolute(self) -> bool:
+        # Unix: starts with /
+        # Windows: starts with drive letter or UNC
+        self.path.starts_with("/") or
+        (self.path.len() >= 2 and self.path.char_at(1) == ':')
+
+    ### Returns true if the path is relative.
+    fn is_relative(self) -> bool:
+        not self.is_absolute()
+
+    ### Returns the parent directory.
+    fn parent(self) -> Option[Path]:
+        match self.path.rfind('/'):
+            Some(idx) ->
+                if idx == 0:
+                    Some(Path { path: "/" })
+                else:
+                    Some(Path { path: self.path.slice(0, idx) })
+            None ->
+                if self.path.len() >= 2 and self.path.char_at(1) == ':':
+                    # Windows drive letter
+                    Some(Path { path: self.path.slice(0, 2) })
+                else:
+                    None
+
+    ### Returns the file name component.
+    fn file_name(self) -> Option[string]:
+        match self.path.rfind('/'):
+            Some(idx) ->
+                Some(self.path.slice(idx + 1, self.path.len()))
+            None ->
+                Some(self.path)
+
+    ### Returns the file stem (name without extension).
+    fn file_stem(self) -> Option[string]:
+        match self.file_name():
+            Some(name) ->
+                match name.rfind('.'):
+                    Some(idx) ->
+                        if idx == 0:
+                            Some(name)  # Hidden file like .gitignore
+                        else:
+                            Some(name.slice(0, idx))
+                    None -> Some(name)
+            None -> None
+
+    ### Returns the extension.
+    fn extension(self) -> Option[string]:
+        match self.file_name():
+            Some(name) ->
+                match name.rfind('.'):
+                    Some(idx) ->
+                        if idx == 0:
+                            None  # Hidden file
+                        else:
+                            Some(name.slice(idx + 1, name.len()))
+                    None -> None
+            None -> None
+
+    ### Returns true if the path has an extension.
+    fn has_extension(self) -> bool:
+        self.extension().is_some()
+
+    ### Returns the components of the path.
+    fn components(self) -> Vec[string]:
+        let parts = Vec.new()
+        let current = ""
+        for c in self.path.chars():
+            if c == '/' or c == '\\':
+                if not current.is_empty():
+                    parts.push(current)
+                    current = ""
+            else:
+                current += c.to_string()
+        if not current.is_empty():
+            parts.push(current)
+        parts
+
+    ### Joins this path with another path.
+    fn join(self, other: Path) -> PathBuf:
+        if other.is_absolute():
+            return PathBuf { path: other.path }
+
+        let sep = if self.path.ends_with("/") { "" } else { "/" }
+        PathBuf { path: self.path + sep + other.path }
+
+    ### Returns a path with the extension changed.
+    fn with_extension(self, extension: string) -> PathBuf:
+        match self.file_stem():
+            Some(stem) ->
+                let parent = match self.parent():
+                    Some(p) -> p.as_str() + "/"
+                    None -> ""
+                PathBuf { path: parent + stem + "." + extension }
+            None -> PathBuf { path: self.path }
+
+    ### Returns a path with the file name changed.
+    fn with_file_name(self, name: string) -> PathBuf:
+        match self.parent():
+            Some(parent) ->
+                let sep = if parent.as_str() == "/" { "" } else { "/" }
+                PathBuf { path: parent.as_str() + sep + name }
+            None -> PathBuf { path: name }
+
+    ### Returns true if this path starts with the given path.
+    fn starts_with(self, base: Path) -> bool:
+        self.path.starts_with(base.path)
+
+    ### Returns true if this path ends with the given path.
+    fn ends_with(self, child: Path) -> bool:
+        self.path.ends_with(child.path)
+
+    ### Strips the given prefix from this path.
+    fn strip_prefix(self, prefix: Path) -> Option[Path]:
+        if self.starts_with(prefix):
+            let stripped = self.path.slice(prefix.path.len(), self.path.len())
+            # Remove leading separator
+            if stripped.starts_with("/"):
+                Some(Path { path: stripped.slice(1, stripped.len()) })
+            else:
+                Some(Path { path: stripped })
+        else:
+            None
+
+    ### Returns a normalized version of this path.
+    fn normalize(self) -> PathBuf:
+        let components = self.components()
+        let normalized = Vec.new()
+
+        for comp in components:
+            if comp == "..":
+                if not normalized.is_empty():
+                    normalized.pop()
+            else if comp != "." and not comp.is_empty():
+                normalized.push(comp)
+
+        let result = ""
+        for i in 0..normalized.len():
+            if i > 0:
+                result += "/"
+            result += normalized[i]
+
+        PathBuf { path: result }
+
+    ### Returns true if the path is empty.
+    fn is_empty(self) -> bool:
+        self.path.is_empty()
+
+    ### Returns the length of the path in bytes.
+    fn len(self) -> usize:
+        self.path.len()
+
+impl PathBuf:
+    ### Creates a new empty PathBuf.
+    fn new() -> PathBuf:
+        PathBuf { path: "" }
+
+    ### Creates a PathBuf from a string.
+    fn from(path: string) -> PathBuf:
+        PathBuf { path: path }
+
+    ### Creates a PathBuf from a Path.
+    fn from_path(path: Path) -> PathBuf:
+        PathBuf { path: path.path }
+
+    ### Pushes a path component onto this path.
+    fn push(mut self, component: string):
+        if self.path.is_empty() or self.path.ends_with("/"):
+            self.path += component
+        else:
+            self.path += "/" + component
+
+    /// Pops the last component from this path.
+    fn pop(mut self) -> bool:
+        match self.path.rfind('/'):
+            Some(idx) ->
+                self.path = self.path.slice(0, idx)
+                true
+            None ->
+                self.path = ""
+                false
+
+    ### Clears this path.
+    fn clear(mut self):
+        self.path = ""
+
+    ### Converts this PathBuf to a Path.
+    fn as_path(self) -> Path:
+        Path { path: self.path }
+
+    ### Returns the path as a string.
+    fn as_str(self) -> string:
+        self.path
+
+    ### Returns true if the path is absolute.
+    fn is_absolute(self) -> bool:
+        self.as_path().is_absolute()
+
+    ### Returns true if the path is relative.
+    fn is_relative(self) -> bool:
+        self.as_path().is_relative()
+
+    ### Returns the parent directory.
+    fn parent(self) -> Option[Path]:
+        self.as_path().parent()
+
+    ### Returns the file name component.
+    fn file_name(self) -> Option[string]:
+        self.as_path().file_name()
+
+    ### Returns the file stem.
+    fn file_stem(self) -> Option[string]:
+        self.as_path().file_stem()
+
+    ### Returns the extension.
+    fn extension(self) -> Option[string]:
+        self.as_path().extension()
+
+    ### Sets the file extension.
+    fn set_extension(mut self, extension: string) -> bool:
+        match self.file_stem():
+            Some(stem) ->
+                let parent = match self.parent():
+                    Some(p) -> p.as_str() + "/"
+                    None -> ""
+                self.path = parent + stem + "." + extension
+                true
+            None -> false
+
+    ### Joins another path to this path.
+    fn join(mut self, other: Path) -> PathBuf:
+        self.push(other.path)
+        self
+
+    ### Returns a normalized version of this path.
+    fn normalize(self) -> PathBuf:
+        self.as_path().normalize()
+
+    ### Returns true if the path is empty.
+    fn is_empty(self) -> bool:
+        self.path.is_empty()
+
+    ### Returns a clone of this PathBuf.
+    fn clone(self) -> PathBuf:
+        PathBuf { path: self.path }
+
+impl Eq for Path:
+    fn eq(self, other: Path) -> bool:
+        self.path == other.path
+
+impl Eq for PathBuf:
+    fn eq(self, other: PathBuf) -> bool:
+        self.path == other.path
+
+impl Show for Path:
+    fn show(self) -> string:
+        self.path
+
+impl Show for PathBuf:
+    fn show(self) -> string:
+        self.path
+
+### Returns the current working directory.
+fn current_dir() -> Result[PathBuf, FileError] ! io:
+    # In a real implementation, call OS API
+    Ok(PathBuf { path: "." })
+
+### Sets the current working directory.
+fn set_current_dir(path: PathBuf) -> Result[unit, FileError] ! io:
+    Ok(())
+
+### Returns the home directory.
+fn home_dir() -> Option[PathBuf]:
+    # In a real implementation, check environment variables
+    None
+
+### Returns the temporary directory.
+fn temp_dir() -> PathBuf:
+    PathBuf { path: "/tmp" }
+
+### Creates a new path buffer from components.
+fn join_components(components: &[string]) -> PathBuf:
+    let result = PathBuf.new()
+    for i in 0..components.len():
+        if i > 0:
+            result.path += "/"
+        result.path += components[i]
+    result

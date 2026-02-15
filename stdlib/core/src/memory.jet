@@ -1,0 +1,222 @@
+### Memory allocation and management utilities for Jet.
+###
+### This module provides hooks for custom allocators and memory tracking.
+
+### Size and alignment for memory allocation.
+type Layout = {
+    size: uint
+    align: uint
+}
+
+impl Layout:
+    ### Creates a new layout with the given size and alignment.
+    fn new(size: uint, align: uint) -> Layout:
+        Layout { size: size, align: align }
+
+    ### Creates a layout for a type T.
+    fn for_type[T]() -> Layout:
+        Layout { size: size_of[T](), align: align_of[T]() }
+
+    ### Creates a layout for an array of n elements of type T.
+    fn for_array[T](n: uint) -> Layout:
+        let size = size_of[T]() * n
+        Layout { size: size, align: align_of[T]() }
+
+    ### Returns the size aligned to the layout's alignment.
+    fn pad_size(self) -> uint:
+        let mask = self.align - 1
+        (self.size + mask) & ~mask
+
+impl Eq for Layout:
+    fn eq(self, other: Layout) -> bool:
+        self.size == other.size and self.align == other.align
+
+impl Clone for Layout:
+    fn clone(self) -> Layout:
+        Layout { size: self.size, align: self.align }
+
+impl Show for Layout:
+    fn show(self) -> string:
+        "Layout { size: " + self.size.show() + ", align: " + self.align.show() + " }"
+
+### Allocator trait for custom memory allocation.
+trait Allocator:
+    ### Allocates memory with the given layout.
+    fn allocate(self, layout: Layout) -> Result[*mut u8, AllocError>
+
+    ### Deallocates memory previously allocated with allocate.
+    unsafe fn deallocate(self, ptr: *mut u8, layout: Layout) -> unit
+
+    ### Reallocates memory to a new size.
+    fn reallocate(self, ptr: *mut u8, old_layout: Layout, new_layout: Layout) -> Result[*mut u8, AllocError]:
+        # Default implementation: allocate, copy, deallocate
+        let new_ptr = self.allocate(new_layout)?
+        unsafe:
+            copy_nonoverlapping(ptr as *const u8, new_ptr, old_layout.size.min(new_layout.size))
+            self.deallocate(ptr, old_layout)
+        Ok(new_ptr)
+
+### Error type for allocation failures.
+type AllocError = {
+    message: string
+}
+
+impl Show for AllocError:
+    fn show(self) -> string:
+        "Allocation error: " + self.message
+
+impl Eq for AllocError:
+    fn eq(self, other: AllocError) -> bool:
+        self.message == other.message
+
+impl Clone for AllocError:
+    fn clone(self) -> AllocError:
+        AllocError { message: self.message }
+
+### Global allocator handle.
+type GlobalAlloc = {
+    # Opaque handle to the global allocator
+    _marker: unit
+}
+
+### Returns the global allocator.
+fn global_allocator() -> GlobalAlloc:
+    GlobalAlloc { _marker: unit }
+
+### Sets the global allocator.
+### This should only be called once at program startup.
+unsafe fn set_global_allocator(alloc: Allocator) -> unit:
+    # In a real implementation, this would set the global allocator
+    unit
+
+### Allocates memory using the global allocator.
+fn alloc(layout: Layout) -> Result[*mut u8, AllocError]:
+    global_allocator().allocate(layout)
+
+### Deallocates memory using the global allocator.
+unsafe fn dealloc(ptr: *mut u8, layout: Layout) -> unit:
+    global_allocator().deallocate(ptr, layout)
+
+### Reallocates memory using the global allocator.
+fn realloc(ptr: *mut u8, old_layout: Layout, new_layout: Layout) -> Result[*mut u8, AllocError]:
+    global_allocator().reallocate(ptr, old_layout, new_layout)
+
+### Returns the size of a type in bytes.
+fn size_of[T]() -> uint:
+    # In a real implementation, this is a compiler intrinsic
+    0
+
+### Returns the alignment of a type in bytes.
+fn align_of[T]() -> uint:
+    # In a real implementation, this is a compiler intrinsic
+    1
+
+### Returns the offset of a field within a struct.
+fn offset_of[T, F](field: fn(T) -> F) -> uint:
+    # In a real implementation, this is a compiler intrinsic
+    0
+
+### Copies memory from src to dst.
+### The memory regions must not overlap.
+unsafe fn copy_nonoverlapping[T](src: *const T, dst: *mut T, count: uint) -> unit:
+    # In a real implementation, this would use memmove or similar
+    unit
+
+### Copies memory from src to dst.
+### The memory regions may overlap.
+unsafe fn copy[T](src: *const T, dst: *mut T, count: uint) -> unit:
+    # In a real implementation, this would use memcpy or similar
+    unit
+
+### Sets memory to a byte value.
+unsafe fn write_bytes[T](dst: *mut T, val: u8, count: uint) -> unit:
+    # In a real implementation, this would use memset
+    unit
+
+### Swaps two values in memory.
+unsafe fn swap[T](a: *mut T, b: *mut T) -> unit:
+    # In a real implementation, this would swap the values
+    unit
+
+### Replaces a value and returns the old one.
+unsafe fn replace[T](dst: *mut T, src: T) -> T:
+    # In a real implementation, this would replace and return
+    src
+
+### Reads a value from a pointer without taking ownership.
+unsafe fn read[T](src: *const T) -> T:
+    # In a real implementation, this would read the value
+    # This is unsafe because it doesn't drop the original
+    unit as T
+
+### Writes a value to a pointer.
+unsafe fn write[T](dst: *mut T, src: T) -> unit:
+    # In a real implementation, this would write the value
+    unit
+
+### Drops a value in place.
+unsafe fn drop_in_place[T](to_drop: *mut T) -> unit:
+    # In a real implementation, this would call the destructor
+    unit
+
+### Forgets a value (leaks it).
+fn forget[T](value: T) -> unit:
+    # Prevents the destructor from running
+    unit
+
+### Returns a null pointer.
+fn null[T]() -> *T:
+    0 as *T
+
+### Returns a null mutable pointer.
+fn null_mut[T]() -> *mut T:
+    0 as *mut T
+
+### Checks if a pointer is null.
+fn is_null[T](ptr: *T) -> bool:
+    ptr == null()
+
+### Converts a reference to a raw pointer.
+fn ptr_from_ref[T](r: &T) -> *const T:
+    r as *const T
+
+### Converts a mutable reference to a raw pointer.
+fn ptr_from_mut[T](r: &mut T) -> *mut T:
+    r as *mut T
+
+### Converts a raw pointer to a reference (unsafe).
+unsafe fn ref_from_ptr[T](p: *const T) -> &T:
+    # In a real implementation, this would dereference
+    # This is unsafe because the pointer might be invalid
+    unit as &T
+
+### Converts a raw pointer to a mutable reference (unsafe).
+unsafe fn mut_from_ptr[T](p: *mut T) -> &mut T:
+    # In a real implementation, this would dereference
+    # This is unsafe because the pointer might be invalid
+    unit as &mut T
+
+### Memory tracking effect (debug builds only).
+effect AllocationTrack:
+    fn on_alloc(size: uint, align: uint) -> unit
+    fn on_dealloc(ptr: *mut u8, size: uint, align: uint) -> unit
+
+### Enables memory tracking.
+fn enable_allocation_tracking() -> unit:
+    # In a real implementation, this would enable tracking
+    unit
+
+### Disables memory tracking.
+fn disable_allocation_tracking() -> unit:
+    # In a real implementation, this would disable tracking
+    unit
+
+### Returns the total allocated memory in bytes.
+fn total_allocated() -> uint:
+    # In a real implementation, this would return tracked memory
+    0
+
+### Returns the current memory usage in bytes.
+fn current_memory_usage() -> uint:
+    # In a real implementation, this would return current usage
+    0

@@ -1,0 +1,329 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  # Check code formatting
+  fmt:
+    name: Check Formatting
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+  # Run clippy linting
+  clippy:
+    name: Clippy Linting
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Install LLVM
+        run: |
+          wget https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh 21
+          sudo apt-get install -y libllvm21 llvm-21-dev libclang-21-dev libpolly-21-dev
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Run clippy
+        env:
+          LLVM_SYS_211_PREFIX: /usr/lib/llvm-21
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+  release-files:
+    name: Release Files
+    runs-on: ubuntu-latest
+    needs: [fmt]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check required release files
+        run: bash scripts/check_release_files.sh
+
+  # Build and test on Linux
+  test-linux:
+    name: Test (Linux)
+    runs-on: ubuntu-latest
+    needs: [fmt, clippy, release-files]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - rust: stable
+            experimental: false
+          - rust: beta
+            experimental: true
+    continue-on-error: ${{ matrix.experimental }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ matrix.rust }}
+
+      - name: Install LLVM
+        run: |
+          wget https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh 21
+          sudo apt-get install -y libllvm21 llvm-21-dev libclang-21-dev libpolly-21-dev
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-${{ matrix.rust }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build
+        env:
+          LLVM_SYS_211_PREFIX: /usr/lib/llvm-21
+        run: cargo build --workspace --verbose
+
+      - name: Run tests
+        env:
+          LLVM_SYS_211_PREFIX: /usr/lib/llvm-21
+        run: cargo test --workspace --verbose
+
+      - name: Run integration tests
+        env:
+          LLVM_SYS_211_PREFIX: /usr/lib/llvm-21
+        run: cargo test -p jet-integration-tests --verbose
+
+  # Build and test on macOS
+  test-macos:
+    name: Test (macOS)
+    runs-on: macos-latest
+    needs: [fmt, clippy, release-files]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install LLVM
+        run: |
+          brew install llvm@21
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build
+        env:
+          LLVM_SYS_211_PREFIX: /opt/homebrew/opt/llvm@21
+        run: cargo build --workspace
+
+      - name: Run tests
+        env:
+          LLVM_SYS_211_PREFIX: /opt/homebrew/opt/llvm@21
+        run: cargo test --workspace -- --skip test_work_stealing_fairness
+
+  # Run benchmarks (not fail on regression)
+  benchmark:
+    name: Benchmarks
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    needs: [test-linux]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install LLVM
+        run: |
+          wget https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh 21
+          sudo apt-get install -y libllvm21 llvm-21-dev libclang-21-dev libpolly-21-dev
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Run benchmarks
+        env:
+          LLVM_SYS_211_PREFIX: /usr/lib/llvm-21
+        run: cargo bench --workspace
+
+  # Documentation build check
+  docs:
+    name: Documentation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rust-docs
+
+      - name: Install LLVM
+        run: |
+          wget https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh 21
+          sudo apt-get install -y libllvm21 llvm-21-dev libclang-21-dev libpolly-21-dev
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build documentation
+        env:
+          LLVM_SYS_211_PREFIX: /usr/lib/llvm-21
+          RUSTDOCFLAGS: -D warnings
+        run: cargo doc --workspace --no-deps
+
+      - name: Check for broken links
+        continue-on-error: true
+        env:
+          LLVM_SYS_211_PREFIX: /usr/lib/llvm-21
+        run: |
+          cargo install --locked cargo-deadlinks
+          cargo deadlinks --ignore-fragments
+
+  # Example programs test
+  examples:
+    name: Example Programs
+    runs-on: ubuntu-latest
+    needs: [test-linux]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install LLVM
+        run: |
+          wget https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh 21
+          sudo apt-get install -y libllvm21 llvm-21-dev libclang-21-dev libpolly-21-dev
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build CLI
+        env:
+          LLVM_SYS_211_PREFIX: /usr/lib/llvm-21
+        run: cargo build -p jet-cli --release
+
+      - name: Test example programs
+        env:
+          LLVM_SYS_211_PREFIX: /usr/lib/llvm-21
+        run: |
+          tmp_dir="$(mktemp -d)"
+          mkdir -p "$tmp_dir/src"
+          cp examples/hello.jet "$tmp_dir/src/main.jet"
+          cat > "$tmp_dir/jet.toml" <<'EOF'
+          [package]
+          name = "hello_example"
+          version = "1.0.0"
+          edition = "2024"
+
+          [dependencies]
+          EOF
+
+          ./target/release/jet -C "$tmp_dir" check
+          ./target/release/jet -C examples/test_jet_project check
+
+  # Safety documentation gate for unsafe public APIs
+  safety-docs:
+    name: Safety Docs
+    runs-on: ubuntu-latest
+    needs: [fmt]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check unsafe API safety docs
+        run: bash scripts/check_safety_docs.sh
+
+  # Coverage report
+  coverage:
+    name: Code Coverage
+    runs-on: ubuntu-latest
+    needs: [test-linux]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+
+      - name: Install LLVM
+        run: |
+          wget https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh 21
+          sudo apt-get install -y libllvm21 llvm-21-dev libclang-21-dev libpolly-21-dev
+
+      - name: Install cargo-llvm-cov
+        run: cargo install cargo-llvm-cov
+
+      - name: Generate coverage
+        env:
+          LLVM_SYS_211_PREFIX: /usr/lib/llvm-21
+        run: |
+          cargo llvm-cov --workspace --exclude jet-cli --exclude jet-integration-tests --lcov --output-path lcov.info -- --skip benchmark_task_spawn_latency
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          files: lcov.info
+          fail_ci_if_error: false

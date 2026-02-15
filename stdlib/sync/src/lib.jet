@@ -1,0 +1,40 @@
+### Jet Synchronization Library
+###
+### This module provides synchronization primitives for concurrent programming
+### in the Jet programming language.
+
+# Mutex
+export Mutex
+export MutexGuard
+export MutexError
+
+# RwLock
+export RwLock
+export RwLockReadGuard
+export RwLockWriteGuard
+export RwLockError
+
+# Semaphore
+export Semaphore
+export SemaphoreError
+
+# Barrier
+export Barrier
+export BarrierError
+
+# Condition variable
+export Condvar
+export CondvarError
+
+# Atomic types
+export AtomicBool
+export AtomicInt
+export AtomicPtr
+
+# Import submodules
+import mutex
+import rwlock
+import semaphore
+import barrier
+import condvar
+import atomic

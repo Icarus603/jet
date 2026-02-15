@@ -1,0 +1,210 @@
+# Effects example
+# Demonstrates error handling with the effects system
+
+# Define custom error types
+struct DivisionError:
+    message: string
+
+struct ParseError:
+    input: string
+    reason: string
+
+struct NotFoundError:
+    key: string
+
+# Function that can fail with DivisionError
+fn divide(a: int, b: int) -> int ! DivisionError:
+    if b == 0:
+        raise DivisionError { message: "Cannot divide by zero" }
+    return a / b
+
+# Function that can fail with ParseError
+fn parse_int(s: string) -> int ! ParseError:
+    let mut result = 0
+    for c in s.chars():
+        if c < '0' or c > '9':
+            raise ParseError { input: s, reason: "Invalid character" }
+        result = result * 10 + (c as int - '0' as int)
+    return result
+
+# Function with multiple possible effects
+fn lookup_value(key: string, map: Map[string, int]) -> int ! NotFoundError | ParseError:
+    if key.is_empty():
+        raise ParseError { input: key, reason: "Empty key" }
+
+    match map.get(key):
+        Option::Some(value) -> return value
+        Option::None -> raise NotFoundError { key: key }
+
+# Using the ? operator for error propagation
+fn calculate_average(values: [int]) -> float ! DivisionError:
+    if values.is_empty():
+        raise DivisionError { message: "Cannot calculate average of empty list" }
+
+    let sum = values.fold(0, fn(acc, x) -> acc + x)
+    return divide(sum, values.len())? as float / values.len() as float
+
+# Chaining fallible operations
+fn process_number(input: string) -> int ! DivisionError | ParseError:
+    let num = parse_int(input)?
+    let doubled = divide(num, 2)? * 2
+    return doubled
+
+# Handling effects with match
+fn safe_divide(a: int, b: int) -> Result[int, DivisionError]:
+    match divide(a, b):
+        Ok(result) -> return Result::Ok(result)
+        Err(e) -> return Result::Err(e)
+
+# Handling effects with try/catch-style block
+fn try_parse_with_fallback(input: string, default: int) -> int:
+    try:
+        return parse_int(input)?
+    catch ParseError:
+        return default
+
+# Effect polymorphism - function works with any error type
+fn log_and_reraise[T, E](result: Result[T, E]) -> T ! E
+    where E: Display:
+    match result:
+        Ok(value) -> return value
+        Err(e):
+            print(f"Error occurred: {e}")
+            raise e
+
+# Resource management with effects
+struct File:
+    path: string
+    handle: int
+
+fn open_file(path: string) -> File ! io::Error:
+    # Simulated file opening
+    return File { path, handle: 1 }
+
+fn read_file(file: File) -> string ! io::Error:
+    # Simulated file reading
+    return "file contents"
+
+fn close_file(file: File):
+    # Simulated file closing
+    print(f"Closed {file.path}")
+
+# Using with statement for resource management
+fn read_file_safely(path: string) -> string ! io::Error:
+    with file = open_file(path)?:
+        return read_file(file)?
+    # file is automatically closed here
+
+# Async effects
+async fn fetch_data(url: string) -> string ! http::Error:
+    # Simulated async HTTP request
+    return f"Data from {url}"
+
+async fn fetch_with_retry(url: string, max_retries: int) -> string ! http::Error:
+    for attempt in 0..max_retries:
+        match fetch_data(url).await:
+            Ok(data) -> return data
+            Err(e) if attempt < max_retries - 1:
+                print(f"Attempt {attempt + 1} failed, retrying...")
+                sleep(1000).await
+            Err(e) -> raise e
+    return ""  # Unreachable
+
+# Effect rows - combining multiple effects
+fn complex_operation(data: string, config: Config) -> Result !
+    ParseError |
+    DivisionError |
+    NotFoundError |
+    io::Error:
+
+    let value = parse_int(data)?
+    let factor = lookup_value("factor", config.values)?
+    let result = divide(value, factor)?
+
+    with file = open_file(config.output_path)?:
+        file.write_line(result.to_string())?
+
+    return Result::Ok(result)
+
+# Demonstration functions
+fn demonstrate_basic_effects():
+    print("=== Basic Effects ===")
+
+    # Direct error propagation with ?
+    let result = divide(10, 2)
+    print(f"divide(10, 2) = {result}")
+
+    # Error handling with match
+    match divide(10, 0):
+        Ok(value) -> print(f"Result: {value}")
+        Err(DivisionError { message }) -> print(f"Error: {message}")
+
+fn demonstrate_error_propagation():
+    print("\n=== Error Propagation ===")
+
+    match process_number("42"):
+        Ok(value) -> print(f"process_number('42') = {value}")
+        Err(e) -> print(f"Error: {e}")
+
+    match process_number("abc"):
+        Ok(value) -> print(f"process_number('abc') = {value}")
+        Err(ParseError { input, reason }) ->
+            print(f"Parse error: '{input}' - {reason}")
+
+fn demonstrate_result_type():
+    print("\n=== Result Type ===")
+
+    let success = safe_divide(10, 2)
+    let failure = safe_divide(10, 0)
+
+    print(f"safe_divide(10, 2) = {success}")
+    print(f"safe_divide(10, 0) = {failure}")
+
+fn demonstrate_try_catch():
+    print("\n=== Try/Catch Style ===")
+
+    let valid = try_parse_with_fallback("123", 0)
+    let invalid = try_parse_with_fallback("abc", 0)
+
+    print(f"try_parse('123') = {valid}")
+    print(f"try_parse('abc') = {invalid}")
+
+fn demonstrate_resource_management():
+    print("\n=== Resource Management ===")
+
+    match read_file_safely("test.txt"):
+        Ok(content) -> print(f"File content: {content}")
+        Err(e) -> print(f"Failed to read file: {e}")
+
+async fn demonstrate_async_effects():
+    print("\n=== Async Effects ===")
+
+    match fetch_data("https://example.com").await:
+        Ok(data) -> print(f"Fetched: {data}")
+        Err(e) -> print(f"Fetch failed: {e}")
+
+fn demonstrate_effect_polymorphism():
+    print("\n=== Effect Polymorphism ===")
+
+    let ok_result: Result[int, DivisionError] = Result::Ok(42)
+    let err_result: Result[int, DivisionError] = Result::Err(
+        DivisionError { message: "test error" }
+    )
+
+    match log_and_reraise(ok_result):
+        Ok(value) -> print(f"Success: {value}")
+        Err(e) -> print(f"Error: {e}")
+
+fn main():
+    print("Effects Examples")
+    print("================\n")
+
+    demonstrate_basic_effects()
+    demonstrate_error_propagation()
+    demonstrate_result_type()
+    demonstrate_try_catch()
+    demonstrate_resource_management()
+    demonstrate_async_effects()
+    demonstrate_effect_polymorphism()
+
+    print("\nAll effects examples completed!")

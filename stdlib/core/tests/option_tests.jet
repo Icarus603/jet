@@ -1,0 +1,188 @@
+### Tests for the Option type
+
+import core::option
+
+@test
+fn test_option_is_some():
+    let some = Some(5)
+    let none: Option[int] = None()
+    assert some.is_some() == true
+    assert none.is_some() == false
+
+@test
+fn test_option_is_none():
+    let some = Some(5)
+    let none: Option[int] = None()
+    assert some.is_none() == false
+    assert none.is_none() == true
+
+@test
+fn test_option_unwrap():
+    let some = Some(5)
+    assert some.unwrap() == 5
+
+@test
+fn test_option_unwrap_or():
+    let some = Some(5)
+    let none: Option[int] = None()
+    assert some.unwrap_or(10) == 5
+    assert none.unwrap_or(10) == 10
+
+@test
+fn test_option_unwrap_or_else():
+    let some = Some(5)
+    let none: Option[int] = None()
+    assert some.unwrap_or_else(|| 10) == 5
+    assert none.unwrap_or_else(|| 10) == 10
+
+@test
+fn test_option_map():
+    let opt = Some(5)
+    let doubled = opt.map(|x| x * 2)
+    assert doubled == Some(10)
+
+@test
+fn test_option_map_none():
+    let opt: Option[int] = None()
+    let doubled = opt.map(|x| x * 2)
+    assert doubled == None()
+
+@test
+fn test_option_flat_map():
+    let opt = Some(5)
+    let doubled = opt.flat_map(|x| Some(x * 2))
+    assert doubled == Some(10)
+
+@test
+fn test_option_flat_map_none():
+    let opt: Option[int] = None()
+    let result = opt.flat_map(|x| Some(x * 2))
+    assert result == None()
+
+@test
+fn test_option_or_else():
+    let some = Some(5)
+    let none: Option[int] = None()
+    assert some.or_else(|| Some(10)) == Some(5)
+    assert none.or_else(|| Some(10)) == Some(10)
+
+@test
+fn test_option_or():
+    let some = Some(5)
+    let none: Option[int] = None()
+    assert some.or(Some(10)) == Some(5)
+    assert none.or(Some(10)) == Some(10)
+
+@test
+fn test_option_and():
+    let some = Some(5)
+    let none: Option[int] = None()
+    assert some.and(Some(10)) == Some(10)
+    assert none.and(Some(10)) == None()
+
+@test
+fn test_option_and_then():
+    let opt = Some(5)
+    let result = opt.and_then(|x| Some(x * 2))
+    assert result == Some(10)
+
+@test
+fn test_option_filter():
+    let some = Some(5)
+    let filtered = some.filter(|x| x > 3)
+    assert filtered == Some(5)
+    let filtered2 = some.filter(|x| x > 10)
+    assert filtered2 == None()
+
+@test
+fn test_option_filter_none():
+    let opt: Option[int] = None()
+    let filtered = opt.filter(|x| x > 3)
+    assert filtered == None()
+
+@test
+fn test_option_is_some_and():
+    let some = Some(5)
+    assert some.is_some_and(|x| x > 3) == true
+    assert some.is_some_and(|x| x > 10) == false
+
+@test
+fn test_option_is_some_and_none():
+    let opt: Option[int] = None()
+    assert opt.is_some_and(|x| x > 3) == false
+
+@test
+fn test_option_ok_or():
+    let some = Some(5)
+    let none: Option[int] = None()
+    assert some.ok_or("error") == Ok(5)
+    assert none.ok_or("error") == Err("error")
+
+@test
+fn test_option_ok_or_else():
+    let some = Some(5)
+    let none: Option[int] = None()
+    assert some.ok_or_else(|| "error") == Ok(5)
+    assert none.ok_or_else(|| "error") == Err("error")
+
+@test
+fn test_option_xor():
+    let a = Some(1)
+    let b = Some(2)
+    let n: Option[int] = None()
+    assert a.xor(b) == None()
+    assert a.xor(n) == Some(1)
+    assert n.xor(b) == Some(2)
+    assert n.xor(n) == None()
+
+@test
+fn test_option_zip():
+    let a = Some(1)
+    let b = Some("hello")
+    let n: Option[int] = None()
+    assert a.zip(b) == Some((1, "hello"))
+    assert a.zip(n) == None()
+    assert n.zip(b) == None()
+
+@test
+fn test_option_zip_with():
+    let a = Some(2)
+    let b = Some(3)
+    let result = a.zip_with(b, |x, y| x * y)
+    assert result == Some(6)
+
+@test
+fn test_option_unzip():
+    let opt = Some((1, "hello"))
+    let (a, b) = opt.unzip()
+    assert a == Some(1)
+    assert b == Some("hello")
+
+@test
+fn test_option_unzip_none():
+    let opt: Option[(int, string)] = None()
+    let (a, b) = opt.unzip()
+    assert a == None()
+    assert b == None()
+
+@test
+fn test_option_flatten():
+    let opt = Some(Some(5))
+    assert opt.flatten() == Some(5)
+
+@test
+fn test_option_flatten_none():
+    let opt: Option[Option[int]] = None()
+    assert opt.flatten() == None()
+
+@test
+fn test_option_as_ref():
+    let opt = Some(5)
+    let ref_opt = opt.as_ref()
+    assert ref_opt.is_some() == true
+
+@test
+fn test_option_as_ref_none():
+    let opt: Option[int] = None()
+    let ref_opt = opt.as_ref()
+    assert ref_opt == None()

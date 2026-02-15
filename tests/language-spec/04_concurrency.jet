@@ -1,0 +1,116 @@
+# Language Spec Test: Concurrency
+# Tests: Section 6 - Concurrency
+
+### Test async functions (6.2)
+async fn fetch_url(url: string) -> string ! NetworkError:
+    # let conn = connect(url).await?
+    # let response = conn.send_request().await?
+    return "response"
+
+### Test await operator (6.3)
+async fn test_await():
+    # let data = fetch_url("https://example.com").await
+    pass
+
+### Test concurrent blocks (6.4)
+fn fetch_all(urls: [string]) ! async:
+    concurrent:
+        # let tasks = urls.map(|url| spawn fetch_url(url))
+        # let results = tasks.map(|t| t.await)
+        pass
+
+### Test spawning tasks (6.5)
+fn test_spawn() ! async:
+    # let handle = spawn long_running_computation()
+    # ... do other work ...
+    # let result = handle.await
+    pass
+
+### Test channels (6.6)
+fn test_channels() ! async:
+    # Create a channel
+    # let (tx, rx) = chan[int]()
+
+    # Send
+    # spawn:
+    #     for i in 0..10:
+    #         tx.send(i)
+    #     tx.close()
+
+    # Receive
+    # concurrent:
+    #     while let Some(value) = rx.recv().await:
+    #         process(value)
+    pass
+
+### Test buffered channels
+fn test_buffered_channels() ! async:
+    # let (tx, rx) = chan[int](buffer: 100)
+    pass
+
+### Test select (6.7)
+fn test_select() ! async:
+    # concurrent:
+    #     loop:
+    #         select:
+    #             | msg = rx1.recv() => handle_msg1(msg)
+    #             | msg = rx2.recv() => handle_msg2(msg)
+    #             | tx.send(value) => print("Sent!")
+    #             | default => print("No activity")
+    pass
+
+### Test synchronization primitives (6.8)
+fn test_mutex() ! async:
+    # let data = Mutex::new(0)
+    # concurrent:
+    #     let mut guard = data.lock().await
+    #     *guard += 1
+    pass
+
+fn test_rwlock() ! async:
+    # let cache = RwLock::new(Map::new())
+    # let read_guard = cache.read().await
+    # let mut write_guard = cache.write().await
+    pass
+
+### Test cancellation (6.9)
+fn test_cancellation() ! async:
+    # concurrent:
+    #     let task = spawn infinite_loop()
+    #     sleep(1.0).await
+    #     # task is cancelled here when block exits
+    pass
+
+### Test explicit cancellation
+fn test_explicit_cancel() ! async:
+    # let handle = spawn worker()
+    # handle.cancel().await
+    pass
+
+### Test structured concurrency
+fn test_structured_concurrency() ! async:
+    concurrent:
+        # All spawned tasks must complete before block exits
+        spawn task1()
+        spawn task2()
+        spawn task3()
+    # All tasks done here
+
+### Helper functions
+fn task1() ! async:
+    pass
+
+fn task2() ! async:
+    pass
+
+fn task3() ! async:
+    pass
+
+enum NetworkError:
+    | Timeout
+
+### Main entry point
+fn main() ! async:
+    test_spawn()
+    test_channels()
+    test_structured_concurrency()

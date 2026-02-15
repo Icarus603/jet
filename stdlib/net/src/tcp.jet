@@ -1,0 +1,214 @@
+### TCP networking for Jet.
+###
+### This module provides TCP stream and listener types.
+
+import core::option::{Option, Some, None}
+import core::result::{Result, Ok, Err}
+import addr::{SocketAddr, NetworkError}
+
+### A TCP stream between a local and remote socket.
+type TcpStream = {
+    local_addr: SocketAddr
+    peer_addr: SocketAddr
+    # Internal socket handle
+}
+
+### A TCP socket server that listens for connections.
+type TcpListener = {
+    local_addr: SocketAddr
+    # Internal listener handle
+}
+
+### Error type for TCP operations.
+type TcpError = {
+    message: string
+    kind: TcpErrorKind
+}
+
+### Kinds of TCP errors.
+enum TcpErrorKind:
+    ConnectionRefused
+    ConnectionReset
+    ConnectionAborted
+    NotConnected
+    AddrInUse
+    TimedOut
+    Interrupted
+    Other
+
+impl Show for TcpError:
+    fn show(self) -> string:
+        f"TCP error ({self.kind.show()}): {self.message}"
+
+impl Show for TcpErrorKind:
+    fn show(self) -> string:
+        match self:
+            ConnectionRefused -> "connection refused"
+            ConnectionReset -> "connection reset"
+            ConnectionAborted -> "connection aborted"
+            NotConnected -> "not connected"
+            AddrInUse -> "address in use"
+            TimedOut -> "timed out"
+            Interrupted -> "interrupted"
+            Other -> "other"
+
+impl TcpStream:
+    ### Connects to a remote host.
+    fn connect(addr: SocketAddr) -> Result[TcpStream, TcpError] ! async:
+        # In a real implementation, perform async connect
+        Err(TcpError { message: "Not implemented", kind: TcpErrorKind::Other })
+
+    ### Connects to a remote host with a timeout.
+    fn connect_timeout(addr: SocketAddr, timeout: float64) -> Result[TcpStream, TcpError] ! async:
+        # In a real implementation, perform async connect with timeout
+        TcpStream.connect(addr)
+
+    ### Returns the local address.
+    fn local_addr(self) -> SocketAddr:
+        self.local_addr
+
+    ### Returns the peer address.
+    fn peer_addr(self) -> SocketAddr:
+        self.peer_addr
+
+    ### Reads data from the stream.
+    fn read(self, buf: &mut [u8]) -> Result<usize, TcpError] ! async:
+        Ok(0)
+
+    ### Writes data to the stream.
+    fn write(self, buf: &[u8]) -> Result<usize, TcpError] ! async:
+        Ok(buf.len())
+
+    ### Writes all data to the stream.
+    fn write_all(self, buf: &[u8]) -> Result<unit, TcpError] ! async:
+        let mut written = 0
+        while written < buf.len():
+            match self.write(buf.slice(written, buf.len())).await:
+                Ok(n) -> written += n
+                Err(e) -> return Err(e)
+        Ok(())
+
+    ### Flushes the stream.
+    fn flush(self) -> Result<unit, TcpError] ! async:
+        Ok(())
+
+    ### Shuts down the read side of the stream.
+    fn shutdown_read(self) -> Result<unit, TcpError]:
+        Ok(())
+
+    ### Shuts down the write side of the stream.
+    fn shutdown_write(self) -> Result<unit, TcpError]:
+        Ok(())
+
+    ### Shuts down both sides of the stream.
+    fn shutdown(self) -> Result<unit, TcpError]:
+        self.shutdown_read()?;
+        self.shutdown_write()
+
+    ### Sets the read timeout.
+    fn set_read_timeout(self, timeout: Option[float64]) -> Result<unit, TcpError]:
+        Ok(())
+
+    ### Sets the write timeout.
+    fn set_write_timeout(self, timeout: Option[float64]) -> Result<unit, TcpError]:
+        Ok(())
+
+    ### Sets the nodelay option (disables Nagle's algorithm).
+    fn set_nodelay(self, nodelay: bool) -> Result<unit, TcpError]:
+        Ok(())
+
+    ### Returns true if nodelay is enabled.
+    fn nodelay(self) -> bool:
+        false
+
+    ### Sets the TTL (time to live).
+    fn set_ttl(self, ttl: u32) -> Result<unit, TcpError]:
+        Ok(())
+
+    ### Returns the TTL.
+    fn ttl(self) -> u32:
+        64
+
+    ### Returns true if the stream is connected.
+    fn is_connected(self) -> bool:
+        true
+
+    ### Splits the stream into read and write halves.
+    fn split(self) -> (TcpReadHalf, TcpWriteHalf):
+        (TcpReadHalf { stream: self }, TcpWriteHalf { stream: self })
+
+    ### Returns a buffered reader for this stream.
+    fn buffered_reader(self) -> BufReader:
+        BufReader.new_tcp(self)
+
+    ### Returns a buffered writer for this stream.
+    fn buffered_writer(self) -> BufWriter:
+        BufWriter.new_tcp(self)
+
+### Read half of a split TCP stream.
+type TcpReadHalf = {
+    stream: TcpStream
+}
+
+impl TcpReadHalf:
+    fn read(self, buf: &mut [u8]) -> Result<usize, TcpError] ! async:
+        self.stream.read(buf).await
+
+### Write half of a split TCP stream.
+type TcpWriteHalf = {
+    stream: TcpStream
+}
+
+impl TcpWriteHalf:
+    fn write(self, buf: &[u8]) -> Result<usize, TcpError] ! async:
+        self.stream.write(buf).await
+
+    fn flush(self) -> Result<unit, TcpError] ! async:
+        self.stream.flush().await
+
+impl TcpListener:
+    ### Creates a new TCP listener bound to the given address.
+    fn bind(addr: SocketAddr) -> Result[TcpListener, TcpError] ! async:
+        # In a real implementation, bind to the address
+        Ok(TcpListener { local_addr: addr })
+
+    ### Returns the local address.
+    fn local_addr(self) -> SocketAddr:
+        self.local_addr
+
+    ### Accepts a new connection.
+    fn accept(self) -> Result[(TcpStream, SocketAddr), TcpError] ! async:
+        # In a real implementation, accept a connection
+        Err(TcpError { message: "Not implemented", kind: TcpErrorKind::Other })
+
+    ### Returns an iterator over incoming connections.
+    fn incoming(self) -> Incoming:
+        Incoming { listener: self }
+
+    ### Sets the non-blocking mode.
+    fn set_nonblocking(self, nonblocking: bool) -> Result<unit, TcpError]:
+        Ok(())
+
+    ### Sets the TTL.
+    fn set_ttl(self, ttl: u32) -> Result<unit, TcpError]:
+        Ok(())
+
+    ### Returns the TTL.
+    fn ttl(self) -> u32:
+        64
+
+### Iterator over incoming TCP connections.
+struct Incoming:
+    listener: TcpListener
+
+impl Incoming:
+    fn next(mut self) -> Option<Result[(TcpStream, SocketAddr), TcpError] ! async>:
+        Some(self.listener.accept().await)
+
+### Connects to a remote host and returns the stream.
+fn connect(addr: SocketAddr) -> Result[TcpStream, TcpError] ! async:
+    TcpStream.connect(addr)
+
+### Creates a TCP listener bound to the given address.
+fn listen(addr: SocketAddr) -> Result[TcpListener, TcpError] ! async:
+    TcpListener.bind(addr)

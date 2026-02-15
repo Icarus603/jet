@@ -1,0 +1,81 @@
+# Guess the Number game
+# Demonstrates random numbers, user input, and control flow
+
+import std::io
+import std::random
+
+# Game state
+struct Game:
+    target: int
+    attempts: int
+    max_attempts: int
+
+# Create a new game
+fn new_game(max_attempts: int) -> Game:
+    return Game {
+        target: random::random_int(1, 100),
+        attempts: 0,
+        max_attempts: max_attempts
+    }
+
+# Check a guess and return result
+enum GuessResult:
+    | TooLow
+    | TooHigh
+    | Correct
+
+fn check_guess(game: &Game, guess: int) -> GuessResult:
+    game.attempts += 1
+    if guess < game.target:
+        return GuessResult::TooLow
+    elif guess > game.target:
+        return GuessResult::TooHigh
+    else:
+        return GuessResult::Correct
+
+# Get valid integer input from user
+fn get_guess() -> int ! io::Error:
+    loop:
+        print("Enter your guess (1-100): ")
+        let input = io::read_line()?
+        match input.trim().parse_int():
+            Ok(n) if n >= 1 and n <= 100 -> return n
+            Ok(_) -> print("Please enter a number between 1 and 100")
+            Err(_) -> print("Invalid input. Please enter a number.")
+
+# Play one round
+fn play_game() -> bool ! io::Error:
+    let game = new_game(7)
+    print("\n=== Guess the Number ===")
+    print("I'm thinking of a number between 1 and 100.")
+    print(f"You have {game.max_attempts} attempts.\n")
+
+    while game.attempts < game.max_attempts:
+        let remaining = game.max_attempts - game.attempts
+        print(f"Attempts remaining: {remaining}")
+
+        let guess = get_guess()?
+        let result = check_guess(&game, guess)
+
+        match result:
+            GuessResult::TooLow -> print("Too low! Try higher.")
+            GuessResult::TooHigh -> print("Too high! Try lower.")
+            GuessResult::Correct:
+                print(f"\n🎉 Congratulations! You guessed it in {game.attempts} attempts!")
+                return true
+
+    print(f"\nGame over! The number was {game.target}.")
+    return false
+
+fn main() ! io::Error:
+    print("Welcome to Guess the Number!")
+
+    loop:
+        let won = play_game()?
+
+        print("\nPlay again? (y/n): ")
+        let again = io::read_line()?.trim().to_lowercase()
+        if again != "y" and again != "yes":
+            break
+
+    print("Thanks for playing!")

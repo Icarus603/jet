@@ -1,0 +1,564 @@
+### Vec - A contiguous growable array type.
+###
+### Vec is the standard dynamic array type in Jet. It provides O(1) indexing,
+### amortized O(1) push/pop at the end, and efficient iteration.
+
+import core::option::{Option, Some, None}
+
+### A contiguous growable array type.
+###
+### Vec stores elements in a contiguous memory block and automatically
+### grows the allocation when capacity is exceeded.
+type Vec[T] = {
+    ptr: *mut T
+    len: usize
+    capacity: usize
+}
+
+### Iterator over Vec elements.
+struct Iter[T]:
+    vec: Vec[T]
+    pos: usize
+
+### Iterator over mutable references to Vec elements.
+struct IterMut[T]:
+    vec: Vec[T]
+    pos: usize
+
+### Iterator that consumes a Vec and yields its elements.
+struct IntoIter[T]:
+    vec: Vec[T]
+    pos: usize
+
+impl[T] Vec[T]:
+    ### Creates an empty vector.
+    ###
+    ### The vector will have zero capacity and will allocate on first push.
+    fn new() -> Vec[T]:
+        Vec { ptr: allocate(0), len: 0, capacity: 0 }
+
+    ### Creates a vector with the specified capacity.
+    ###
+    ### The vector will be able to hold `cap` elements without reallocating.
+    fn with_capacity(cap: usize) -> Vec[T]:
+        if cap == 0:
+            Vec.new()
+        else:
+            Vec { ptr: allocate(cap), len: 0, capacity: cap }
+
+    ### Creates a vector from an array.
+    fn from_array(arr: &[T]) -> Vec[T]:
+        let vec = Vec.with_capacity(arr.len())
+        for item in arr:
+            vec.push(item)
+        vec
+
+    ### Appends an element to the end of the vector.
+    ###
+    ### Amortized O(1) time complexity. May reallocate if capacity is exceeded.
+    fn push(mut self, value: T):
+        if self.len == self.capacity:
+            self.grow()
+        unsafe {
+            *self.ptr.add(self.len) = value
+        }
+        self.len += 1
+
+    ### Removes and returns the last element.
+    ###
+    ### Returns None if the vector is empty.
+    fn pop(mut self) -> Option[T]:
+        if self.len == 0:
+            return None
+        self.len -= 1
+        Some(unsafe { *self.ptr.add(self.len) })
+
+    ### Returns a reference to the element at the given index.
+    ###
+    ### Returns None if the index is out of bounds.
+    fn get(self, index: usize) -> Option[T]:
+        if index < self.len:
+            Some(unsafe { *self.ptr.add(index) })
+        else:
+            None
+
+    ### Returns a mutable reference to the element at the given index.
+    ###
+    ### Returns None if the index is out of bounds.
+    fn get_mut(mut self, index: usize) -> Option[T]:
+        if index < self.len:
+            Some(unsafe { *self.ptr.add(index) })
+        else:
+            None
+
+    ### Sets the element at the given index to a new value.
+    ###
+    ### Returns an error if the index is out of bounds.
+    fn set(mut self, index: usize, value: T) -> Result[unit, OutOfBoundsError]:
+        if index >= self.len:
+            return Err(OutOfBoundsError("set index out of bounds"))
+        unsafe {
+            *self.ptr.add(index) = value
+        }
+        Ok(())
+
+    ### Returns a reference to the first element.
+    fn first(self) -> Option[T]:
+        self.get(0)
+
+    ### Returns a reference to the last element.
+    fn last(self) -> Option[T]:
+        if self.len == 0:
+            None
+        else:
+            self.get(self.len - 1)
+
+    ### Returns the number of elements in the vector.
+    fn len(self) -> usize:
+        self.len
+
+    ### Returns true if the vector contains no elements.
+    fn is_empty(self) -> bool:
+        self.len == 0
+
+    ### Returns the number of elements the vector can hold without reallocating.
+    fn capacity(self) -> usize:
+        self.capacity
+
+    ### Returns a mutable reference to the first element.
+    fn first_mut(mut self) -> Option[T]:
+        self.get_mut(0)
+
+    ### Returns a mutable reference to the last element.
+    fn last_mut(mut self) -> Option[T]:
+        if self.len == 0:
+            None
+        else:
+            self.get_mut(self.len - 1)
+
+    ### Swaps two elements in the vector.
+    fn swap(mut self, i: usize, j: usize):
+        if i >= self.len or j >= self.len:
+            return
+        unsafe {
+            let temp = *self.ptr.add(i)
+            *self.ptr.add(i) = *self.ptr.add(j)
+            *self.ptr.add(j) = temp
+        }
+
+    ### Returns an iterator over the vector.
+    fn iter(self) -> Iter[T]:
+        Iter { vec: self, pos: 0 }
+
+    ### Reserves capacity for at least `additional` more elements.
+    ###
+    ### The collection may reserve more space to avoid frequent reallocations.
+    fn reserve(mut self, additional: usize):
+        let new_cap = self.len + additional
+        if new_cap > self.capacity:
+            self.reallocate(new_cap)
+
+    ### Reserves capacity for exactly `additional` more elements.
+    fn reserve_exact(mut self, additional: usize):
+        let new_cap = self.len + additional
+        if new_cap > self.capacity:
+            self.reallocate_exact(new_cap)
+
+    ### Shrinks the capacity of the vector as much as possible.
+    fn shrink_to_fit(mut self):
+        if self.capacity > self.len:
+            self.reallocate(self.len)
+
+    ### Shrinks the capacity to at least `min_capacity`.
+    fn shrink_to(mut self, min_capacity: usize):
+        if self.capacity > min_capacity:
+            let new_cap = if self.len > min_capacity { self.len } else { min_capacity }
+            self.reallocate(new_cap)
+
+    ### Shrinks the capacity of the vector as much as possible.
+    ###
+    ### It will drop down as close as possible to the length but the allocator
+    ### may still inform the vector that there is space for a few more elements.
+    fn shrink_to_fit(mut self):
+        if self.capacity > self.len:
+            self.reallocate(self.len)
+
+    ### Clears the vector, removing all values.
+    ###
+    ### Note that this has no effect on the allocated capacity of the vector.
+    fn clear(mut self):
+        self.len = 0
+
+    ### Extends the vector with elements from an iterator.
+    fn extend[I](mut self, iter: I) where I: IntoIter[Item = T]:
+        for item in iter:
+            self.push(item)
+
+    ### Returns an iterator over mutable references to the vector.
+    fn iter_mut(mut self) -> IterMut[T]:
+        IterMut { vec: self, pos: 0 }
+
+    ### Consumes the vector and returns an iterator over its elements.
+    fn into_iter(self) -> IntoIter[T]:
+        IntoIter { vec: self, pos: 0 }
+
+    ### Returns true if the vector contains the specified element.
+    fn contains(self, value: T) -> bool where T: Eq:
+        for item in self:
+            if item == value:
+                return true
+        false
+
+    ### Returns the first element that satisfies the predicate.
+    fn find(self, f: fn(T) -> bool) -> Option[T]:
+        for item in self:
+            if f(item):
+                return Some(item)
+        None
+
+    ### Returns the first element that maps to Some.
+    fn find_map[U](self, f: fn(T) -> Option[U]) -> Option[U]:
+        for item in self:
+            match f(item):
+                Some(u) -> return Some(u)
+                None -> ()
+        None
+
+    ### Removes consecutive repeated elements.
+    fn dedup(mut self) where T: Eq:
+        if self.len <= 1:
+            return
+        let mut write = 1
+        for read in 1..self.len:
+            let read_val = unsafe { *self.ptr.add(read) }
+            let prev_val = unsafe { *self.ptr.add(write - 1) }
+            if read_val != prev_val:
+                unsafe { *self.ptr.add(write) = read_val }
+                write += 1
+        self.len = write
+
+    ### Removes consecutive elements that satisfy the equality predicate.
+    fn dedup_by(mut self, same_bucket: fn(T, T) -> bool):
+        if self.len <= 1:
+            return
+        let mut write = 1
+        for read in 1..self.len:
+            let read_val = unsafe { *self.ptr.add(read) }
+            let prev_val = unsafe { *self.ptr.add(write - 1) }
+            if not same_bucket(read_val, prev_val):
+                unsafe { *self.ptr.add(write) = read_val }
+                write += 1
+        self.len = write
+
+    ### Removes and returns the element at position `index` within the vector.
+    ###
+    ### This is O(n) as it shifts all elements after the removed element.
+    fn remove(mut self, index: usize) -> T:
+        if index >= self.len:
+            panic("remove index out of bounds")
+        let value = unsafe { *self.ptr.add(index) }
+        # Shift elements to the left
+        for i in index..(self.len - 1):
+            unsafe {
+                *self.ptr.add(i) = *self.ptr.add(i + 1)
+            }
+        self.len -= 1
+        value
+
+    ### Removes an element at position `index` and returns it, swapping with the last element.
+    ###
+    ### This is O(1) but changes the order of elements.
+    fn swap_remove(mut self, index: usize) -> T:
+        if index >= self.len:
+            panic("swap_remove index out of bounds")
+        let last_idx = self.len - 1
+        self.swap(index, last_idx)
+        self.pop().unwrap()
+
+    ### Inserts an element at position `index`.
+    ###
+    ### Shifts the element currently at that position and all elements after it
+    ### to the right. Returns an error if index > len.
+    fn insert(mut self, index: usize, value: T) -> Result[unit, OutOfBoundsError]:
+        if index > self.len:
+            return Err(OutOfBoundsError("insert index out of bounds"))
+        if self.len == self.capacity:
+            self.grow()
+        # Shift elements to the right
+        for i in (index..self.len).rev():
+            unsafe {
+                *self.ptr.add(i + 1) = *self.ptr.add(i)
+            }
+        unsafe {
+            *self.ptr.add(index) = value
+        }
+        self.len += 1
+        Ok(())
+
+    ### Appends all elements from another vector.
+    fn append(mut self, other: Vec[T]):
+        self.reserve(other.len)
+        for item in other:
+            self.push(item)
+
+    ### Returns true if the vector contains the specified element.
+    fn contains(self, value: T) -> bool where T: Eq:
+        for item in self:
+            if item == value:
+                return true
+        false
+
+    ### Returns the index of the first occurrence of the value.
+    fn index_of(self, value: T) -> Option[usize] where T: Eq:
+        for i in 0..self.len:
+            if self.get(i).unwrap() == value:
+                return Some(i)
+        None
+
+    ### Retains only the elements specified by the predicate.
+    fn retain(mut self, f: fn(T) -> bool):
+        let mut i = 0
+        while i < self.len:
+            let value = unsafe { *self.ptr.add(i) }
+            if not f(value):
+                self.remove(i)
+            else:
+                i += 1
+
+    ### Creates a new vector with the results of applying the function.
+    fn map[U](self, f: fn(T) -> U) -> Vec[U]:
+        let result = Vec.with_capacity(self.len)
+        for item in self:
+            result.push(f(item))
+        result
+
+    ### Creates a new vector with only the elements that match the predicate.
+    fn filter(self, f: fn(T) -> bool) -> Vec[T]:
+        let result = Vec.new()
+        for item in self:
+            if f(item):
+                result.push(item)
+        result
+
+    ### Returns the first element that matches the predicate.
+    fn find(self, f: fn(T) -> bool) -> Option[T]:
+        for item in self:
+            if f(item):
+                return Some(item)
+        None
+
+    ### Applies a function to each element.
+    fn for_each(self, f: fn(T) -> unit):
+        for item in self:
+            f(item)
+
+    ### Folds the vector into a single value.
+    fn fold[U](self, initial: U, f: fn(U, T) -> U) -> U:
+        let acc = initial
+        for item in self:
+            acc = f(acc, item)
+        acc
+
+    ### Reverses the order of elements in the vector.
+    fn reverse(mut self):
+        let mut left = 0
+        let mut right = self.len
+        while left < right:
+            unsafe {
+                let temp = *self.ptr.add(left)
+                *self.ptr.add(left) = *self.ptr.add(right)
+                *self.ptr.add(right) = temp
+            }
+            left += 1
+            right -= 1
+
+    ### Returns a slice of the vector.
+    fn slice(self, start: usize, end: usize) -> Vec[T]:
+        let result = Vec.new()
+        for i in start..end:
+            if i < self.len:
+                result.push(self.get(i).unwrap())
+        result
+
+    ### Sorts the vector.
+    fn sort(mut self) where T: Ord:
+        self.sort_by(|a, b| a.compare(b))
+
+    ### Sorts the vector with a custom comparator.
+    fn sort_by(mut self, compare: fn(T, T) -> Ordering):
+        if self.len <= 1:
+            return
+        self.quick_sort(0, self.len - 1, compare)
+
+    ### Sorts the vector by a key extraction function.
+    fn sort_by_key[U](mut self, f: fn(T) -> U) where U: Ord:
+        self.sort_by(|a, b| f(a).compare(f(b)))
+
+    ### Reverses the order of elements in the vector.
+    fn reverse(mut self):
+        let mut left = 0
+        let mut right = self.len
+        while left < right:
+            unsafe {
+                let temp = *self.ptr.add(left)
+                *self.ptr.add(left) = *self.ptr.add(right)
+                *self.ptr.add(right) = temp
+            }
+            left += 1
+            right -= 1
+
+    ### Rotates the vector left by `mid` elements.
+    fn rotate_left(mut self, mid: usize):
+        if mid >= self.len or mid == 0:
+            return
+        self.reverse_range(0, mid)
+        self.reverse_range(mid, self.len)
+        self.reverse_range(0, self.len)
+
+    ### Rotates the vector right by `k` elements.
+    fn rotate_right(mut self, k: usize):
+        if k >= self.len or k == 0:
+            return
+        let mid = self.len - k
+        self.rotate_left(mid)
+
+    ### Performs a binary search on the sorted vector.
+    ###
+    ### Returns the index of the element if found, or the index where it should be inserted.
+    fn binary_search(self, value: T) -> Result[usize, usize] where T: Ord:
+        self.binary_search_by(|probe| probe.compare(value))
+
+    ### Performs a binary search with a custom comparator.
+    fn binary_search_by(self, f: fn(T) -> Ordering) -> Result[usize, usize]:
+        let mut left = 0
+        let mut right = self.len
+        while left < right:
+            let mid = left + (right - left) / 2
+            let probe = unsafe { *self.ptr.add(mid) }
+            match f(probe):
+                Ordering::Equal -> return Ok(mid)
+                Ordering::Less -> left = mid + 1
+                Ordering::Greater -> right = mid
+        Err(left)
+
+    ### Partitions the vector based on a predicate.
+    ###
+    ### Returns the index of the first element that does not satisfy the predicate.
+    fn partition(mut self, f: fn(T) -> bool) -> usize:
+        let mut i = 0
+        for j in 0..self.len:
+            let val = unsafe { *self.ptr.add(j) }
+            if f(val):
+                self.swap(i, j)
+                i += 1
+        i
+
+    ### Private: Grows the capacity when needed.
+    private fn grow(mut self):
+        let new_cap = if self.capacity == 0 { 4 } else { self.capacity * 2 }
+        self.reallocate(new_cap)
+
+    ### Private: Reallocates to a new capacity.
+    private fn reallocate(mut self, new_cap: usize):
+        let new_ptr = allocate(new_cap)
+        for i in 0..self.len:
+            unsafe {
+                *new_ptr.add(i) = *self.ptr.add(i)
+            }
+        self.ptr = new_ptr
+        self.capacity = new_cap
+
+    ### Private: Reallocates to exactly the specified capacity.
+    private fn reallocate_exact(mut self, new_cap: usize):
+        let new_ptr = allocate(new_cap)
+        for i in 0..self.len:
+            unsafe {
+                *new_ptr.add(i) = *self.ptr.add(i)
+            }
+        self.ptr = new_ptr
+        self.capacity = new_cap
+
+    ### Private: Reverses a range of elements.
+    private fn reverse_range(mut self, start: usize, end: usize):
+        let mut left = start
+        let mut right = end
+        while left < right:
+            self.swap(left, right - 1)
+            left += 1
+            right -= 1
+
+    ### Private: Quick sort implementation.
+    private fn quick_sort(mut self, low: usize, high: usize, compare: fn(T, T) -> Ordering):
+        if low < high:
+            let pi = self.partition(low, high, compare)
+            if pi > 0:
+                self.quick_sort(low, pi - 1, compare)
+            self.quick_sort(pi + 1, high, compare)
+
+    ### Private: Partition for quick sort.
+    private fn partition(mut self, low: usize, high: usize, compare: fn(T, T) -> Ordering) -> usize:
+        let pivot = unsafe { *self.ptr.add(high) }
+        let mut i = low
+        for j in low..high:
+            let current = unsafe { *self.ptr.add(j) }
+            if compare(current, pivot) != Ordering::Greater:
+                unsafe {
+                    let temp = *self.ptr.add(i)
+                    *self.ptr.add(i) = *self.ptr.add(j)
+                    *self.ptr.add(j) = temp
+                }
+                i += 1
+        unsafe {
+            let temp = *self.ptr.add(i)
+            *self.ptr.add(i) = *self.ptr.add(high)
+            *self.ptr.add(high) = temp
+        }
+        i
+
+impl[T] Iter[T]:
+    ### Returns the next element from the iterator.
+    fn next(mut self) -> Option[T]:
+        if self.pos < self.vec.len:
+            let val = self.vec.get(self.pos)
+            self.pos += 1
+            val
+        else:
+            None
+
+    ### Returns the remaining length of the iterator.
+    fn len(self) -> usize:
+        self.vec.len - self.pos
+
+    ### Returns true if the iterator has no more elements.
+    fn is_empty(self) -> bool:
+        self.pos >= self.vec.len
+
+### Implements IntoIter for Vec, allowing `for` loops.
+impl[T] IntoIter for Vec[T]:
+    type Item = T
+    type IntoIter = Iter[T]
+
+    fn into_iter(self) -> Iter[T]:
+        self.iter()
+
+### Implements Len trait for Vec.
+impl[T] Len for Vec[T]:
+    fn len(self) -> usize:
+        self.len
+
+    fn is_empty(self) -> bool:
+        self.len == 0
+
+### Implements Extend trait for Vec.
+impl[T] Extend[T] for Vec[T]:
+    fn extend[I](mut self, iter: I) where I: IntoIter[Item = T]:
+        for item in iter:
+            self.push(item)
+
+### Implements FromIter trait for Vec.
+impl[T] FromIter[T] for Vec[T]:
+    fn from_iter[I](iter: I) -> Vec[T] where I: IntoIter[Item = T]:
+        let vec = Vec.new()
+        for item in iter:
+            vec.push(item)
+        vec

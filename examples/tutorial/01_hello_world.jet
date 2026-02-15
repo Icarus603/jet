@@ -1,0 +1,15 @@
+# Tutorial 1: Hello World
+# This is the simplest Jet program. Every Jet program needs a main function
+# which serves as the entry point.
+
+# The 'fn' keyword defines a function. 'main' is a special name that marks
+# the entry point of the program.
+fn main():
+    # The print function outputs text to the console.
+    # Strings are enclosed in double quotes.
+    print("Hello, World!")
+
+    # You can print multiple values separated by spaces
+    print("Hello", "from", "Jet!")
+
+    # Exercise: Try changing the message to print your name

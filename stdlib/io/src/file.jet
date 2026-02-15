@@ -1,0 +1,236 @@
+### File operations for Jet.
+###
+### This module provides file reading, writing, and manipulation.
+
+import core::option::{Option, Some, None}
+import core::result::{Result, Ok, Err}
+
+### Error type for file operations.
+type FileError = {
+    message: string
+    kind: FileErrorKind
+}
+
+### Kinds of file errors.
+enum FileErrorKind:
+    NotFound
+    PermissionDenied
+    AlreadyExists
+    InvalidInput
+    InvalidData
+    UnexpectedEof
+    WriteZero
+    Interrupted
+    Other
+
+impl Show for FileError:
+    fn show(self) -> string:
+        f"File error ({self.kind.show()}): {self.message}"
+
+impl Show for FileErrorKind:
+    fn show(self) -> string:
+        match self:
+            NotFound -> "not found"
+            PermissionDenied -> "permission denied"
+            AlreadyExists -> "already exists"
+            InvalidInput -> "invalid input"
+            InvalidData -> "invalid data"
+            UnexpectedEof -> "unexpected EOF"
+            WriteZero -> "write zero"
+            Interrupted -> "interrupted"
+            Other -> "other"
+
+### A file handle for reading and writing.
+type File = {
+    path: PathBuf
+    # In a real implementation, this would contain an OS file descriptor
+}
+
+### Options for opening files.
+type OpenOptions = {
+    read: bool
+    write: bool
+    append: bool
+    truncate: bool
+    create: bool
+    create_new: bool
+}
+
+impl File:
+    ### Opens a file for reading.
+    fn open(path: PathBuf) -> Result[File, FileError] ! io:
+        File.open_with_options(path, OpenOptions.read())
+
+    ### Creates a new file for writing (truncates if exists).
+    fn create(path: PathBuf) -> Result[File, FileError] ! io:
+        File.open_with_options(path, OpenOptions.write().create().truncate())
+
+    ### Opens a file with custom options.
+    fn open_with_options(path: PathBuf, options: OpenOptions) -> Result[File, FileError] ! io:
+        # In a real implementation, call OS APIs
+        Ok(File { path: path })
+
+    ### Returns the file's metadata.
+    fn metadata(self) -> Result[Metadata, FileError] ! io:
+        # Placeholder
+        Ok(Metadata {
+            len: 0,
+            is_file: true,
+            is_dir: false,
+            modified: None,
+            accessed: None,
+            created: None
+        })
+
+    ### Synchronizes all OS-internal metadata to disk.
+    fn sync_all(self) -> Result[unit, FileError] ! io:
+        Ok(())
+
+    ### Synchronizes file data to disk (not metadata).
+    fn sync_data(self) -> Result[unit, FileError] ! io:
+        Ok(())
+
+    ### Sets the file's length.
+    fn set_len(self, size: u64) -> Result[unit, FileError] ! io:
+        Ok(())
+
+    ### Reads the entire file into a string.
+    fn read_to_string(self) -> Result[string, FileError] ! io:
+        # Placeholder
+        Ok("")
+
+    ### Reads the entire file into a byte vector.
+    fn read_to_end(self) -> Result[Vec[u8], FileError] ! io:
+        # Placeholder
+        Ok(Vec.new())
+
+    ### Writes a string to the file.
+    fn write_string(self, s: string) -> Result[unit, FileError] ! io:
+        Ok(())
+
+    ### Writes bytes to the file.
+    fn write_bytes(self, bytes: &[u8]) -> Result[unit, FileError] ! io:
+        Ok(())
+
+    ### Returns the current position in the file.
+    fn seek(self, pos: SeekFrom) -> Result[u64, FileError] ! io:
+        Ok(0)
+
+    ### Returns true if the file is at EOF.
+    fn is_eof(self) -> bool:
+        false
+
+    ### Returns the file's path.
+    fn path(self) -> PathBuf:
+        self.path.clone()
+
+    ### Returns a buffered reader for this file.
+    fn buffered_reader(self) -> BufReader:
+        BufReader.new(self)
+
+    ### Returns a buffered writer for this file.
+    fn buffered_writer(self) -> BufWriter:
+        BufWriter.new(self)
+
+impl OpenOptions:
+    ### Creates a new OpenOptions with all options set to false.
+    fn new() -> OpenOptions:
+        OpenOptions {
+            read: false,
+            write: false,
+            append: false,
+            truncate: false,
+            create: false,
+            create_new: false
+        }
+
+    ### Sets the read option.
+    fn read(self) -> OpenOptions:
+        OpenOptions { read: true, ..self }
+
+    ### Sets the write option.
+    fn write(self) -> OpenOptions:
+        OpenOptions { write: true, ..self }
+
+    ### Sets the append option.
+    fn append(self) -> OpenOptions:
+        OpenOptions { append: true, ..self }
+
+    ### Sets the truncate option.
+    fn truncate(self) -> OpenOptions:
+        OpenOptions { truncate: true, ..self }
+
+    ### Sets the create option.
+    fn create(self) -> OpenOptions:
+        OpenOptions { create: true, ..self }
+
+    ### Sets the create_new option.
+    fn create_new(self) -> OpenOptions:
+        OpenOptions { create_new: true, ..self }
+
+### File metadata.
+type Metadata = {
+    len: u64
+    is_file: bool
+    is_dir: bool
+    modified: Option[Timestamp]
+    accessed: Option[Timestamp]
+    created: Option[Timestamp]
+}
+
+### A timestamp for file times.
+type Timestamp = {
+    seconds: i64
+    nanoseconds: u32
+}
+
+### Seek position for file operations.
+enum SeekFrom:
+    Start(u64)
+    End(i64)
+    Current(i64)
+
+### Reads the entire contents of a file into a string.
+fn read_to_string(path: PathBuf) -> Result[string, FileError] ! io:
+    let file = File.open(path)?
+    file.read_to_string()
+
+### Reads the entire contents of a file into bytes.
+fn read_to_bytes(path: PathBuf) -> Result[Vec[u8], FileError] ! io:
+    let file = File.open(path)?
+    file.read_to_end()
+
+### Writes a string to a file.
+fn write_string(path: PathBuf, contents: string) -> Result[unit, FileError] ! io:
+    let file = File.create(path)?
+    file.write_string(contents)
+
+### Writes bytes to a file.
+fn write_bytes(path: PathBuf, contents: &[u8]) -> Result[unit, FileError] ! io:
+    let file = File.create(path)?
+    file.write_bytes(contents)
+
+### Copies a file from one location to another.
+fn copy(from: PathBuf, to: PathBuf) -> Result[u64, FileError] ! io:
+    let contents = read_to_bytes(from)?
+    write_bytes(to, contents)?
+    Ok(contents.len() as u64)
+
+### Removes a file.
+fn remove(path: PathBuf) -> Result[unit, FileError] ! io:
+    Ok(())
+
+### Renames a file.
+fn rename(from: PathBuf, to: PathBuf) -> Result[unit, FileError] ! io:
+    Ok(())
+
+### Returns true if a path exists and is a file.
+fn exists(path: PathBuf) -> bool:
+    # Placeholder
+    false
+
+### Returns the size of a file.
+fn file_size(path: PathBuf) -> Result[u64, FileError] ! io:
+    let file = File.open(path)?
+    let metadata = file.metadata()?
+    Ok(metadata.len)

@@ -1,0 +1,26 @@
+[package]
+name = "jet-fmt"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Jet code formatter"
+
+[[bin]]
+name = "jet-fmt"
+path = "src/main.rs"
+
+[lib]
+name = "jet_fmt"
+path = "src/lib.rs"
+
+[dependencies]
+jet-lexer = { path = "../../compiler/lexer" }
+jet-parser = { path = "../../compiler/parser" }
+jet-diagnostics = { path = "../../compiler/diagnostics" }
+thiserror.workspace = true
+anyhow.workspace = true
+
+[dev-dependencies]
+pretty_assertions.workspace = true

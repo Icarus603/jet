@@ -1,0 +1,308 @@
+### Set - A hash set implementation.
+###
+### Set provides an unordered collection of unique elements with O(1) average-case
+### operations for insertion, deletion, and membership testing.
+
+import core::option::{Option, Some, None}
+import core::traits::{Hash, Eq}
+
+### A hash set implementation.
+###
+### Set is implemented as a Map[T, Unit] where the keys are the set elements
+### and the values are the unit type (carrying no information).
+type Set[T] = {
+    map: Map[T, Unit]
+}
+
+### Iterator over set elements.
+struct SetIter[T]:
+    map_iter: KeysIter[T, Unit]
+
+### Difference between two sets (elements in self but not in other).
+struct DifferenceIter[T]:
+    self_set: Set[T]
+    other_set: Set[T]
+    current_iter: SetIter[T]
+
+### Intersection of two sets.
+struct IntersectionIter[T]:
+    self_set: Set[T]
+    other_set: Set[T]
+    current_iter: SetIter[T]
+
+### Union of two sets.
+struct UnionIter[T]:
+    self_set: Set[T]
+    other_set: Set[T]
+    current_iter: SetIter[T]
+    first_done: bool
+
+impl[T] Set[T] where T: Hash + Eq:
+    ### Creates an empty set.
+    fn new() -> Set[T]:
+        Set { map: Map.new() }
+
+    ### Creates an empty set with the specified initial capacity.
+    fn with_capacity(capacity: usize) -> Set[T]:
+        Set { map: Map.with_capacity(capacity) }
+
+    ### Creates a set from an iterator.
+    fn from_iter[I](iter: I) -> Set[T] where I: IntoIter[Item = T]:
+        let set = Set.new()
+        for item in iter:
+            set.insert(item)
+        set
+
+    ### Creates a set from an array.
+    fn from_array(arr: &[T]) -> Set[T]:
+        let set = Set.new()
+        for item in arr:
+            set.insert(item)
+        set
+
+    ### Inserts a value into the set.
+    ###
+    ### Returns true if the value was not already present in the set.
+    fn insert(mut self, value: T) -> bool:
+        self.map.insert(value, Unit).is_none()
+
+    ### Returns true if the set contains the specified value.
+    fn contains(self, value: T) -> bool:
+        self.map.contains_key(value)
+
+    ### Removes a value from the set.
+    ###
+    ### Returns true if the value was present in the set.
+    fn remove(mut self, value: T) -> bool:
+        self.map.remove(value).is_some()
+
+    ### Returns the number of elements in the set.
+    fn len(self) -> usize:
+        self.map.len()
+
+    ### Returns true if the set contains no elements.
+    fn is_empty(self) -> bool:
+        self.map.is_empty()
+
+    ### Clears the set, removing all values.
+    fn clear(mut self):
+        self.map.clear()
+
+    ### Returns an iterator over the set.
+    fn iter(self) -> SetIter[T]:
+        SetIter { map_iter: self.map.keys() }
+
+    ### Returns true if the set is a subset of another set.
+    ###
+    ### A set is a subset if all its elements are contained in the other set.
+    fn is_subset(self, other: Set[T]) -> bool:
+        for value in self:
+            if not other.contains(value):
+                return false
+        true
+
+    ### Returns true if the set is a superset of another set.
+    ###
+    ### A set is a superset if it contains all elements of the other set.
+    fn is_superset(self, other: Set[T]) -> bool:
+        other.is_subset(self)
+
+    ### Returns true if the set has no elements in common with another set.
+    fn is_disjoint(self, other: Set[T]) -> bool:
+        let smaller = if self.len() <= other.len() { self } else { other }
+        let larger = if self.len() <= other.len() { other } else { self }
+        for value in smaller:
+            if larger.contains(value):
+                return false
+        true
+
+    ### Returns the union of two sets.
+    ###
+    ### The union contains all elements that are in either set.
+    fn union(self, other: Set[T]) -> Set[T]:
+        let result = Set.new()
+        for v in self:
+            result.insert(v)
+        for v in other:
+            result.insert(v)
+        result
+
+    ### Returns the intersection of two sets.
+    ###
+    ### The intersection contains all elements that are in both sets.
+    fn intersection(self, other: Set[T]) -> Set[T]:
+        let result = Set.new()
+        let smaller = if self.len() <= other.len() { self } else { other }
+        let larger = if self.len() <= other.len() { other } else { self }
+        for v in smaller:
+            if larger.contains(v):
+                result.insert(v)
+        result
+
+    ### Returns the difference between two sets.
+    ###
+    ### The difference contains elements that are in self but not in other.
+    fn difference(self, other: Set[T]) -> Set[T]:
+        let result = Set.new()
+        for v in self:
+            if not other.contains(v):
+                result.insert(v)
+        result
+
+    ### Returns the symmetric difference between two sets.
+    ###
+    ### The symmetric difference contains elements that are in exactly one of the sets.
+    fn symmetric_difference(self, other: Set[T]) -> Set[T]:
+        let result = Set.new()
+        for v in self:
+            if not other.contains(v):
+                result.insert(v)
+        for v in other:
+            if not self.contains(v):
+                result.insert(v)
+        result
+
+    ### Returns true if all elements satisfy the predicate.
+    fn all(self, f: fn(T) -> bool) -> bool:
+        for v in self:
+            if not f(v):
+                return false
+        true
+
+    ### Returns true if any element satisfies the predicate.
+    fn any(self, f: fn(T) -> bool) -> bool:
+        for v in self:
+            if f(v):
+                return true
+        false
+
+    ### Returns the first element that satisfies the predicate.
+    fn find(self, f: fn(T) -> bool) -> Option[T]:
+        for v in self:
+            if f(v):
+                return Some(v)
+        None
+
+    ### Applies a function to each element.
+    fn for_each(self, f: fn(T) -> unit):
+        for v in self:
+            f(v)
+
+    ### Folds the set into a single value.
+    fn fold[U](self, initial: U, f: fn(U, T) -> U) -> U:
+        let acc = initial
+        for v in self:
+            acc = f(acc, v)
+        acc
+
+    ### Creates a new set with the results of applying the function.
+    fn map[U](self, f: fn(T) -> U) -> Set[U] where U: Hash + Eq:
+        let result = Set.new()
+        for v in self:
+            result.insert(f(v))
+        result
+
+    ### Creates a new set with only the elements that match the predicate.
+    fn filter(self, f: fn(T) -> bool) -> Set[T]:
+        let result = Set.new()
+        for v in self:
+            if f(v):
+                result.insert(v)
+        result
+
+    ### Retains only the elements specified by the predicate.
+    fn retain(mut self, f: fn(T) -> bool):
+        let to_remove = Vec.new()
+        for v in self:
+            if not f(v):
+                to_remove.push(v)
+        for v in to_remove:
+            self.remove(v)
+
+    ### Takes an element from the set and returns it.
+    ###
+    ### Returns None if the set is empty.
+    fn take(mut self) -> Option[T]:
+        for v in self:
+            self.remove(v)
+            return Some(v)
+        None
+
+    ### Takes an element equal to `value` from the set.
+    ###
+    ### Returns None if no such element exists.
+    fn take_value(mut self, value: T) -> Option[T]:
+        if self.contains(value):
+            self.remove(value)
+            Some(value)
+        else:
+            None
+
+    ### Returns a vector containing all elements of the set.
+    fn to_vec(self) -> Vec[T]:
+        let result = Vec.new()
+        for v in self:
+            result.push(v)
+        result
+
+    ### Returns the number of elements that satisfy the predicate.
+    fn count(self, f: fn(T) -> bool) -> usize:
+        let mut count = 0
+        for v in self:
+            if f(v):
+                count += 1
+        count
+
+    ### Partitions the set into two based on a predicate.
+    fn partition(self, f: fn(T) -> bool) -> (Set[T], Set[T]):
+        let true_set = Set.new()
+        let false_set = Set.new()
+        for v in self:
+            if f(v):
+                true_set.insert(v)
+            else:
+                false_set.insert(v)
+        (true_set, false_set)
+
+impl[T] SetIter[T]:
+    ### Returns the next element from the iterator.
+    fn next(mut self) -> Option[T]:
+        self.map_iter.next()
+
+    ### Returns the remaining length of the iterator.
+    fn len(self) -> usize:
+        self.map_iter.len()
+
+    ### Returns true if the iterator has no more elements.
+    fn is_empty(self) -> bool:
+        self.map_iter.is_empty()
+
+### Implements IntoIter for Set.
+impl[T] IntoIter for Set[T]:
+    type Item = T
+    type IntoIter = SetIter[T]
+
+    fn into_iter(self) -> SetIter[T]:
+        self.iter()
+
+### Implements Len trait for Set.
+impl[T] Len for Set[T]:
+    fn len(self) -> usize:
+        self.map.len()
+
+    fn is_empty(self) -> bool:
+        self.map.is_empty()
+
+### Implements Extend trait for Set.
+impl[T] Extend[T] for Set[T]:
+    fn extend[I](mut self, iter: I) where I: IntoIter[Item = T]:
+        for item in iter:
+            self.insert(item)
+
+### Implements FromIter trait for Set.
+impl[T] FromIter[T] for Set[T]:
+    fn from_iter[I](iter: I) -> Set[T] where I: IntoIter[Item = T]:
+        let set = Set.new()
+        for item in iter:
+            set.insert(item)
+        set

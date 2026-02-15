@@ -1,0 +1,209 @@
+### Regular expression support for Jet.
+###
+### This module provides regex matching capabilities.
+### Note: This is a simplified interface; full implementation would
+### use a regex engine or external library.
+
+import core::option::{Option, Some, None}
+import core::result::{Result, Ok, Err}
+import collections::Vec
+
+### Error type for regex operations.
+type RegexError = {
+    message: string
+    position: Option[usize]
+}
+
+impl Show for RegexError:
+    fn show(self) -> string:
+        match self.position:
+            Some(pos) -> f"Regex error at position {pos}: {self.message}"
+            None -> f"Regex error: {self.message}"
+
+impl Eq for RegexError:
+    fn eq(self, other: RegexError) -> bool:
+        self.message == other.message and self.position == other.position
+
+### A compiled regular expression.
+###
+### Regex instances are immutable and can be used across threads.
+type Regex = {
+    pattern: string
+    # In a real implementation, this would contain compiled bytecode
+    # or a reference to a regex engine state
+}
+
+### A match result from a regex search.
+type RegexMatch = {
+    matched: string
+    start: usize
+    end: usize
+    groups: Vec[Option[string]]
+}
+
+impl Regex:
+    ### Compiles a regular expression pattern.
+    ###
+    ### Returns an error if the pattern is invalid.
+    fn compile(pattern: string) -> Result[Regex, RegexError]:
+        # In a real implementation, this would parse and validate the pattern
+        # For now, we accept all patterns
+        Ok(Regex { pattern: pattern })
+
+    ### Attempts to compile a pattern, panicking on error.
+    fn new(pattern: string) -> Regex:
+        match Regex.compile(pattern):
+            Ok(regex) -> regex
+            Err(e) -> panic(f"Invalid regex pattern: {e.show()}")
+
+    ### Returns true if the regex matches the entire string.
+    fn is_match(self, text: string) -> bool:
+        match self.find(text):
+            Some(m) -> m.start == 0 and m.end == text.len()
+            None -> false
+
+    ### Returns true if the regex matches anywhere in the string.
+    fn matches_anywhere(self, text: string) -> bool:
+        self.find(text).is_some()
+
+    ### Finds the first match in the text.
+    fn find(self, text: string) -> Option[RegexMatch]:
+        # In a real implementation, this would perform regex matching
+        # This is a simplified placeholder that does literal string matching
+        # for basic patterns
+        self.find_at(text, 0)
+
+    ### Finds a match starting at the given position.
+    fn find_at(self, text: string, start: usize) -> Option[RegexMatch]:
+        # Placeholder implementation - does simple literal matching
+        if start >= text.len():
+            return None
+
+        let pattern = self.pattern
+        let text_slice = text.slice(start, text.len())
+
+        # Very simple literal matching for demonstration
+        if let Some(pos) = text_slice.find(pattern):
+            Some(RegexMatch {
+                matched: pattern,
+                start: start + pos,
+                end: start + pos + pattern.len(),
+                groups: Vec.new()
+            })
+        else:
+            None
+
+    ### Finds all non-overlapping matches in the text.
+    fn find_all(self, text: string) -> Vec[RegexMatch]:
+        let results = Vec.new()
+        let mut pos = 0
+
+        while pos < text.len():
+            match self.find_at(text, pos):
+                Some(m) ->
+                    results.push(m)
+                    pos = m.end
+                    if m.start == m.end:
+                        pos += 1  # Avoid infinite loop on empty match
+                None -> break
+
+        results
+
+    ### Replaces the first match with the replacement string.
+    fn replace(self, text: string, replacement: string) -> string:
+        match self.find(text):
+            Some(m) ->
+                text.slice(0, m.start) + replacement + text.slice(m.end, text.len())
+            None -> text
+
+    ### Replaces all matches with the replacement string.
+    fn replace_all(self, text: string, replacement: string) -> string:
+        let result = StringBuilder.new()
+        let mut last_end = 0
+
+        for m in self.find_all(text):
+            result.append(text.slice(last_end, m.start))
+            result.append(replacement)
+            last_end = m.end
+
+        result.append(text.slice(last_end, text.len()))
+        result.to_string()
+
+    ### Splits the text by the regex pattern.
+    fn split(self, text: string) -> Vec[string]:
+        let result = Vec.new()
+        let mut last_end = 0
+
+        for m in self.find_all(text):
+            result.push(text.slice(last_end, m.start))
+            last_end = m.end
+
+        result.push(text.slice(last_end, text.len()))
+        result
+
+    ### Returns the number of captures in the regex.
+    fn capture_count(self) -> usize:
+        # In a real implementation, this would return the actual capture count
+        0
+
+    ### Returns the original pattern string.
+    fn as_str(self) -> string:
+        self.pattern
+
+impl RegexMatch:
+    ### Returns the full matched text.
+    fn matched(self) -> string:
+        self.matched
+
+    ### Returns the start position of the match.
+    fn start(self) -> usize:
+        self.start
+
+    ### Returns the end position of the match.
+    fn end(self) -> usize:
+        self.end
+
+    ### Returns the length of the match.
+    fn len(self) -> usize:
+        self.end - self.start
+
+    ### Returns true if this match has capture groups.
+    fn has_groups(self) -> bool:
+        not self.groups.is_empty()
+
+    ### Returns the nth capture group (0 is the full match).
+    fn group(self, n: usize) -> Option[string]:
+        if n == 0:
+            Some(self.matched)
+        else:
+            self.groups.get(n - 1).flatten()
+
+    ### Returns the number of capture groups.
+    fn group_count(self) -> usize:
+        self.groups.len()
+
+### Predefined regex patterns for common use cases.
+module Patterns:
+    ### Email pattern (simplified).
+    fn email() -> Regex:
+        Regex.new(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}")
+
+    ### URL pattern (simplified).
+    fn url() -> Regex:
+        Regex.new(r"https?://[^\s]+")
+
+    ### IPv4 address pattern.
+    fn ipv4() -> Regex:
+        Regex.new(r"(\d{1,3}\.){3}\d{1,3}")
+
+    ### Decimal number pattern.
+    fn number() -> Regex:
+        Regex.new(r"-?\d+(\.\d+)?")
+
+    ### Whitespace pattern.
+    fn whitespace() -> Regex:
+        Regex.new(r"\s+")
+
+    ### Word pattern.
+    fn word() -> Regex:
+        Regex.new(r"\w+")

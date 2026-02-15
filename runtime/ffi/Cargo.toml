@@ -1,0 +1,15 @@
+[package]
+name = "jet-rt-ffi"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+libc = { workspace = true, optional = true }
+windows = { version = "0.54", features = ["Win32_Foundation", "Win32_System_LibraryLoader"], optional = true }
+
+[features]
+default = ["libc"]
+windows-support = ["windows"]

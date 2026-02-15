@@ -1,0 +1,13 @@
+[package]
+name = "jet-rt-sync"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+crossbeam-queue = "0.3"
+
+[dev-dependencies]
+pretty_assertions.workspace = true

@@ -1,0 +1,85 @@
+### Tests for error types
+
+import core::error
+
+@test
+fn test_unwrap_error_show():
+    let err = UnwrapError { message: "called unwrap on None" }
+    assert err.show() == "called unwrap on None"
+
+@test
+fn test_unwrap_error_eq():
+    let err1 = UnwrapError { message: "error" }
+    let err2 = UnwrapError { message: "error" }
+    let err3 = UnwrapError { message: "different" }
+    assert err1.eq(err2) == true
+    assert err1.eq(err3) == false
+
+@test
+fn test_unwrap_error_clone():
+    let err = UnwrapError { message: "error" }
+    let cloned = err.clone()
+    assert cloned.message == "error"
+
+@test
+fn test_error_show():
+    let err = Error { message: "something went wrong" }
+    assert err.show() == "something went wrong"
+
+@test
+fn test_error_eq():
+    let err1 = Error { message: "error" }
+    let err2 = Error { message: "error" }
+    let err3 = Error { message: "different" }
+    assert err1.eq(err2) == true
+    assert err1.eq(err3) == false
+
+@test
+fn test_invalid_argument_error_show():
+    let err = InvalidArgumentError { message: "invalid input" }
+    assert err.show() == "Invalid argument: invalid input"
+
+@test
+fn test_unsupported_operation_error_show():
+    let err = UnsupportedOperationError { message: "not supported" }
+    assert err.show() == "Unsupported operation: not supported"
+
+@test
+fn test_out_of_bounds_error_show():
+    let err = OutOfBoundsError { index: 5, len: 3 }
+    assert err.show().contains("Index 5")
+    assert err.show().contains("length: 3")
+
+@test
+fn test_out_of_bounds_error_eq():
+    let err1 = OutOfBoundsError { index: 5, len: 3 }
+    let err2 = OutOfBoundsError { index: 5, len: 3 }
+    let err3 = OutOfBoundsError { index: 4, len: 3 }
+    assert err1.eq(err2) == true
+    assert err1.eq(err3) == false
+
+@test
+fn test_conversion_error_show():
+    let err = ConversionError { from: "string", to: "int", message: "invalid format" }
+    assert err.show().contains("Cannot convert from string to int")
+    assert err.show().contains("invalid format")
+
+@test
+fn test_io_error_show():
+    let err = IOError { message: "file not found" }
+    assert err.show() == "IO error: file not found"
+
+@test
+fn test_timeout_error_show():
+    let err = TimeoutError { message: "operation timed out" }
+    assert err.show() == "Timeout: operation timed out"
+
+@test
+fn test_cancelled_error_show():
+    let err = CancelledError { message: "operation cancelled" }
+    assert err.show() == "Cancelled: operation cancelled"
+
+@test
+fn test_empty_error_show():
+    let err = EmptyError { message: "collection is empty" }
+    assert err.show() == "collection is empty"

@@ -1,0 +1,112 @@
+# Language Spec Test: Lexical Structure
+# Tests: Section 2 - Lexical Structure
+
+### Test integer literals (2.6.1)
+fn test_integer_literals():
+    let decimal = 42
+    let with_underscores = 1_000_000
+    let hex = 0xFF
+    let octal = 0o755
+    let binary = 0b1010
+
+    # Type suffixes
+    let i8_val = 42i8
+    let u32_val = 100u32
+    let u64_val = 0xFFu64
+
+### Test float literals (2.6.2)
+fn test_float_literals():
+    let pi = 3.14
+    let scientific = 1.0e10
+    let negative_exp = 2.5e-3
+    let f32_val = 3.14f32
+
+### Test boolean literals (2.6.3)
+fn test_bool_literals():
+    let t = true
+    let f = false
+
+### Test string literals (2.6.4)
+fn test_string_literals():
+    let simple = "Hello, world!"
+    let with_escapes = "Line 1\nLine 2\tTabbed"
+    let with_unicode = "Hello \u{1F600}"
+    let raw = r"C:\Users\name"
+    let raw_quotes = r#"Contains "quotes" inside"#
+
+### Test character literals (2.6.5)
+fn test_char_literals():
+    let a = 'a'
+    let newline = '\n'
+    let emoji = '\u{1F600}'
+
+### Test identifiers (2.5)
+fn test_identifiers():
+    let snake_case_var = 1
+    let _underscore_prefix = 2
+    let with123numbers = 3
+    # Unicode identifiers
+    let café = 4
+    let 世界 = 5
+
+### Test comments (2.3)
+fn test_comments():
+    # This is a line comment
+    let x = 5  # trailing comment
+
+    # Multi-line
+    # comments
+    # using multiple lines
+
+### Test keywords cannot be identifiers (2.4)
+fn test_keywords():
+    # These are all valid keyword uses:
+    # and, async, await, break, chan, concurrent, continue
+    # else, enum, false, fn, for, if, import, in
+    # let, loop, match, mod, mut, not, or, pub
+    # return, self, spawn, struct, trait, true
+    # type, unit, use, where, while
+    pass
+
+### Test operators (2.7)
+fn test_operators():
+    # Arithmetic
+    let add = 1 + 2
+    let sub = 5 - 3
+    let mul = 4 * 6
+    let div = 10 / 2
+    let modulo = 10 % 3
+    let power = 2 ** 8
+
+    # Bitwise
+    let bit_and = 0xFF & 0x0F
+    let bit_or = 0xF0 | 0x0F
+    let bit_xor = 0xFF ^ 0x0F
+    let left_shift = 1 << 4
+    let right_shift = 16 >> 2
+    let bit_not = ~0xFF
+
+    # Comparison
+    let eq = 1 == 1
+    let neq = 1 != 2
+    let lt = 1 < 2
+    let gt = 2 > 1
+    let lte = 1 <= 1
+    let gte = 2 >= 2
+
+    # Logical
+    let logical_and = true and false
+    let logical_or = true or false
+    let logical_not = not true
+
+### Main entry point
+fn main():
+    test_integer_literals()
+    test_float_literals()
+    test_bool_literals()
+    test_string_literals()
+    test_char_literals()
+    test_identifiers()
+    test_comments()
+    test_keywords()
+    test_operators()

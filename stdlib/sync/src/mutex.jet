@@ -1,0 +1,117 @@
+### Mutex (mutual exclusion) for Jet.
+###
+### A mutex provides exclusive access to data between multiple tasks.
+
+import core::option::{Option, Some, None}
+import core::result::{Result, Ok, Err}
+
+### A mutual exclusion primitive useful for protecting shared data.
+###
+### The mutex can be created using `Mutex.new(data)`.
+### To access the data, use `lock()` which returns a guard.
+### When the guard is dropped, the lock is released.
+type Mutex[T] = {
+    # Internal mutex state
+    data: T
+    locked: AtomicBool
+}
+
+### A guard that releases the mutex when dropped.
+###
+### The guard dereferences to the protected data, allowing access to it.
+type MutexGuard[T] = {
+    mutex: Mutex[T]
+}
+
+### Error type for mutex operations.
+type MutexError = {
+    message: string
+    kind: MutexErrorKind
+}
+
+### Kinds of mutex errors.
+enum MutexErrorKind:
+    Poisoned      # A task panicked while holding the lock
+    WouldBlock    # Non-blocking lock would block
+
+impl Show for MutexError:
+    fn show(self) -> string:
+        f"Mutex error ({self.kind.show()}): {self.message}"
+
+impl Show for MutexErrorKind:
+    fn show(self) -> string:
+        match self:
+            Poisoned -> "poisoned"
+            WouldBlock -> "would block"
+
+impl[T] Mutex[T]:
+    ### Creates a new mutex protecting the given data.
+    fn new(data: T) -> Mutex[T]:
+        Mutex { data: data, locked: AtomicBool.new(false) }
+
+    ### Acquires the mutex, blocking the current task until it is available.
+    fn lock(self) -> Result[MutexGuard[T], MutexError] ! async:
+        # In a real implementation, block until lock is acquired
+        while self.locked.compare_exchange(false, true) == false:
+            yield_now().await
+        Ok(MutexGuard { mutex: self })
+
+    ### Attempts to acquire the mutex without blocking.
+    fn try_lock(self) -> Option[MutexGuard[T]]:
+        if self.locked.compare_exchange(false, true):
+            Some(MutexGuard { mutex: self })
+        else:
+            None
+
+    ### Returns a mutable reference to the underlying data.
+    ###
+    ### This is safe because it requires exclusive access to the mutex.
+    fn get_mut(self) -> T:
+        self.data
+
+    ### Returns true if the mutex is poisoned.
+    fn is_poisoned(self) -> bool:
+        false  # Placeholder
+
+    ### Clears the poisoned state of the mutex.
+    fn clear_poison(self):
+        ()
+
+impl[T] MutexGuard[T]:
+    ### Returns a reference to the protected data.
+    fn deref(self) -> T:
+        self.mutex.data
+
+    ### Returns a mutable reference to the protected data.
+    fn deref_mut(self) -> T:
+        self.mutex.data
+
+    ### Releases the lock early.
+    fn unlock(self):
+        self.mutex.locked.store(false)
+
+### A synchronous mutex for use in blocking contexts.
+type BlockingMutex[T] = {
+    data: T
+}
+
+impl[T] BlockingMutex[T]:
+    fn new(data: T) -> BlockingMutex[T]:
+        BlockingMutex { data: data }
+
+    fn lock(self) -> BlockingMutexGuard[T]:
+        BlockingMutexGuard { mutex: self }
+
+    fn try_lock(self) -> Option[BlockingMutexGuard[T]]:
+        Some(BlockingMutexGuard { mutex: self })
+
+type BlockingMutexGuard[T] = {
+    mutex: BlockingMutex[T]
+}
+
+impl[T] BlockingMutexGuard[T]:
+    fn deref(self) -> T:
+        self.mutex.data
+
+    fn deref_mut(self) -> T:
+        self.mutex.data

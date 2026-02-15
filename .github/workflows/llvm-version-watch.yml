@@ -1,0 +1,112 @@
+name: LLVM Version Watch
+
+on:
+  schedule:
+    - cron: "17 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  watch-llvm:
+    name: Watch LLVM 21.1.x Patch Updates
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check LLVM releases and open/update issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+
+            const policyPath = '.github/llvm-version-policy.json';
+            const policy = JSON.parse(fs.readFileSync(policyPath, 'utf8'));
+
+            const [seriesMajor, seriesMinor] = policy.series.split('.').map(Number);
+            const [lockedMajor, lockedMinor, lockedPatch] = policy.current_locked.split('.').map(Number);
+
+            if (seriesMajor !== lockedMajor || seriesMinor !== lockedMinor) {
+              core.setFailed(`Policy mismatch: series=${policy.series}, current_locked=${policy.current_locked}`);
+              return;
+            }
+
+            const releases = await github.paginate(
+              github.rest.repos.listReleases,
+              { owner: 'llvm', repo: 'llvm-project', per_page: 100 }
+            );
+
+            const regex = /^llvmorg-(\d+)\.(\d+)\.(\d+)$/;
+            let latestPatch = -1;
+            let latestTag = null;
+
+            for (const release of releases) {
+              if (release.prerelease || release.draft) continue;
+              const match = release.tag_name.match(regex);
+              if (!match) continue;
+              const major = Number(match[1]);
+              const minor = Number(match[2]);
+              const patch = Number(match[3]);
+              if (major === seriesMajor && minor === seriesMinor && patch > latestPatch) {
+                latestPatch = patch;
+                latestTag = release.tag_name;
+              }
+            }
+
+            if (latestPatch < 0) {
+              core.setFailed(`No stable llvmorg-${policy.series}.x release tags found.`);
+              return;
+            }
+
+            const latestVersion = `${seriesMajor}.${seriesMinor}.${latestPatch}`;
+            const lockedVersion = policy.current_locked;
+
+            if (latestPatch <= lockedPatch) {
+              core.info(`No update needed. Locked=${lockedVersion}, latest=${latestVersion}`);
+              return;
+            }
+
+            const title = `LLVM ${policy.series}.x patch update available: ${lockedVersion} -> ${latestVersion}`;
+            const body = [
+              `Jet is currently locked to LLVM \`${lockedVersion}\` (\`${policy.feature}\`).`,
+              ``,
+              `A newer LLVM ${policy.series}.x patch is available: \`${latestVersion}\` (\`${latestTag}\`).`,
+              ``,
+              `## Suggested upgrade checklist`,
+              `- Update \`.github/llvm-version-policy.json\` \`current_locked\` to \`${latestVersion}\``,
+              `- Verify CI/release workflows still target LLVM ${policy.series}.x`,
+              `- Run validation gates:`,
+              `  - \`cargo fmt --all -- --check\``,
+              `  - \`cargo clippy --workspace --all-targets -- -D warnings\``,
+              `  - \`bash scripts/check_safety_docs.sh\``,
+              `  - \`cargo test --workspace\``,
+            ].join('\n');
+
+            const search = await github.rest.search.issuesAndPullRequests({
+              q: `repo:${context.repo.owner}/${context.repo.repo} is:issue is:open in:title "LLVM ${policy.series}.x patch update available"`
+            });
+
+            const existing = search.data.items.find((item) =>
+              item.title.includes(`LLVM ${policy.series}.x patch update available`)
+            );
+
+            if (existing) {
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.number,
+                title,
+                body
+              });
+              core.info(`Updated existing issue #${existing.number}`);
+            } else {
+              const created = await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body
+              });
+              core.info(`Created issue #${created.data.number}`);
+            }

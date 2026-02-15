@@ -1,0 +1,21 @@
+[package]
+name = "jet-lsp"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "jet-lsp"
+path = "src/main.rs"
+
+[dependencies]
+jet-lexer = { path = "../../compiler/lexer" }
+jet-parser = { path = "../../compiler/parser" }
+jet-diagnostics = { path = "../../compiler/diagnostics" }
+jet-fmt = { path = "../fmt" }
+tokio = { version = "1", features = ["full"] }
+tower-lsp = "0.20"
+serde_json = "1.0"
+ropey = "1.6"
+
+[dev-dependencies]
+pretty_assertions.workspace = true

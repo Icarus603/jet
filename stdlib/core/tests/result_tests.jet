@@ -1,0 +1,182 @@
+### Tests for the Result type
+
+import core::result
+
+@test
+fn test_result_is_ok():
+    let ok: Result[int, string] = Ok(5)
+    let err: Result[int, string] = Err("error")
+    assert ok.is_ok() == true
+    assert err.is_ok() == false
+
+@test
+fn test_result_is_err():
+    let ok: Result[int, string] = Ok(5)
+    let err: Result[int, string] = Err("error")
+    assert ok.is_err() == false
+    assert err.is_err() == true
+
+@test
+fn test_result_is_ok_and():
+    let ok: Result[int, string] = Ok(5)
+    let err: Result[int, string] = Err("error")
+    assert ok.is_ok_and(|x| x > 3) == true
+    assert ok.is_ok_and(|x| x > 10) == false
+    assert err.is_ok_and(|x| x > 3) == false
+
+@test
+fn test_result_is_err_and():
+    let ok: Result[int, string] = Ok(5)
+    let err: Result[int, string] = Err("error")
+    assert ok.is_err_and(|e| e == "error") == false
+    assert err.is_err_and(|e| e == "error") == true
+    assert err.is_err_and(|e| e == "other") == false
+
+@test
+fn test_result_unwrap():
+    let ok: Result[int, string] = Ok(5)
+    assert ok.unwrap() == 5
+
+@test
+fn test_result_unwrap_err():
+    let err: Result[int, string] = Err("error")
+    assert err.unwrap_err() == "error"
+
+@test
+fn test_result_unwrap_or():
+    let ok: Result[int, string] = Ok(5)
+    let err: Result[int, string] = Err("error")
+    assert ok.unwrap_or(10) == 5
+    assert err.unwrap_or(10) == 10
+
+@test
+fn test_result_unwrap_or_else():
+    let ok: Result[int, string] = Ok(5)
+    let err: Result[int, string] = Err("error")
+    assert ok.unwrap_or_else(|e| e.len()) == 5
+    assert err.unwrap_or_else(|e| e.len()) == 5  # "error".len() == 5
+
+@test
+fn test_result_unwrap_err_or():
+    let ok: Result[int, string] = Ok(5)
+    let err: Result[int, string] = Err("error")
+    assert ok.unwrap_err_or("default") == "default"
+    assert err.unwrap_err_or("default") == "error"
+
+@test
+fn test_result_map():
+    let r: Result[int, string] = Ok(5)
+    let doubled = r.map(|x| x * 2)
+    assert doubled == Ok(10)
+
+@test
+fn test_result_map_err():
+    let r: Result[int, string] = Err("error")
+    let mapped = r.map_err(|e| e + "!")
+    assert mapped == Err("error!")
+
+@test
+fn test_result_flat_map():
+    let r: Result[int, string] = Ok(5)
+    let doubled = r.flat_map(|x| Ok(x * 2))
+    assert doubled == Ok(10)
+
+@test
+fn test_result_flat_map_err():
+    let r: Result[int, string] = Err("error")
+    let result = r.flat_map(|x| Ok(x * 2))
+    assert result == Err("error")
+
+@test
+fn test_result_and():
+    let ok1: Result[int, string] = Ok(1)
+    let ok2: Result[int, string] = Ok(2)
+    let err: Result[int, string] = Err("error")
+    assert ok1.and(ok2) == Ok(2)
+    assert ok1.and(err) == Err("error")
+    assert err.and(ok2) == Err("error")
+
+@test
+fn test_result_or():
+    let ok1: Result[int, string] = Ok(1)
+    let ok2: Result[int, string] = Ok(2)
+    let err: Result[int, string] = Err("error")
+    assert ok1.or(ok2) == Ok(1)
+    assert ok1.or(err) == Ok(1)
+    assert err.or(ok2) == Ok(2)
+
+@test
+fn test_result_or_else():
+    let ok: Result[int, string] = Ok(5)
+    let err: Result[int, string] = Err("error")
+    assert ok.or_else(|e| Ok(10)) == Ok(5)
+    assert err.or_else(|e| Ok(10)) == Ok(10)
+
+@test
+fn test_result_ok():
+    let ok: Result[int, string] = Ok(5)
+    let err: Result[int, string] = Err("error")
+    assert ok.ok() == Some(5)
+    assert err.ok() == None()
+
+@test
+fn test_result_err():
+    let ok: Result[int, string] = Ok(5)
+    let err: Result[int, string] = Err("error")
+    assert ok.err() == None()
+    assert err.err() == Some("error")
+
+@test
+fn test_result_map_or():
+    let ok: Result[int, string] = Ok(5)
+    let err: Result[int, string] = Err("error")
+    assert ok.map_or(0, |x| x * 2) == 10
+    assert err.map_or(0, |x| x * 2) == 0
+
+@test
+fn test_result_map_or_else():
+    let ok: Result[int, string] = Ok(5)
+    let err: Result[int, string] = Err("error")
+    assert ok.map_or_else(|e| 0, |x| x * 2) == 10
+    assert err.map_or_else(|e| 0, |x| x * 2) == 0
+
+@test
+fn test_result_flatten():
+    let r: Result[Result[int, string], string] = Ok(Ok(5))
+    assert r.flatten() == Ok(5)
+
+@test
+fn test_result_flatten_err():
+    let r: Result[Result[int, string], string] = Err("error")
+    assert r.flatten() == Err("error")
+
+@test
+fn test_result_transpose():
+    let r: Result[Option[int], string] = Ok(Some(5))
+    assert r.transpose() == Some(Ok(5))
+
+@test
+fn test_result_transpose_none():
+    let r: Result[Option[int], string] = Ok(None())
+    assert r.transpose() == None()
+
+@test
+fn test_result_transpose_err():
+    let r: Result[Option[int], string] = Err("error")
+    assert r.transpose() == Some(Err("error"))
+
+@test
+fn test_result_inspect():
+    let mut inspected = false
+    let ok: Result[int, string] = Ok(5)
+    let result = ok.inspect(|x| inspected = true)
+    assert result == Ok(5)
+    assert inspected == true
+
+@test
+fn test_result_inspect_err():
+    let mut inspected = false
+    let err: Result[int, string] = Err("error")
+    let result = err.inspect_err(|e| inspected = true)
+    assert result == Err("error")
+    assert inspected == true

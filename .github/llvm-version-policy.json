@@ -1,0 +1,5 @@
+{
+  "series": "21.1",
+  "current_locked": "21.1.8",
+  "feature": "llvm21-1"
+}

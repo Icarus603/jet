@@ -1,0 +1,41 @@
+### Jet Networking Library
+###
+### This module provides networking primitives for the Jet programming language,
+### including TCP, UDP, and HTTP client/server functionality.
+
+# TCP
+export TcpStream
+export TcpListener
+export TcpError
+
+# UDP
+export UdpSocket
+export UdpError
+
+# Address types
+export SocketAddr
+export IpAddr
+export Ipv4Addr
+export Ipv6Addr
+export NetworkError
+
+# HTTP
+export HttpClient
+export HttpRequest
+export HttpResponse
+export HttpError
+export Method
+export StatusCode
+export Header
+export Headers
+
+# URL
+export Url
+export UrlError
+
+# Import submodules
+import tcp
+import udp
+import addr
+import http
+import url

@@ -1,0 +1,52 @@
+### Tests for the Jet String library.
+
+import string::{split, join, trim, contains, replace, to_upper, to_lower}
+import string_builder::StringBuilder
+
+fn test_split():
+    let result = split("hello,world,test", ",")
+    assert(result.len() == 3)
+    assert(result[0] == "hello")
+    assert(result[1] == "world")
+    assert(result[2] == "test")
+
+fn test_join():
+    let parts = ["hello", "world", "test"]
+    let result = join(parts, ", ")
+    assert(result == "hello, world, test")
+
+fn test_trim():
+    assert(trim("  hello  ") == "hello")
+    assert(trim("\t\nhello\t\n") == "hello")
+    assert(trim("hello") == "hello")
+
+fn test_contains():
+    assert(contains("hello world", "world"))
+    assert(not contains("hello world", "foo"))
+    assert(contains("hello", ""))
+
+fn test_replace():
+    assert(replace("hello world", "world", "universe") == "hello universe")
+    assert(replace("aaa", "a", "b") == "bbb")
+
+fn test_string_builder():
+    let sb = StringBuilder.new()
+    sb.append("Hello")
+    sb.append_char(' ')
+    sb.append("World")
+    assert(sb.to_string() == "Hello World")
+
+fn test_string_builder_join():
+    let sb = StringBuilder.new()
+    sb.append_joined([1, 2, 3], ", ")
+    assert(sb.to_string() == "1, 2, 3")
+
+fn run_all_tests():
+    test_split()
+    test_join()
+    test_trim()
+    test_contains()
+    test_replace()
+    test_string_builder()
+    test_string_builder_join()
+    println("All string tests passed!")

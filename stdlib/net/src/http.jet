@@ -1,0 +1,373 @@
+### HTTP client and server for Jet.
+###
+### This module provides HTTP request/response types and client/server functionality.
+
+import core::option::{Option, Some, None}
+import core::result::{Result, Ok, Err}
+import collections::Map
+import addr::{SocketAddr}
+import tcp::{TcpStream}
+
+### HTTP request method.
+enum Method:
+    GET
+    POST
+    PUT
+    DELETE
+    HEAD
+    OPTIONS
+    PATCH
+    TRACE
+    CONNECT
+
+impl Show for Method:
+    fn show(self) -> string:
+        match self:
+            GET -> "GET"
+            POST -> "POST"
+            PUT -> "PUT"
+            DELETE -> "DELETE"
+            HEAD -> "HEAD"
+            OPTIONS -> "OPTIONS"
+            PATCH -> "PATCH"
+            TRACE -> "TRACE"
+            CONNECT -> "CONNECT"
+
+### HTTP status code.
+type StatusCode = u16
+
+impl StatusCode:
+    ### Creates a new status code.
+    fn new(code: u16) -> StatusCode:
+        code
+
+    ### Returns true if the status is informational (1xx).
+    fn is_informational(self) -> bool:
+        self >= 100 and self < 200
+
+    ### Returns true if the status is successful (2xx).
+    fn is_success(self) -> bool:
+        self >= 200 and self < 300
+
+    ### Returns true if the status is a redirection (3xx).
+    fn is_redirection(self) -> bool:
+        self >= 300 and self < 400
+
+    ### Returns true if the status is a client error (4xx).
+    fn is_client_error(self) -> bool:
+        self >= 400 and self < 500
+
+    ### Returns true if the status is a server error (5xx).
+    fn is_server_error(self) -> bool:
+        self >= 500 and self < 600
+
+    ### Returns true if the status is an error (4xx or 5xx).
+    fn is_error(self) -> bool:
+        self.is_client_error() or self.is_server_error()
+
+    ### Returns the canonical reason phrase for this status code.
+    fn canonical_reason(self) -> Option[string]:
+        match self:
+            100 -> Some("Continue")
+            101 -> Some("Switching Protocols")
+            200 -> Some("OK")
+            201 -> Some("Created")
+            204 -> Some("No Content")
+            301 -> Some("Moved Permanently")
+            302 -> Some("Found")
+            304 -> Some("Not Modified")
+            400 -> Some("Bad Request")
+            401 -> Some("Unauthorized")
+            403 -> Some("Forbidden")
+            404 -> Some("Not Found")
+            500 -> Some("Internal Server Error")
+            502 -> Some("Bad Gateway")
+            503 -> Some("Service Unavailable")
+            _ -> None
+
+### HTTP header name and value.
+type Header = {
+    name: string
+    value: string
+}
+
+### HTTP headers collection.
+type Headers = {
+    headers: Map[string, string]
+}
+
+impl Headers:
+    ### Creates empty headers.
+    fn new() -> Headers:
+        Headers { headers: Map.new() }
+
+    ### Inserts a header.
+    fn insert(mut self, name: string, value: string):
+        self.headers.insert(name.to_lower(), value)
+
+    ### Gets a header value.
+    fn get(self, name: string) -> Option[string]:
+        self.headers.get(name.to_lower())
+
+    ### Returns true if the header exists.
+    fn contains(self, name: string) -> bool:
+        self.headers.contains_key(name.to_lower())
+
+    ### Removes a header.
+    fn remove(mut self, name: string) -> Option[string]:
+        self.headers.remove(name.to_lower())
+
+    ### Returns all header names.
+    fn keys(self) -> Vec[string]:
+        let keys = Vec.new()
+        for key in self.headers.keys():
+            keys.push(key)
+        keys
+
+    ### Returns the number of headers.
+    fn len(self) -> usize:
+        self.headers.len()
+
+    ### Returns true if there are no headers.
+    fn is_empty(self) -> bool:
+        self.headers.is_empty()
+
+    ### Clears all headers.
+    fn clear(mut self):
+        self.headers.clear()
+
+### An HTTP request.
+type HttpRequest = {
+    method: Method
+    url: Url
+    headers: Headers
+    body: Vec[u8]
+}
+
+impl HttpRequest:
+    ### Creates a new HTTP request.
+    fn new(method: Method, url: Url) -> HttpRequest:
+        HttpRequest {
+            method: method,
+            url: url,
+            headers: Headers.new(),
+            body: Vec.new()
+        }
+
+    ### Creates a GET request.
+    fn get(url: Url) -> HttpRequest:
+        HttpRequest.new(Method::GET, url)
+
+    ### Creates a POST request.
+    fn post(url: Url) -> HttpRequest:
+        HttpRequest.new(Method::POST, url)
+
+    ### Creates a PUT request.
+    fn put(url: Url) -> HttpRequest:
+        HttpRequest.new(Method::PUT, url)
+
+    ### Creates a DELETE request.
+    fn delete(url: Url) -> HttpRequest:
+        HttpRequest.new(Method::DELETE, url)
+
+    ### Sets a header.
+    fn header(mut self, name: string, value: string) -> HttpRequest:
+        self.headers.insert(name, value)
+        self
+
+    ### Sets the request body.
+    fn body(mut self, body: Vec[u8]) -> HttpRequest:
+        self.body = body
+        self
+
+    ### Sets the request body from a string.
+    fn body_string(mut self, body: string) -> HttpRequest:
+        # In a real implementation, convert string to bytes
+        self.body = Vec.new()
+        self
+
+    ### Sets the Content-Type header.
+    fn content_type(mut self, content_type: string) -> HttpRequest:
+        self.headers.insert("Content-Type", content_type)
+        self
+
+    ### Sets the Authorization header.
+    fn authorization(mut self, token: string) -> HttpRequest:
+        self.headers.insert("Authorization", token)
+        self
+
+    ### Sets the User-Agent header.
+    fn user_agent(mut self, agent: string) -> HttpRequest:
+        self.headers.insert("User-Agent", agent)
+        self
+
+### An HTTP response.
+type HttpResponse = {
+    status: StatusCode
+    headers: Headers
+    body: Vec[u8]
+}
+
+impl HttpResponse:
+    ### Creates a new HTTP response.
+    fn new(status: StatusCode) -> HttpResponse:
+        HttpResponse {
+            status: status,
+            headers: Headers.new(),
+            body: Vec.new()
+        }
+
+    ### Returns true if the status is successful.
+    fn is_success(self) -> bool:
+        self.status.is_success()
+
+    ### Returns true if the status is a redirect.
+    fn is_redirect(self) -> bool:
+        self.status.is_redirection()
+
+    ### Returns true if the status is an error.
+    fn is_error(self) -> bool:
+        self.status.is_error()
+
+    ### Returns the body as a string.
+    fn body_string(self) -> string:
+        # In a real implementation, convert bytes to string
+        ""
+
+    ### Returns the Content-Type header.
+    fn content_type(self) -> Option[string]:
+        self.headers.get("Content-Type")
+
+    ### Returns the Content-Length header.
+    fn content_length(self) -> Option[usize]:
+        match self.headers.get("Content-Length"):
+            Some(s) -> Some(s.parse().unwrap_or(0))
+            None -> None
+
+### An HTTP client.
+type HttpClient = {
+    timeout: Option[float64]
+    follow_redirects: bool
+    max_redirects: usize
+    default_headers: Headers
+}
+
+### Error type for HTTP operations.
+type HttpError = {
+    message: string
+    kind: HttpErrorKind
+}
+
+### Kinds of HTTP errors.
+enum HttpErrorKind:
+    ConnectionError
+    Timeout
+    InvalidUrl
+    TooManyRedirects
+    InvalidResponse
+    Other
+
+impl Show for HttpError:
+    fn show(self) -> string:
+        f"HTTP error ({self.kind.show()}): {self.message}"
+
+impl Show for HttpErrorKind:
+    fn show(self) -> string:
+        match self:
+            ConnectionError -> "connection error"
+            Timeout -> "timeout"
+            InvalidUrl -> "invalid URL"
+            TooManyRedirects -> "too many redirects"
+            InvalidResponse -> "invalid response"
+            Other -> "other"
+
+impl HttpClient:
+    ### Creates a new HTTP client with default settings.
+    fn new() -> HttpClient:
+        HttpClient {
+            timeout: Some(30.0),
+            follow_redirects: true,
+            max_redirects: 10,
+            default_headers: Headers.new()
+        }
+
+    ### Sets the request timeout.
+    fn timeout(mut self, timeout: Option[float64]) -> HttpClient:
+        self.timeout = timeout
+        self
+
+    ### Sets whether to follow redirects.
+    fn follow_redirects(mut self, follow: bool) -> HttpClient:
+        self.follow_redirects = follow
+        self
+
+    ### Sets the maximum number of redirects.
+    fn max_redirects(mut self, max: usize) -> HttpClient:
+        self.max_redirects = max
+        self
+
+    ### Sets a default header.
+    fn default_header(mut self, name: string, value: string) -> HttpClient:
+        self.default_headers.insert(name, value)
+        self
+
+    ### Sends an HTTP request.
+    fn send(self, request: HttpRequest) -> Result[HttpResponse, HttpError] ! async:
+        # In a real implementation, send the HTTP request
+        Err(HttpError { message: "Not implemented", kind: HttpErrorKind::Other })
+
+    ### Sends a GET request.
+    fn get(self, url: Url) -> Result[HttpResponse, HttpError] ! async:
+        self.send(HttpRequest.get(url))
+
+    ### Sends a POST request.
+    fn post(self, url: Url, body: Vec[u8]) -> Result[HttpResponse, HttpError] ! async:
+        self.send(HttpRequest.post(url).body(body))
+
+    ### Sends a PUT request.
+    fn put(self, url: Url, body: Vec[u8]) -> Result[HttpResponse, HttpError] ! async:
+        self.send(HttpRequest.put(url).body(body))
+
+    ### Sends a DELETE request.
+    fn delete(self, url: Url) -> Result[HttpResponse, HttpError] ! async:
+        self.send(HttpRequest.delete(url))
+
+### An HTTP server.
+type HttpServer = {
+    addr: SocketAddr
+    # Internal server state
+}
+
+impl HttpServer:
+    ### Creates a new HTTP server bound to the given address.
+    fn bind(addr: SocketAddr) -> Result[HttpServer, HttpError] ! async:
+        Ok(HttpServer { addr: addr })
+
+    ### Starts the server and handles requests with the given handler.
+    fn serve(self, handler: fn(HttpRequest) -> HttpResponse) -> Result[unit, HttpError] ! async:
+        # In a real implementation, accept connections and handle requests
+        Ok(())
+
+    ### Starts the server with graceful shutdown.
+    fn serve_with_shutdown(
+        self,
+        handler: fn(HttpRequest) -> HttpResponse,
+        shutdown: Receiver[unit]
+    ) -> Result[unit, HttpError] ! async:
+        Ok(())
+
+    ### Returns the local address.
+    fn local_addr(self) -> SocketAddr:
+        self.addr
+
+### Sends an HTTP GET request.
+fn http_get(url: string) -> Result[HttpResponse, HttpError] ! async:
+    let client = HttpClient.new()
+    let url = Url.parse(url)?
+    client.get(url).await
+
+### Sends an HTTP POST request.
+fn http_post(url: string, body: Vec[u8]) -> Result[HttpResponse, HttpError] ! async:
+    let client = HttpClient.new()
+    let url = Url.parse(url)?
+    client.post(url, body).await

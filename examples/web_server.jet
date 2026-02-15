@@ -1,0 +1,140 @@
+# Simple HTTP Web Server example
+# Demonstrates networking and async I/O
+
+import std::net::http
+import std::async
+import std::io
+import std::collections::Map
+
+# Route handler type
+alias Handler = fn(http::Request) -> async http::Response
+
+# Simple router
+struct Router:
+    routes: Map[string, Handler]
+
+fn new_router() -> Router:
+    return Router { routes: Map::new() }
+
+impl Router:
+    fn get(mut self, path: string, handler: Handler):
+        self.routes.insert(f"GET {path}", handler)
+
+    fn post(mut self, path: string, handler: Handler):
+        self.routes.insert(f"POST {path}", handler)
+
+    fn handle(self, request: http::Request) -> async http::Response:
+        let key = f"{request.method} {request.path}"
+
+        match self.routes.get(key):
+            Some(handler) -> return handler(request).await
+            None -> return not_found_response()
+
+# Response helpers
+fn ok_response(body: string) -> http::Response:
+    return http::Response {
+        status: 200,
+        headers: {"Content-Type": "text/plain"},
+        body: body
+    }
+
+fn not_found_response() -> http::Response:
+    return http::Response {
+        status: 404,
+        headers: {"Content-Type": "text/plain"},
+        body: "404 Not Found"
+    }
+
+fn json_response(data: string) -> http::Response:
+    return http::Response {
+        status: 200,
+        headers: {"Content-Type": "application/json"},
+        body: data
+    }
+
+# Route handlers
+async fn home_handler(request: http::Request) -> http::Response:
+    let html = """
+    <html>
+    <body>
+        <h1>Welcome to Jet Web Server!</h1>
+        <p>Try these endpoints:</p>
+        <ul>
+            <li><a href="/api/status">/api/status</a> - Server status</li>
+            <li><a href="/api/hello">/api/hello</a> - Hello message</li>
+        </ul>
+    </body>
+    </html>
+    """
+    return http::Response {
+        status: 200,
+        headers: {"Content-Type": "text/html"},
+        body: html
+    }
+
+async fn status_handler(request: http::Request) -> http::Response:
+    let status = {
+        "status": "running",
+        "language": "Jet",
+        "version": "0.1.0"
+    }
+    return json_response(status.to_json())
+
+async fn hello_handler(request: http::Request) -> http::Response:
+    let name = request.query.get("name").unwrap_or("World")
+    return json_response(f"{{\"message\": \"Hello, {name}!\"}}")
+
+async fn echo_handler(request: http::Request) -> http::Response:
+    return json_response(f"{{\"echo\": {request.body.to_json()}}}")
+
+# Request logging middleware
+async fn log_request(handler: Handler, request: http::Request) -> http::Response:
+    let start = time::now()
+    print(f"[{start}] {request.method} {request.path}")
+
+    let response = handler(request).await
+
+    let duration = time::now() - start
+    print(f"[{time::now()}] Completed in {duration}ms with status {response.status}")
+
+    return response
+
+# Main server
+async fn run_server(host: string, port: int) -> Result<(), http::Error>:
+    let mut router = new_router()
+
+    # Register routes
+    router.get("/", home_handler)
+    router.get("/api/status", status_handler)
+    router.get("/api/hello", hello_handler)
+    router.post("/api/echo", echo_handler)
+
+    print(f"Starting server on {host}:{port}...")
+
+    let listener = http::bind(host, port).await?
+
+    loop:
+        let (request, responder) = listener.accept().await?
+
+        # Handle each request concurrently
+        spawn:
+            let response = router.handle(request).await
+            responder.send(response).await
+
+# Graceful shutdown handler
+async fn shutdown_handler():
+    # Wait for shutdown signal
+    io::wait_for_signal(io::Signal::Interrupt).await
+    print("\nShutting down gracefully...")
+
+async fn main():
+    let host = "127.0.0.1"
+    let port = 8080
+
+    # Run server with graceful shutdown
+    select:
+        run_server(host, port).await -> result:
+            if let Err(e) = result:
+                print(f"Server error: {e}")
+        shutdown_handler().await:
+            print("Goodbye!")

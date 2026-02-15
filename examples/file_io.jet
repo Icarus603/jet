@@ -1,0 +1,212 @@
+# File I/O example
+# Demonstrates reading, writing, and manipulating files
+
+import std::io
+import std::fs
+import std::path::Path
+
+# Basic file operations
+fn basic_file_operations() ! io::Error:
+    print("=== Basic File Operations ===")
+
+    let filename = "test.txt"
+    let content = "Hello, Jet file I/O!"
+
+    # Write to file
+    print(f"Writing to {filename}...")
+    fs::write(filename, content)?
+
+    # Read from file
+    print(f"Reading from {filename}...")
+    let read_content = fs::read_to_string(filename)?
+    print(f"Content: {read_content}")
+
+    # Check file exists
+    if fs::exists(filename):
+        print(f"{filename} exists")
+
+    # Get file metadata
+    let metadata = fs::metadata(filename)?
+    print(f"File size: {metadata.len} bytes")
+    print(f"Is file: {metadata.is_file}")
+    print(f"Modified: {metadata.modified}")
+
+    # Clean up
+    fs::remove_file(filename)?
+    print(f"Deleted {filename}")
+
+# Working with directories
+fn directory_operations() ! io::Error:
+    print("\n=== Directory Operations ===")
+
+    let dir_name = "test_dir"
+
+    # Create directory
+    fs::create_dir(dir_name)?
+    print(f"Created directory: {dir_name}")
+
+    # Create nested directories
+    let nested = "test_dir/a/b/c"
+    fs::create_dir_all(nested)?
+    print(f"Created nested directories: {nested}")
+
+    # List directory contents
+    print(f"\nContents of {dir_name}:")
+    for entry in fs::read_dir(dir_name)?:
+        let prefix = if entry.is_dir { "[DIR]" } else { "[FILE]" }
+        print(f"  {prefix} {entry.name}")
+
+    # Clean up
+    fs::remove_dir_all(dir_name)?
+    print(f"\nDeleted directory: {dir_name}")
+
+# Buffered I/O for large files
+fn buffered_io_example() ! io::Error:
+    print("\n=== Buffered I/O ===")
+
+    let filename = "large_file.txt"
+
+    # Write lines efficiently
+    {
+        let writer = io::BufWriter::new(fs::File::create(filename)?)
+        for i in 0..1000:
+            writer.write_line(f"Line {i}: This is some sample text.")?
+        writer.flush()?
+    }
+    print(f"Wrote 1000 lines to {filename}")
+
+    # Read lines efficiently
+    {
+        let reader = io::BufReader::new(fs::File::open(filename)?)
+        let mut line_count = 0
+        let mut word_count = 0
+
+        for line in reader.lines():
+            line_count += 1
+            word_count += line.split_whitespace().len()
+
+        print(f"Lines: {line_count}")
+        print(f"Words: {word_count}")
+    }
+
+    # Clean up
+    fs::remove_file(filename)?
+
+# File manipulation
+fn file_manipulation() ! io::Error:
+    print("\n=== File Manipulation ===")
+
+    let source = "source.txt"
+    let dest = "destination.txt"
+
+    # Create source file
+    fs::write(source, "This is the source content")?
+
+    # Copy file
+    fs::copy(source, dest)?
+    print(f"Copied {source} to {dest}")
+
+    # Rename file
+    let renamed = "renamed.txt"
+    fs::rename(dest, renamed)?
+    print(f"Renamed {dest} to {renamed}")
+
+    # Append to file
+    {
+        let file = fs::OpenOptions::new()
+            .append(true)
+            .open(renamed)?
+        file.write_string("\nAppended content")?
+    }
+    print(f"Appended to {renamed}")
+
+    # Read and verify
+    let content = fs::read_to_string(renamed)?
+    print(f"Final content: {content}")
+
+    # Clean up
+    fs::remove_file(source)?
+    fs::remove_file(renamed)?
+
+# Path manipulation
+fn path_operations():
+    print("\n=== Path Operations ===")
+
+    let path = Path::new("/home/user/documents/file.txt")
+
+    print(f"Path: {path}")
+    print(f"File name: {path.file_name().unwrap_or("")}")
+    print(f"Extension: {path.extension().unwrap_or("")}")
+    print(f"Parent: {path.parent().unwrap_or(Path::new(""))}")
+    print(f"Is absolute: {path.is_absolute()}")
+
+    # Path joining
+    let joined = path.join("subdir").join("another.txt")
+    print(f"Joined: {joined}")
+
+    # Normalize path
+    let messy = Path::new("/home//user/./documents/../file.txt")
+    print(f"Normalized: {messy.normalize()}")
+
+# JSON file handling
+fn json_file_example() ! io::Error:
+    print("\n=== JSON File Handling ===")
+
+    # Define a config structure
+    struct Config:
+        name: string
+        version: string
+        debug: bool
+        port: int
+
+    let config = Config {
+        name: "MyApp",
+        version: "1.0.0",
+        debug: true,
+        port: 8080
+    }
+
+    # Save to JSON
+    let json_file = "config.json"
+    fs::write(json_file, config.to_json())?
+    print(f"Saved config to {json_file}")
+
+    # Load from JSON
+    let json_str = fs::read_to_string(json_file)?
+    let loaded_config: Config = json::from_str(json_str)?
+    print(f"Loaded config: {loaded_config.name} v{loaded_config.version}")
+
+    # Clean up
+    fs::remove_file(json_file)?
+
+# Error handling demo
+fn error_handling_demo():
+    print("\n=== Error Handling ===")
+
+    # Try to read non-existent file
+    match fs::read_to_string("nonexistent.txt"):
+        Ok(content) -> print(f"Content: {content}"),
+        Err(io::Error::NotFound) -> print("File not found (expected)"),
+        Err(e) -> print(f"Other error: {e}")
+    }
+
+    # Try to write to read-only path (simulated)
+    match fs::write("/root/protected.txt", "data"):
+        Ok(_) -> print("Write succeeded"),
+        Err(io::Error::PermissionDenied) -> print("Permission denied (expected)"),
+        Err(e) -> print(f"Error: {e}")
+    }
+
+fn main() ! io::Error:
+    print("File I/O Examples")
+    print("=================\n")
+
+    basic_file_operations()?
+    directory_operations()?
+    buffered_io_example()?
+    file_manipulation()?
+    path_operations()
+    json_file_example()?
+    error_handling_demo()
+
+    print("\nAll file I/O examples completed!")

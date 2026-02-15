@@ -1,0 +1,15 @@
+[package]
+name = "jet-opt"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+jet-ir = { path = "../ir" }
+indexmap = "2.0"
+rustc-hash = "1.1"
+
+[dev-dependencies]
+pretty_assertions.workspace = true

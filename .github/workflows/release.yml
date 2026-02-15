@@ -1,0 +1,361 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check-release-files:
+    name: Check Release Files
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate required release files
+        run: bash scripts/check_release_files.sh
+
+  # Build for Linux
+  build-linux:
+    name: Build (Linux)
+    runs-on: ubuntu-latest
+    needs: [check-release-files]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install LLVM
+        run: |
+          wget https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh 21
+          sudo apt-get install -y libllvm21 llvm-21-dev libclang-21-dev
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-release-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build release binary
+        env:
+          LLVM_SYS_211_PREFIX: /usr/lib/llvm-21
+        run: cargo build --workspace --release
+
+      - name: Create archive
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/}
+          mkdir -p jet-$VERSION-linux-x64
+          cp target/release/jet jet-$VERSION-linux-x64/
+          cp -r examples jet-$VERSION-linux-x64/
+          cp LICENSE jet-$VERSION-linux-x64/
+          cp README.md jet-$VERSION-linux-x64/
+          tar czvf jet-$VERSION-linux-x64.tar.gz jet-$VERSION-linux-x64
+
+      - name: Smoke test archive
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/}
+          tmp_dir="$(mktemp -d)"
+          tar xzf jet-$VERSION-linux-x64.tar.gz -C "$tmp_dir"
+          "$tmp_dir/jet-$VERSION-linux-x64/jet" --version
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: jet-linux-x64
+          path: jet-${{ github.ref_name }}-linux-x64.tar.gz
+
+  # Build for macOS (ARM64)
+  build-macos-arm64:
+    name: Build (macOS ARM64)
+    runs-on: macos-latest
+    needs: [check-release-files]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+
+      - name: Install LLVM
+        run: |
+          brew install llvm@21
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-arm64-release-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build release binary
+        env:
+          LLVM_SYS_211_PREFIX: /opt/homebrew/opt/llvm@21
+        run: cargo build --workspace --release
+
+      - name: Create archive
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/}
+          mkdir -p jet-$VERSION-macos-arm64
+          cp target/release/jet jet-$VERSION-macos-arm64/
+          cp -r examples jet-$VERSION-macos-arm64/
+          cp LICENSE jet-$VERSION-macos-arm64/
+          cp README.md jet-$VERSION-macos-arm64/
+          tar czvf jet-$VERSION-macos-arm64.tar.gz jet-$VERSION-macos-arm64
+
+      - name: Smoke test archive
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/}
+          tmp_dir="$(mktemp -d)"
+          tar xzf jet-$VERSION-macos-arm64.tar.gz -C "$tmp_dir"
+          "$tmp_dir/jet-$VERSION-macos-arm64/jet" --version
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: jet-macos-arm64
+          path: jet-${{ github.ref_name }}-macos-arm64.tar.gz
+
+  # Build for macOS (x64)
+  build-macos-x64:
+    name: Build (macOS x64)
+    runs-on: macos-13
+    needs: [check-release-files]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install LLVM
+        run: |
+          brew install llvm@21
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-x64-release-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build release binary
+        env:
+          LLVM_SYS_211_PREFIX: /usr/local/opt/llvm@21
+        run: cargo build --workspace --release
+
+      - name: Create archive
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/}
+          mkdir -p jet-$VERSION-macos-x64
+          cp target/release/jet jet-$VERSION-macos-x64/
+          cp -r examples jet-$VERSION-macos-x64/
+          cp LICENSE jet-$VERSION-macos-x64/
+          cp README.md jet-$VERSION-macos-x64/
+          tar czvf jet-$VERSION-macos-x64.tar.gz jet-$VERSION-macos-x64
+
+      - name: Smoke test archive
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/}
+          tmp_dir="$(mktemp -d)"
+          tar xzf jet-$VERSION-macos-x64.tar.gz -C "$tmp_dir"
+          "$tmp_dir/jet-$VERSION-macos-x64/jet" --version
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: jet-macos-x64
+          path: jet-${{ github.ref_name }}-macos-x64.tar.gz
+
+  # Build documentation
+  build-docs:
+    name: Build Documentation
+    runs-on: ubuntu-latest
+    needs: [check-release-files]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rust-docs
+
+      - name: Install LLVM
+        run: |
+          wget https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh 21
+          sudo apt-get install -y libllvm21 llvm-21-dev libclang-21-dev
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-docs-release-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build documentation
+        env:
+          LLVM_SYS_211_PREFIX: /usr/lib/llvm-21
+        run: |
+          cargo doc --workspace --no-deps
+          mkdir -p jet-docs
+          cp -r target/doc jet-docs/api
+          cp -r docs jet-docs/
+
+      - name: Create documentation archive
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/}
+          tar czvf jet-$VERSION-docs.tar.gz jet-docs
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: jet-docs
+          path: jet-${{ github.ref_name }}-docs.tar.gz
+
+  # Create release and upload all assets
+  create-release:
+    name: Create Release
+    needs: [build-linux, build-macos-arm64, build-macos-x64, build-docs]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Get version from tag
+        id: get_version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Generate release notes
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/}
+          VERSION_NO_V=${VERSION#v}
+          cat > RELEASE_NOTES.md << EOF
+          ## Changes in this Release
+
+          See `CHANGELOG.md` for full details.
+
+          ### Installation
+
+          **macOS (Homebrew):**
+          ```bash
+          brew tap Icarus603/jet
+          brew install jet
+          ```
+
+          **Linux (installer script):**
+          ```bash
+          curl -fsSL https://raw.githubusercontent.com/Icarus603/jet/${VERSION}/scripts/install.sh | bash
+          ```
+
+          Or download the appropriate binary for your platform below.
+
+          ### SHA256 Checksums
+          EOF
+          echo "" >> RELEASE_NOTES.md
+          echo "### Changelog Snapshot" >> RELEASE_NOTES.md
+          awk -v version="$VERSION_NO_V" '
+            BEGIN { in_section=0; found=0; next_header=0 }
+            /^## / {
+              if (in_section == 1) { next_header=1; exit }
+              if ($0 ~ "\\[" version "\\]") { in_section=1; found=1; print; next }
+            }
+            {
+              if (in_section == 1) print
+            }
+            END {
+              if (found == 0) {
+                print "No exact changelog section found for version " version "."
+              }
+            }
+          ' CHANGELOG.md >> RELEASE_NOTES.md
+          echo "" >> RELEASE_NOTES.md
+          echo "| Platform | Archive |" >> RELEASE_NOTES.md
+          echo "|----------|---------|" >> RELEASE_NOTES.md
+
+      - name: Generate checksums
+        run: |
+          find artifacts -type f \( -name "*.tar.gz" -o -name "*.zip" \) -print0 | sort -z | xargs -0 shasum -a 256 > SHA256SUMS.txt
+          echo "" >> RELEASE_NOTES.md
+          echo '```text' >> RELEASE_NOTES.md
+          cat SHA256SUMS.txt >> RELEASE_NOTES.md
+          echo '```' >> RELEASE_NOTES.md
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          draft: true
+          prerelease: ${{ contains(github.ref_name, 'alpha') || contains(github.ref_name, 'beta') || contains(github.ref_name, 'rc') }}
+          body_path: RELEASE_NOTES.md
+          files: |
+            artifacts/jet-linux-x64/*.tar.gz
+            artifacts/jet-macos-arm64/*.tar.gz
+            artifacts/jet-macos-x64/*.tar.gz
+            artifacts/jet-docs/*.tar.gz
+            SHA256SUMS.txt
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Update Homebrew formula in tap repository
+  update-homebrew:
+    name: Update Homebrew Formula
+    needs: [create-release]
+    runs-on: ubuntu-latest
+    if: ${{ !contains(github.ref_name, 'alpha') && !contains(github.ref_name, 'beta') && !contains(github.ref_name, 'rc') && secrets.HOMEBREW_TAP_TOKEN != '' }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compute source tarball checksum
+        id: formula
+        env:
+          REPO: ${{ github.repository }}
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/}"
+          SOURCE_URL="https://github.com/${REPO}/archive/refs/tags/${VERSION}.tar.gz"
+          curl -fsSL "$SOURCE_URL" -o source.tar.gz
+          SHA256="$(shasum -a 256 source.tar.gz | awk '{print $1}')"
+          bash scripts/render-homebrew-formula.sh "$VERSION" "$SHA256" packaging/homebrew/jet.rb
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Publish formula to tap
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          HOMEBREW_TAP_REPO: ${{ vars.HOMEBREW_TAP_REPO }}
+        run: |
+          TAP_REPO="${HOMEBREW_TAP_REPO:-Icarus603/homebrew-jet}"
+          git clone "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/${TAP_REPO}.git" tap-repo
+          mkdir -p tap-repo/Formula
+          cp packaging/homebrew/jet.rb tap-repo/Formula/jet.rb
+          cd tap-repo
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet -- Formula/jet.rb; then
+            echo "No Homebrew formula changes detected."
+            exit 0
+          fi
+          git add Formula/jet.rb
+          git commit -m "jet ${GITHUB_REF#refs/tags/}"
+          git push

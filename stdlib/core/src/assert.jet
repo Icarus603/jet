@@ -1,0 +1,142 @@
+### Assertion macros and functions for Jet.
+###
+### This module provides functions for asserting conditions during development and testing.
+
+### Error type raised when an assertion fails.
+type AssertError = {
+    message: string
+    file: string
+    line: int
+}
+
+impl Show for AssertError:
+    fn show(self) -> string:
+        "Assertion failed at " + self.file + ":" + self.line.show() + ": " + self.message
+
+impl Eq for AssertError:
+    fn eq(self, other: AssertError) -> bool:
+        self.message == other.message and self.file == other.file and self.line == other.line
+
+impl Clone for AssertError:
+    fn clone(self) -> AssertError:
+        AssertError {
+            message: self.message,
+            file: self.file,
+            line: self.line
+        }
+
+### Asserts that a condition is true.
+### Raises an error if the condition is false.
+fn assert(condition: bool) ! AssertError:
+    if not condition:
+        raise AssertError { message: "assertion failed", file: "", line: 0 }
+
+### Asserts that a condition is true with a custom message.
+fn assert_msg(condition: bool, message: string) ! AssertError:
+    if not condition:
+        raise AssertError { message: message, file: "", line: 0 }
+
+### Asserts that two values are equal.
+fn assert_eq[T: Eq](left: T, right: T) ! AssertError:
+    if left != right:
+        raise AssertError {
+            message: "assertion failed: " + left.show() + " != " + right.show(),
+            file: "",
+            line: 0
+        }
+
+### Asserts that two values are equal with a custom message.
+fn assert_eq_msg[T: Eq](left: T, right: T, message: string) ! AssertError:
+    if left != right:
+        raise AssertError { message: message, file: "", line: 0 }
+
+### Asserts that two values are not equal.
+fn assert_ne[T: Eq](left: T, right: T) ! AssertError:
+    if left == right:
+        raise AssertError {
+            message: "assertion failed: " + left.show() + " == " + right.show(),
+            file: "",
+            line: 0
+        }
+
+### Asserts that two values are not equal with a custom message.
+fn assert_ne_msg[T: Eq](left: T, right: T, message: string) ! AssertError:
+    if left == right:
+        raise AssertError { message: message, file: "", line: 0 }
+
+### Asserts that a value is true.
+fn assert_true(value: bool) ! AssertError:
+    assert(value)
+
+### Asserts that a value is false.
+fn assert_false(value: bool) ! AssertError:
+    assert(not value)
+
+### Asserts that an Option is Some.
+fn assert_some[T](opt: Option[T]) ! AssertError:
+    if opt.is_none():
+        raise AssertError { message: "expected Some, got None", file: "", line: 0 }
+
+### Asserts that an Option is None.
+fn assert_none[T](opt: Option[T]) ! AssertError:
+    if opt.is_some():
+        raise AssertError { message: "expected None, got Some", file: "", line: 0 }
+
+### Asserts that a Result is Ok.
+fn assert_ok[T, E](res: Result[T, E]) ! AssertError:
+    match res:
+        Ok(_) -> unit
+        Err(_) -> raise AssertError { message: "expected Ok, got Err", file: "", line: 0 }
+
+### Asserts that a Result is Err.
+fn assert_err[T, E](res: Result[T, E]) ! AssertError:
+    match res:
+        Ok(_) -> raise AssertError { message: "expected Err, got Ok", file: "", line: 0 }
+        Err(_) -> unit
+
+### Asserts that a value is within a range (inclusive).
+fn assert_in_range[T: Ord](value: T, min: T, max: T) ! AssertError:
+    if value < min or value > max:
+        raise AssertError {
+            message: "assertion failed: " + value.show() + " not in range [" + min.show() + ", " + max.show() + "]",
+            file: "",
+            line: 0
+        }
+
+### Asserts that a pointer is not null.
+fn assert_not_null[T](ptr: *T) ! AssertError:
+    if ptr == null:
+        raise AssertError { message: "assertion failed: pointer is null", file: "", line: 0 }
+
+### Asserts that a collection is empty.
+fn assert_empty[T: Len](collection: T) ! AssertError:
+    if not collection.is_empty():
+        raise AssertError { message: "assertion failed: collection is not empty", file: "", line: 0 }
+
+### Asserts that a collection is not empty.
+fn assert_not_empty[T: Len](collection: T) ! AssertError:
+    if collection.is_empty():
+        raise AssertError { message: "assertion failed: collection is empty", file: "", line: 0 }
+
+### Asserts that a value matches a pattern.
+fn assert_matches[T](value: T, predicate: fn(T) -> bool) ! AssertError:
+    if not predicate(value):
+        raise AssertError { message: "assertion failed: value does not match predicate", file: "", line: 0 }
+
+### Debug-only assertion.
+### Only checked in debug builds, compiled out in release builds.
+fn debug_assert(condition: bool) ! AssertError:
+    # In a real implementation, this would be conditional on build mode
+    assert(condition)
+
+### Debug-only assertion with custom message.
+fn debug_assert_msg(condition: bool, message: string) ! AssertError:
+    debug_assert_msg(condition, message)
+
+### Debug-only equality assertion.
+fn debug_assert_eq[T: Eq](left: T, right: T) ! AssertError:
+    debug_assert_eq(left, right)
+
+### Debug-only inequality assertion.
+fn debug_assert_ne[T: Eq](left: T, right: T) ! AssertError:
+    debug_assert_ne(left, right)

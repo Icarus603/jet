@@ -1,0 +1,266 @@
+# Tutorial 9: Generics
+# Write code that works with multiple types.
+
+# ========== GENERIC FUNCTIONS ==========
+
+# Simple generic function
+fn identity[T](value: T) -> T:
+    return value
+
+# Generic function with multiple type parameters
+fn pair[T, U](first: T, second: U) -> (T, U):
+    return (first, second)
+
+# Generic function with trait constraint
+fn find_max[T: Comparable](a: T, b: T) -> T:
+    if a.compare(b) > 0:
+        return a
+    return b
+
+# Generic function with multiple constraints
+fn process[T: Display + Comparable](items: [T]) -> T:
+    print("Processing items:")
+    for item in items:
+        print(f"  {item.display()}")
+
+    # Return maximum
+    let mut max = items[0]
+    for item in items:
+        if item.compare(max) > 0:
+            max = item
+    return max
+
+# ========== GENERIC STRUCTS ==========
+
+struct Container[T]:
+    value: T
+
+impl[T] Container[T]:
+    fn new(value: T) -> Container[T]:
+        return Container { value: value }
+
+    fn get(self) -> T:
+        return self.value
+
+    fn set(self, new_value: T) -> Container[T]:
+        return Container { value: new_value }
+
+struct Pair[T, U]:
+    first: T
+    second: U
+
+impl[T, U] Pair[T, U]:
+    fn new(first: T, second: U) -> Pair[T, U]:
+        return Pair { first: first, second: second }
+
+    fn swap(self) -> Pair[U, T]:
+        return Pair {
+            first: self.second,
+            second: self.first
+        }
+
+# Generic struct with constraints
+struct SortedVec[T: Comparable]:
+    items: [T]
+
+impl[T: Comparable] SortedVec[T]:
+    fn new() -> SortedVec[T]:
+        return SortedVec { items: [] }
+
+    fn insert(self, item: T) -> SortedVec[T]:
+        let mut new_items = self.items
+        let mut pos = 0
+        for existing in new_items:
+            if item.compare(existing) <= 0:
+                break
+            pos = pos + 1
+
+        # Insert at position (simplified)
+        new_items.push(item)
+        return SortedVec { items: new_items }
+
+    fn contains(self, item: T) -> bool:
+        # Binary search would be more efficient
+        for existing in self.items:
+            if item.compare(existing) == 0:
+                return true
+        return false
+
+    fn len(self) -> int:
+        return self.items.len()
+
+# ========== GENERIC ENUMS ==========
+
+enum Option[T]:
+    | Some(T)
+    | None
+
+impl[T] Option[T]:
+    fn is_some(self) -> bool:
+        match self:
+            | Some(_) => true
+            | None => false
+
+    fn is_none(self) -> bool:
+        return not self.is_some()
+
+    fn unwrap(self) -> T ! UnwrapError:
+        match self:
+            | Some(v) => v
+            | None => raise UnwrapError
+
+    fn unwrap_or(self, default: T) -> T:
+        match self:
+            | Some(v) => v
+            | None => default
+
+    fn map[U](self, f: fn(T) -> U) -> Option[U]:
+        match self:
+            | Some(v) => Some(f(v))
+            | None => None
+
+    fn and_then[U](self, f: fn(T) -> Option[U]) -> Option[U]:
+        match self:
+            | Some(v) => f(v)
+            | None => None
+
+enum Result[T, E]:
+    | Ok(T)
+    | Err(E)
+
+impl[T, E] Result[T, E]:
+    fn is_ok(self) -> bool:
+        match self:
+            | Ok(_) => true
+            | Err(_) => false
+
+    fn is_err(self) -> bool:
+        return not self.is_ok()
+
+    fn map[U](self, f: fn(T) -> U) -> Result[U, E]:
+        match self:
+            | Ok(v) => Ok(f(v))
+            | Err(e) => Err(e)
+
+    fn map_err[F](self, f: fn(E) -> F) -> Result[T, F]:
+        match self:
+            | Ok(v) => Ok(v)
+            | Err(e) => Err(f(e))
+
+# ========== TRAIT DEFINITIONS ==========
+
+trait Comparable:
+    fn compare(self, other: Self) -> int
+
+trait Display:
+    fn display(self) -> string
+
+enum UnwrapError:
+    | CalledUnwrapOnNone
+
+# ========== IMPLEMENTATIONS ==========
+
+impl Comparable for int:
+    fn compare(self, other: int) -> int:
+        return self - other
+
+impl Comparable for float:
+    fn compare(self, other: float) -> int:
+        if self < other:
+            return -1
+        elif self > other:
+            return 1
+        else:
+            return 0
+
+impl Display for int:
+    fn display(self) -> string:
+        return f"{self}"
+
+impl Display for float:
+    fn display(self) -> string:
+        return f"{self}"
+
+struct Item:
+    name: string
+    value: int
+
+impl Comparable for Item:
+    fn compare(self, other: Item) -> int:
+        return self.value - other.value
+
+impl Display for Item:
+    fn display(self) -> string:
+        return f"{self.name}({self.value})"
+
+# ========== PHANTOM TYPES ==========
+# Using type parameters for compile-time safety
+
+struct Kilometers(f64)
+struct Miles(f64)
+
+fn distance_in_km(d: Kilometers) -> string:
+    return f"{d.0} km"
+
+fn distance_in_miles(d: Miles) -> string:
+    return f"{d.0} miles"
+
+fn main():
+    print("=== Generics Demo ===\n")
+
+    print("1. Generic identity function:")
+    let int_id = identity(42)
+    let string_id = identity("hello")
+    print(f"  identity(42) = {int_id}")
+    print(f"  identity('hello') = {string_id}")
+
+    print("\n2. Generic pair:")
+    let mixed = pair(1, "one")
+    print(f"  pair: {mixed}")
+
+    print("\n3. Generic container:")
+    let int_container = Container::new(100)
+    let string_container = Container::new("boxed")
+    print(f"  int: {int_container.get()}")
+    print(f"  string: {string_container.get()}")
+
+    print("\n4. Generic Option type:")
+    let some_num = Some(42)
+    let no_num: Option[int] = None
+    print(f"  some_num.is_some(): {some_num.is_some()}")
+    print(f"  no_num.is_none(): {no_num.is_none()}")
+    print(f"  some_num.unwrap_or(0): {some_num.unwrap_or(0)}")
+    print(f"  no_num.unwrap_or(0): {no_num.unwrap_or(0)}")
+
+    print("\n5. Option map:")
+    let doubled = some_num.map(fn(x) -> x * 2)
+    print(f"  Some(42).map(x*2): {doubled:?}")
+
+    print("\n6. Generic Result type:")
+    let ok_result: Result[int, string] = Ok(42)
+    let err_result: Result[int, string] = Err("something went wrong")
+    print(f"  ok_result.is_ok(): {ok_result.is_ok()}")
+    print(f"  err_result.is_err(): {err_result.is_err()}")
+
+    print("\n7. Generic with constraints:")
+    let items = [
+        Item { name: "apple", value: 5 },
+        Item { name: "banana", value: 3 },
+        Item { name: "cherry", value: 7 }
+    ]
+    let max_item = process(items)
+    print(f"  Maximum: {max_item.display()}")
+
+    print("\n8. Phantom types for unit safety:")
+    let km = Kilometers(100.0)
+    let miles = Miles(62.0)
+    print(f"  {distance_in_km(km)}")
+    print(f"  {distance_in_miles(miles)}")
+    # This would be a compile error:
+    # distance_in_km(miles)  // Type mismatch!
+
+    # Exercise: Create a generic Stack[T] struct with:
+    #   - push(item: T) -> Stack[T]
+    #   - pop() -> Option[T]
+    #   - peek() -> Option[T]
+    #   - is_empty() -> bool

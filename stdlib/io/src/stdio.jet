@@ -1,0 +1,156 @@
+### Standard I/O operations for Jet.
+###
+### This module provides access to stdin, stdout, and stderr.
+
+import core::option::{Option, Some, None}
+import core::result::{Result, Ok, Err}
+
+### Standard input handle.
+type Stdin = {
+    # In a real implementation, this would contain OS-specific handle
+}
+
+### Standard output handle.
+type Stdout = {
+    # In a real implementation, this would contain OS-specific handle
+}
+
+### Standard error handle.
+type Stderr = {
+    # In a real implementation, this would contain OS-specific handle
+}
+
+### Returns a handle to standard input.
+fn stdin() -> Stdin:
+    Stdin {}
+
+### Returns a handle to standard output.
+fn stdout() -> Stdout:
+    Stdout {}
+
+### Returns a handle to standard error.
+fn stderr() -> Stderr:
+    Stderr {}
+
+impl Stdin:
+    ### Reads a line from stdin.
+    fn read_line(self) -> Result[string, IOError] ! io:
+        # In a real implementation, read from OS stdin
+        Ok("")
+
+    ### Reads all input from stdin until EOF.
+    fn read_to_string(self) -> Result[string, IOError] ! io:
+        # In a real implementation, read from OS stdin
+        Ok("")
+
+    ### Reads bytes from stdin into a buffer.
+    fn read_bytes(self, buf: &mut [u8]) -> Result<usize, IOError] ! io:
+        Ok(0)
+
+    ### Returns true if stdin is a terminal.
+    fn is_terminal(self) -> bool:
+        # In a real implementation, check if stdin is a TTY
+        false
+
+    ### Returns a buffered reader for stdin.
+    fn buffered(self) -> BufReader:
+        BufReader.new_stdin()
+
+impl Stdout:
+    ### Writes a string to stdout.
+    fn write(self, s: string) -> Result<unit, IOError] ! io:
+        # In a real implementation, write to OS stdout
+        Ok(())
+
+    ### Writes a string to stdout followed by a newline.
+    fn writeln(self, s: string) -> Result<unit, IOError] ! io:
+        self.write(s)?
+        self.write("\n")
+
+    ### Flushes stdout.
+    fn flush(self) -> Result<unit, IOError] ! io:
+        Ok(())
+
+    ### Returns true if stdout is a terminal.
+    fn is_terminal(self) -> bool:
+        # In a real implementation, check if stdout is a TTY
+        false
+
+    ### Returns a buffered writer for stdout.
+    fn buffered(self) -> BufWriter:
+        BufWriter.new_stdout()
+
+impl Stderr:
+    ### Writes a string to stderr.
+    fn write(self, s: string) -> Result<unit, IOError] ! io:
+        # In a real implementation, write to OS stderr
+        Ok(())
+
+    ### Writes a string to stderr followed by a newline.
+    fn writeln(self, s: string) -> Result<unit, IOError] ! io:
+        self.write(s)?
+        self.write("\n")
+
+    ### Flushes stderr.
+    fn flush(self) -> Result<unit, IOError] ! io:
+        Ok(())
+
+    ### Returns true if stderr is a terminal.
+    fn is_terminal(self) -> bool:
+        # In a real implementation, check if stderr is a TTY
+        false
+
+### Prints a value to stdout.
+fn print[T: Show](value: T):
+    stdout().write(value.show())
+
+### Prints a value to stdout followed by a newline.
+fn println[T: Show](value: T):
+    stdout().writeln(value.show())
+
+### Prints a value to stderr.
+fn eprint[T: Show](value: T):
+    stderr().write(value.show())
+
+### Prints a value to stderr followed by a newline.
+fn eprintln[T: Show](value: T):
+    stderr().writeln(value.show())
+
+### Reads a line from stdin.
+fn read_line() -> Result[string, IOError] ! io:
+    stdin().read_line()
+
+### Reads the entire contents of stdin.
+fn read_to_string() -> Result[string, IOError] ! io:
+    stdin().read_to_string()
+
+### Prompts the user for input and returns their response.
+fn prompt(message: string) -> Result[string, IOError] ! io:
+    print(message)
+    stdout().flush()?
+    read_line()
+
+### Prompts the user for input with a default value.
+fn prompt_default(message: string, default: string) -> Result[string, IOError] ! io:
+    let full_message = message + " [" + default + "]: "
+    let response = prompt(full_message)?
+    if response.trim().is_empty():
+        Ok(default)
+    else:
+        Ok(response)
+
+### Prompts the user for a yes/no response.
+fn confirm(message: string) -> Result<bool, IOError] ! io:
+    let response = prompt(message + " (y/n): ")?
+    let trimmed = response.trim().to_lower()
+    Ok(trimmed == "y" or trimmed == "yes")
+
+### Prompts the user for a yes/no response with a default.
+fn confirm_default(message: string, default: bool) -> Result<bool, IOError] ! io:
+    let default_str = if default { "Y/n" } else { "y/N" }
+    let response = prompt(message + " (" + default_str + "): ")?
+    let trimmed = response.trim().to_lower()
+    if trimmed.is_empty():
+        Ok(default)
+    else:
+        Ok(trimmed == "y" or trimmed == "yes")

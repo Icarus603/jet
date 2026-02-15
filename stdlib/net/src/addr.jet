@@ -1,0 +1,346 @@
+### Network address types for Jet.
+###
+### This module provides IP addresses and socket addresses.
+
+import core::option::{Option, Some, None}
+import core::result::{Result, Ok, Err}
+import core::traits::{Eq, Show}
+
+### An IP address (either IPv4 or IPv6).
+enum IpAddr:
+    V4(Ipv4Addr)
+    V6(Ipv6Addr)
+
+### An IPv4 address.
+type Ipv4Addr = {
+    octets: [u8; 4]
+}
+
+### An IPv6 address.
+type Ipv6Addr = {
+    segments: [u16; 8]
+}
+
+### A socket address (IP address + port).
+enum SocketAddr:
+    V4(SocketAddrV4)
+    V6(SocketAddrV6)
+
+### An IPv4 socket address.
+type SocketAddrV4 = {
+    ip: Ipv4Addr
+    port: u16
+}
+
+### An IPv6 socket address.
+type SocketAddrV6 = {
+    ip: Ipv6Addr
+    port: u16
+    flowinfo: u32
+    scope_id: u32
+}
+
+impl Ipv4Addr:
+    ### Creates a new IPv4 address from four octets.
+    fn new(a: u8, b: u8, c: u8, d: u8) -> Ipv4Addr:
+        Ipv4Addr { octets: [a, b, c, d] }
+
+    ### Creates an IPv4 address from a u32.
+    fn from_u32(ip: u32) -> Ipv4Addr:
+        Ipv4Addr {
+            octets: [
+                (ip >> 24) as u8,
+                (ip >> 16) as u8,
+                (ip >> 8) as u8,
+                ip as u8
+            ]
+        }
+
+    ### Returns the address as a u32.
+    fn to_u32(self) -> u32:
+        ((self.octets[0] as u32) << 24) |
+        ((self.octets[1] as u32) << 16) |
+        ((self.octets[2] as u32) << 8) |
+        (self.octets[3] as u32)
+
+    ### The unspecified address (0.0.0.0).
+    fn unspecified() -> Ipv4Addr:
+        Ipv4Addr { octets: [0, 0, 0, 0] }
+
+    ### The loopback address (127.0.0.1).
+    fn localhost() -> Ipv4Addr:
+        Ipv4Addr { octets: [127, 0, 0, 1] }
+
+    ### The broadcast address (255.255.255.255).
+    fn broadcast() -> Ipv4Addr:
+        Ipv4Addr { octets: [255, 255, 255, 255] }
+
+    ### Returns true if this is a loopback address.
+    fn is_loopback(self) -> bool:
+        self.octets[0] == 127
+
+    ### Returns true if this is a private address.
+    fn is_private(self) -> bool:
+        # 10.0.0.0/8
+        if self.octets[0] == 10:
+            return true
+        # 172.16.0.0/12
+        if self.octets[0] == 172 and (self.octets[1] & 0xF0) == 16:
+            return true
+        # 192.168.0.0/16
+        if self.octets[0] == 192 and self.octets[1] == 168:
+            return true
+        false
+
+    ### Returns true if this is a multicast address.
+    fn is_multicast(self) -> bool:
+        self.octets[0] >= 224 and self.octets[0] <= 239
+
+    ### Returns true if this is the unspecified address.
+    fn is_unspecified(self) -> bool:
+        self.octets[0] == 0 and self.octets[1] == 0 and
+        self.octets[2] == 0 and self.octets[3] == 0
+
+    ### Returns true if this is a broadcast address.
+    fn is_broadcast(self) -> bool:
+        self.octets[0] == 255 and self.octets[1] == 255 and
+        self.octets[2] == 255 and self.octets[3] == 255
+
+impl Eq for Ipv4Addr:
+    fn eq(self, other: Ipv4Addr) -> bool:
+        self.octets[0] == other.octets[0] and
+        self.octets[1] == other.octets[1] and
+        self.octets[2] == other.octets[2] and
+        self.octets[3] == other.octets[3]
+
+impl Show for Ipv4Addr:
+    fn show(self) -> string:
+        f"{self.octets[0]}.{self.octets[1]}.{self.octets[2]}.{self.octets[3]}"
+
+impl Ipv6Addr:
+    ### Creates a new IPv6 address from eight segments.
+    fn new(a: u16, b: u16, c: u16, d: u16, e: u16, f: u16, g: u16, h: u16) -> Ipv6Addr:
+        Ipv6Addr { segments: [a, b, c, d, e, f, g, h] }
+
+    ### The unspecified address (::).
+    fn unspecified() -> Ipv6Addr:
+        Ipv6Addr { segments: [0, 0, 0, 0, 0, 0, 0, 0] }
+
+    ### The loopback address (::1).
+    fn localhost() -> Ipv6Addr:
+        Ipv6Addr { segments: [0, 0, 0, 0, 0, 0, 0, 1] }
+
+    ### Returns true if this is a loopback address.
+    fn is_loopback(self) -> bool:
+        self.segments[0] == 0 and self.segments[1] == 0 and
+        self.segments[2] == 0 and self.segments[3] == 0 and
+        self.segments[4] == 0 and self.segments[5] == 0 and
+        self.segments[6] == 0 and self.segments[7] == 1
+
+    ### Returns true if this is a multicast address.
+    fn is_multicast(self) -> bool:
+        (self.segments[0] & 0xFF00) == 0xFF00
+
+    ### Returns true if this is the unspecified address.
+    fn is_unspecified(self) -> bool:
+        self.segments[0] == 0 and self.segments[1] == 0 and
+        self.segments[2] == 0 and self.segments[3] == 0 and
+        self.segments[4] == 0 and self.segments[5] == 0 and
+        self.segments[6] == 0 and self.segments[7] == 0
+
+    ### Returns true if this is an IPv4-mapped address.
+    fn is_ipv4_mapped(self) -> bool:
+        self.segments[0] == 0 and self.segments[1] == 0 and
+        self.segments[2] == 0 and self.segments[3] == 0 and
+        self.segments[4] == 0 and self.segments[5] == 0xFFFF
+
+    ### Returns the IPv4 address if this is an IPv4-mapped address.
+    fn to_ipv4(self) -> Option[Ipv4Addr]:
+        if self.is_ipv4_mapped():
+            Some(Ipv4Addr {
+                octets: [
+                    (self.segments[6] >> 8) as u8,
+                    self.segments[6] as u8,
+                    (self.segments[7] >> 8) as u8,
+                    self.segments[7] as u8
+                ]
+            })
+        else:
+            None
+
+impl Eq for Ipv6Addr:
+    fn eq(self, other: Ipv6Addr) -> bool:
+        self.segments[0] == other.segments[0] and
+        self.segments[1] == other.segments[1] and
+        self.segments[2] == other.segments[2] and
+        self.segments[3] == other.segments[3] and
+        self.segments[4] == other.segments[4] and
+        self.segments[5] == other.segments[5] and
+        self.segments[6] == other.segments[6] and
+        self.segments[7] == other.segments[7]
+
+impl Show for Ipv6Addr:
+    fn show(self) -> string:
+        # In a real implementation, format with :: compression
+        let parts = Vec.new()
+        for seg in self.segments:
+            parts.push(format_hex(seg))
+        parts.join(":")
+
+impl SocketAddrV4:
+    ### Creates a new IPv4 socket address.
+    fn new(ip: Ipv4Addr, port: u16) -> SocketAddrV4:
+        SocketAddrV4 { ip: ip, port: port }
+
+    ### Returns the IP address.
+    fn ip(self) -> Ipv4Addr:
+        self.ip
+
+    ### Returns the port.
+    fn port(self) -> u16:
+        self.port
+
+impl Eq for SocketAddrV4:
+    fn eq(self, other: SocketAddrV4) -> bool:
+        self.ip == other.ip and self.port == other.port
+
+impl Show for SocketAddrV4:
+    fn show(self) -> string:
+        f"{self.ip.show()}:{self.port}"
+
+impl SocketAddrV6:
+    ### Creates a new IPv6 socket address.
+    fn new(ip: Ipv6Addr, port: u16, flowinfo: u32, scope_id: u32) -> SocketAddrV6:
+        SocketAddrV6 { ip: ip, port: port, flowinfo: flowinfo, scope_id: scope_id }
+
+    ### Returns the IP address.
+    fn ip(self) -> Ipv6Addr:
+        self.ip
+
+    ### Returns the port.
+    fn port(self) -> u16:
+        self.port
+
+impl Eq for SocketAddrV6:
+    fn eq(self, other: SocketAddrV6) -> bool:
+        self.ip == other.ip and self.port == other.port and
+        self.flowinfo == other.flowinfo and self.scope_id == other.scope_id
+
+impl Show for SocketAddrV6:
+    fn show(self) -> string:
+        f"[{self.ip.show()}]:{self.port}"
+
+impl IpAddr:
+    ### Creates an IP address from a string.
+    fn from_str(s: string) -> Option[IpAddr]:
+        # Try IPv4 first
+        if let Some(v4) = Ipv4Addr.from_str(s):
+            return Some(IpAddr::V4(v4))
+        # Then IPv6
+        if let Some(v6) = Ipv6Addr.from_str(s):
+            return Some(IpAddr::V6(v6))
+        None
+
+    ### Returns true if this is a loopback address.
+    fn is_loopback(self) -> bool:
+        match self:
+            IpAddr::V4(ip) -> ip.is_loopback()
+            IpAddr::V6(ip) -> ip.is_loopback()
+
+    ### Returns true if this is the unspecified address.
+    fn is_unspecified(self) -> bool:
+        match self:
+            IpAddr::V4(ip) -> ip.is_unspecified()
+            IpAddr::V6(ip) -> ip.is_unspecified()
+
+impl Eq for IpAddr:
+    fn eq(self, other: IpAddr) -> bool:
+        match (self, other):
+            (IpAddr::V4(a), IpAddr::V4(b)) -> a == b
+            (IpAddr::V6(a), IpAddr::V6(b)) -> a == b
+            _ -> false
+
+impl Show for IpAddr:
+    fn show(self) -> string:
+        match self:
+            IpAddr::V4(ip) -> ip.show()
+            IpAddr::V6(ip) -> ip.show()
+
+impl SocketAddr:
+    ### Creates a socket address from a string (e.g., "127.0.0.1:8080").
+    fn from_str(s: string) -> Option[SocketAddr]:
+        # In a real implementation, parse the address
+        None
+
+    ### Returns the IP address.
+    fn ip(self) -> IpAddr:
+        match self:
+            SocketAddr::V4(addr) -> IpAddr::V4(addr.ip)
+            SocketAddr::V6(addr) -> IpAddr::V6(addr.ip)
+
+    ### Returns the port.
+    fn port(self) -> u16:
+        match self:
+            SocketAddr::V4(addr) -> addr.port
+            SocketAddr::V6(addr) -> addr.port
+
+impl Eq for SocketAddr:
+    fn eq(self, other: SocketAddr) -> bool:
+        match (self, other):
+            (SocketAddr::V4(a), SocketAddr::V4(b)) -> a == b
+            (SocketAddr::V6(a), SocketAddr::V6(b)) -> a == b
+            _ -> false
+
+impl Show for SocketAddr:
+    fn show(self) -> string:
+        match self:
+            SocketAddr::V4(addr) -> addr.show()
+            SocketAddr::V6(addr) -> addr.show()
+
+### Looks up the address for a hostname.
+fn lookup_host(hostname: string) -> Result<Vec[IpAddr], NetworkError> ! async:
+    # In a real implementation, perform DNS lookup
+    Ok(Vec.new())
+
+### Looks up the hostname for an address.
+fn lookup_addr(addr: IpAddr) -> Result<string, NetworkError] ! async:
+    # In a real implementation, perform reverse DNS lookup
+    Ok("")
+
+### Error type for network operations.
+type NetworkError = {
+    message: string
+    kind: NetworkErrorKind
+}
+
+enum NetworkErrorKind:
+    ConnectionRefused
+    ConnectionReset
+    ConnectionAborted
+    NotConnected
+    AddrInUse
+    AddrNotAvailable
+    TimedOut
+    Interrupted
+    HostUnreachable
+    NetworkUnreachable
+    Other
+
+impl Show for NetworkError:
+    fn show(self) -> string:
+        f"Network error ({self.kind.show()}): {self.message}"
+
+impl Show for NetworkErrorKind:
+    fn show(self) -> string:
+        match self:
+            ConnectionRefused -> "connection refused"
+            ConnectionReset -> "connection reset"
+            ConnectionAborted -> "connection aborted"
+            NotConnected -> "not connected"
+            AddrInUse -> "address in use"
+            AddrNotAvailable -> "address not available"
+            TimedOut -> "timed out"
+            Interrupted -> "interrupted"
+            HostUnreachable -> "host unreachable"
+            NetworkUnreachable -> "network unreachable"
+            Other -> "other"

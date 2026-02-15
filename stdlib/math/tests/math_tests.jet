@@ -1,0 +1,80 @@
+### Tests for the Jet Math library.
+
+import math::{
+    pi, e, abs, min, max, clamp, sqrt, pow,
+    Vec2, Vec3, Vec4, Mat2, Mat3, Mat4,
+    Random, random, random_int
+}
+
+fn test_constants():
+    assert(pi > 3.14 and pi < 3.15)
+    assert(e > 2.71 and e < 2.72)
+
+fn test_abs():
+    assert(abs(-5.0) == 5.0)
+    assert(abs(5.0) == 5.0)
+    assert(abs(0.0) == 0.0)
+
+fn test_min_max():
+    assert(min(3.0, 5.0) == 3.0)
+    assert(max(3.0, 5.0) == 5.0)
+
+fn test_clamp():
+    assert(clamp(5.0, 0.0, 10.0) == 5.0)
+    assert(clamp(-5.0, 0.0, 10.0) == 0.0)
+    assert(clamp(15.0, 0.0, 10.0) == 10.0)
+
+fn test_sqrt():
+    assert(sqrt(4.0) == 2.0)
+    assert(sqrt(9.0) == 3.0)
+
+fn test_pow():
+    assert(pow(2.0, 3.0) == 8.0)
+    assert(pow(3.0, 2.0) == 9.0)
+
+fn test_vec2():
+    let v1 = Vec2.new(3.0, 4.0)
+    assert(v1.length() == 5.0)
+
+    let v2 = Vec2.new(1.0, 2.0)
+    let v3 = v1 + v2
+    assert(v3.x == 4.0)
+    assert(v3.y == 6.0)
+
+fn test_vec3():
+    let v1 = Vec3.new(1.0, 2.0, 3.0)
+    let v2 = Vec3.new(4.0, 5.0, 6.0)
+    let cross = v1.cross(v2)
+    # cross product should be perpendicular to both
+    assert(cross.dot(v1) == 0.0)
+    assert(cross.dot(v2) == 0.0)
+
+fn test_mat4_identity():
+    let m = Mat4.identity()
+    let v = Vec4.new(1.0, 2.0, 3.0, 1.0)
+    let result = m * v
+    assert(result.x == 1.0)
+    assert(result.y == 2.0)
+    assert(result.z == 3.0)
+    assert(result.w == 1.0)
+
+fn test_mat4_translation():
+    let m = Mat4.translate(1.0, 2.0, 3.0)
+    let v = Vec4.new(0.0, 0.0, 0.0, 1.0)
+    let result = m * v
+    assert(result.x == 1.0)
+    assert(result.y == 2.0)
+    assert(result.z == 3.0)
+
+fn run_all_tests():
+    test_constants()
+    test_abs()
+    test_min_max()
+    test_clamp()
+    test_sqrt()
+    test_pow()
+    test_vec2()
+    test_vec3()
+    test_mat4_identity()
+    test_mat4_translation()
+    println("All math tests passed!")

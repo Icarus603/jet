@@ -1,0 +1,5 @@
+# Hello World - Basic test case
+# Tests: Basic function definition, print statement, string literals
+
+fn main():
+    println("Hello, Jet!")

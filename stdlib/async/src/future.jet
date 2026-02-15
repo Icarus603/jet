@@ -1,0 +1,182 @@
+### Futures for Jet's async runtime.
+###
+### Futures represent values that may not be ready yet.
+
+import core::option::{Option, Some, None}
+import core::result::{Result, Ok, Err}
+
+### A future represents a value that will be available at some point.
+###
+### Futures are the foundation of async programming in Jet.
+type Future[T] = {
+    # Internal future state
+}
+
+### Extension methods for futures.
+trait FutureExt[T]:
+    ### Waits for the future to complete.
+    fn await(self) -> T ! async
+
+    ### Maps the future's result to a different type.
+    fn map[U](self, f: fn(T) -> U) -> Future[U]
+
+    ### Chains futures together.
+    fn flat_map[U](self, f: fn(T) -> Future[U]) -> Future[U]
+
+    ### Returns a future that completes with a timeout.
+    fn timeout(self, duration: float64) -> Future[Result[T, TimeoutError]]
+
+    ### Returns a future that completes when either future completes.
+    fn race[U](self, other: Future[U]) -> Future[Either[T, U]]
+
+    ### Returns a future that completes when both futures complete.
+    fn join[U](self, other: Future[U]) -> Future[(T, U)]
+
+    ### Returns a future that ignores the result.
+    fn ignore(self) -> Future[unit]
+
+    ### Catches errors and converts them to results.
+    fn catch(self) -> Future[Result[T, Error]]
+
+    ### Applies a function to the result.
+    fn inspect(self, f: fn(T) -> unit) -> Future[T]
+
+impl Future[T]:
+    ### Creates a future that is immediately ready with a value.
+    fn ready(value: T) -> Future[T]:
+        Future {}
+
+    ### Creates a future that never completes.
+    fn pending() -> Future[T]:
+        Future {}
+
+    ### Creates a future that completes after a duration.
+    fn sleep(duration: float64) -> Future[unit]:
+        Future {}
+
+    ### Creates a future from a task handle.
+    fn from_task(handle: TaskHandle[T]) -> Future[T]:
+        Future {}
+
+    ### Creates a future from a channel send operation.
+    fn send(sender: Sender[T], value: T) -> Future[Result[unit, ChannelError]]:
+        Future {}
+
+    ### Creates a future from a channel receive operation.
+    fn recv(receiver: Receiver[T]) -> Future[Option[T]]:
+        Future {}
+
+    ### Polls the future to check if it's ready.
+    fn poll(self) -> Poll[T]:
+        Poll::Pending
+
+    ### Returns true if the future has completed.
+    fn is_ready(self) -> bool:
+        false
+
+    ### Blocks the current thread until the future completes.
+    ###
+    ### This should only be used in blocking contexts.
+    fn block_on(self) -> T:
+        # In a real implementation, run the runtime until completion
+        panic("block_on not implemented")
+
+### Result of polling a future.
+enum Poll[T]:
+    Ready(T)
+    Pending
+
+### Either type for race operations.
+enum Either[A, B]:
+    Left(A)
+    Right(B)
+
+### A waker for notifying the runtime that a future should be polled.
+type Waker = {
+    # Internal waker state
+}
+
+impl Waker:
+    ### Wakes the associated task.
+    fn wake(self):
+        ()
+
+    ### Creates a clone of this waker.
+    fn clone(self) -> Waker:
+        Waker {}
+
+### Context passed when polling a future.
+type Context = {
+    waker: Waker
+}
+
+### A manually-completable future.
+type Promise[T] = {
+    future: Future[T]
+    # Internal state for completing the promise
+}
+
+impl Promise[T]:
+    ### Creates a new promise.
+    fn new() -> Promise[T]:
+        Promise { future: Future {} }
+
+    ### Completes the promise with a value.
+    fn complete(self, value: T) -> bool:
+        # Returns true if this call completed the promise
+        true
+
+    ### Completes the promise with an error.
+    fn fail(self, error: Error) -> bool:
+        true
+
+    ### Returns true if the promise has been completed.
+    fn is_completed(self) -> bool:
+        false
+
+    ### Gets the associated future.
+    fn future(self) -> Future[T]:
+        self.future
+
+### Combines multiple futures into one that waits for all.
+fn join_all[T](futures: &[Future[T]]) -> Future[Vec[T]]:
+    Future {}
+
+### Returns a future that completes when any of the futures completes.
+fn race_all[T](futures: &[Future[T]]) -> Future[T]:
+    Future {}
+
+### Creates a future that selects from multiple operations.
+fn select[T](futures: &[Future[T]]) -> Future[(usize, T)]:
+    # Returns the index and result of the first completed future
+    Future {}
+
+### Runs a future to completion on the current thread.
+fn block_on[T](future: Future[T]) -> T:
+    future.block_on()
+
+### Spawns a future onto the runtime.
+fn spawn_future[T](future: Future[T]) -> TaskHandle[T]:
+    # In a real implementation, submit to the runtime
+    TaskHandle { id: 0 }
+
+### Lazy evaluation - creates a future from a closure.
+fn lazy[T](f: fn() -> Future[T]) -> Future[T]:
+    # The closure is not called until the future is awaited
+    Future {}
+
+### Creates a future that retries an operation on failure.
+fn retry[T](
+    operation: fn() -> Future[Result[T, Error]],
+    max_attempts: usize
+) -> Future[Result[T, Error]]:
+    Future {}
+
+### Creates a future that retries with exponential backoff.
+fn retry_with_backoff[T](
+    operation: fn() -> Future[Result[T, Error]],
+    max_attempts: usize,
+    initial_delay: float64,
+    max_delay: float64
+) -> Future[Result[T, Error]]:
+    Future {}

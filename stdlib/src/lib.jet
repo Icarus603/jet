@@ -1,0 +1,103 @@
+### Jet Standard Library Prelude
+###
+### This module is automatically imported in every Jet program.
+### It provides the core types, traits, and functions needed for
+### everyday programming.
+
+# Core module - fundamental types and traits
+from core import (
+    Option, Some, None,
+    Result, Ok, Err,
+    Eq, Ord, Ordering, PartialEq, PartialOrd,
+    Show, ToString, FromStr,
+    Clone, Copy, Hash, Hasher,
+    Send, Sync, Drop, Default,
+    From, Into, TryFrom, TryInto,
+    Deref, DerefMut,
+    IntoIter, Iter, IterMut,
+    Index, IndexMut, Len, Extend, FromIter,
+    Add, Sub, Mul, Div, Rem, Neg, Not,
+    BitAnd, BitOr, BitXor, Shl, Shr,
+    Inc, Dec, Abs, Sqr, Sqrt, Pow, MinMax,
+    Bounded, Zero, One, Sum, Product,
+    UnwrapError, Error, InvalidArgumentError,
+    UnsupportedOperationError, OutOfBoundsError,
+    EmptyError, ConversionError, IOError,
+    TimeoutError, CancelledError,
+)
+
+# Collections - data structures
+from collections import (
+    Vec, Map, Set,
+    Iter as VecIter,
+    KeysIter, ValuesIter, EntriesIter,
+    SetIter,
+    EmptyIter, Once, RangeIter, Repeat, RepeatN,
+    Chain, Filter, Map as IterMap, Take, Skip,
+    Enumerate, Zip, TakeWhile, SkipWhile,
+    Flatten, Unique, IterExt,
+    empty, once, repeat, repeat_n, range, range_step,
+)
+
+# String operations
+from string import (
+    String, StringBuilder,
+    Regex, RegexMatch, RegexError,
+    split, join, trim, trim_start, trim_end,
+    starts_with, ends_with, contains,
+    replace, to_upper, to_lower,
+)
+
+# Math functions
+from math import (
+    abs, min, max, clamp,
+    sqrt, cbrt, pow, exp, ln, log, log2, log10,
+    sin, cos, tan, asin, acos, atan, atan2,
+    sinh, cosh, tanh, asinh, acosh, atanh,
+    floor, ceil, round, trunc,
+    pi, e, tau, phi,
+    Vec2, Vec3, Vec4,
+    Mat2, Mat3, Mat4,
+    Random, random, random_int, random_float,
+    RandomSeed, SeededRandom,
+)
+
+# I/O operations
+from io import (
+    File, OpenOptions, FileError,
+    Path, PathBuf,
+    stdin, stdout, stderr,
+    print, println, eprint, eprintln,
+    read_line, read_to_string,
+    BufReader, BufWriter,
+)
+
+# Async runtime
+from async import (
+    Task, TaskHandle, TaskError,
+    Channel, Sender, Receiver, channel,
+    Future, FutureExt,
+    spawn, spawn_blocking,
+    sleep, timeout, yield_now,
+    select, race,
+)
+
+# Concurrency primitives
+from sync import (
+    Mutex, MutexGuard, MutexError,
+    RwLock, RwLockReadGuard, RwLockWriteGuard, RwLockError,
+    Semaphore, SemaphoreError,
+    Barrier, BarrierError,
+    Condvar, CondvarError,
+    AtomicBool, AtomicInt, AtomicPtr,
+)
+
+# Networking
+from net import (
+    TcpStream, TcpListener,
+    UdpSocket,
+    SocketAddr, IpAddr, Ipv4Addr, Ipv6Addr,
+    NetworkError,
+    HttpClient, HttpRequest, HttpResponse, HttpError,
+    Url, UrlError,
+)

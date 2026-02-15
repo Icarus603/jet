@@ -1,0 +1,445 @@
+# JSON Parser
+# Demonstrates recursive descent parsing, error handling, and data structures
+
+# JSON value types
+enum JsonValue:
+    | JsonNull
+    | JsonBool(value: bool)
+    | JsonNumber(value: float)
+    | JsonString(value: string)
+    | JsonArray(elements: [JsonValue])
+    | JsonObject(pairs: [(string, JsonValue)])
+
+# Parser result type
+enum ParseResult[T]:
+    | Success(value: T, rest: string)
+    | Failure(message: string, position: int)
+
+# The JSON parser
+struct JsonParser:
+    input: string
+    pos: int
+
+impl JsonParser:
+    # Parse a JSON string
+    fn parse(input: string) -> Result[JsonValue, string] ! ParseError:
+        let parser = JsonParser { input: input, pos: 0 }
+        parser.skip_whitespace()
+
+        match parser.parse_value():
+            | Success(val, rest) =>
+                # Check for trailing content
+                if rest.trim().len() > 0:
+                    Err(f"Trailing content after JSON: {rest}")
+                else:
+                    Ok(val)
+            | Failure(msg, pos) =>
+                Err(f"Parse error at position {pos}: {msg}")
+
+    # Parse any JSON value
+    fn parse_value(self) -> ParseResult[JsonValue]:
+        self.skip_whitespace()
+
+        if self.is_at_end():
+            return Failure("Unexpected end of input", self.pos)
+
+        let c = self.peek()
+
+        match c:
+            | 'n' => self.parse_null()
+            | 't' => self.parse_true()
+            | 'f' => self.parse_false()
+            | '"' => self.parse_string()
+            | '[' => self.parse_array()
+            | '{' => self.parse_object()
+            | '-' => self.parse_number()
+            | '0'..='9' => self.parse_number()
+            | _ => Failure(f"Unexpected character: {c}", self.pos)
+
+    # Parse null
+    fn parse_null(self) -> ParseResult[JsonValue]:
+        if self.match_literal("null"):
+            Success(JsonNull, self.remaining())
+        else:
+            Failure("Expected 'null'", self.pos)
+
+    # Parse true
+    fn parse_true(self) -> ParseResult[JsonValue]:
+        if self.match_literal("true"):
+            Success(JsonBool(true), self.remaining())
+        else:
+            Failure("Expected 'true'", self.pos)
+
+    # Parse false
+    fn parse_false(self) -> ParseResult[JsonValue]:
+        if self.match_literal("false"):
+            Success(JsonBool(false), self.remaining())
+        else:
+            Failure("Expected 'false'", self.pos)
+
+    # Parse string
+    fn parse_string(self) -> ParseResult[JsonValue]:
+        if not self.consume('"'):
+            return Failure("Expected opening quote", self.pos)
+
+        let mut result = ""
+
+        while not self.is_at_end() and self.peek() != '"':
+            let c = self.advance()
+
+            if c == '\\':
+                if self.is_at_end():
+                    return Failure("Incomplete escape sequence", self.pos)
+
+                let escaped = self.advance()
+                match escaped:
+                    | '"' => result = result + '"'
+                    | '\\' => result = result + '\\'
+                    | '/' => result = result + '/'
+                    | 'b' => result = result + '\b'
+                    | 'f' => result = result + '\f'
+                    | 'n' => result = result + '\n'
+                    | 'r' => result = result + '\r'
+                    | 't' => result = result + '\t'
+                    | 'u' =>
+                        # Unicode escape
+                        let code = self.parse_unicode_escape()
+                        if code >= 0:
+                            result = result + char_from_code(code)
+                        else:
+                            return Failure("Invalid unicode escape", self.pos)
+                    | _ => result = result + escaped
+            else:
+                result = result + c
+
+        if not self.consume('"'):
+            return Failure("Unclosed string", self.pos)
+
+        Success(JsonString(result), self.remaining())
+
+    # Parse number
+    fn parse_number(self) -> ParseResult[JsonValue]:
+        let start = self.pos
+
+        # Optional minus sign
+        if self.peek() == '-':
+            self.advance()
+
+        # Integer part
+        if self.peek() == '0':
+            self.advance()
+        elif self.peek() >= '1' and self.peek() <= '9':
+            self.advance()
+            while not self.is_at_end() and self.peek().is_digit():
+                self.advance()
+        else:
+            return Failure("Expected digit", self.pos)
+
+        # Fractional part
+        if self.peek() == '.':
+            self.advance()
+            if not self.peek().is_digit():
+                return Failure("Expected digit after decimal point", self.pos)
+            while not self.is_at_end() and self.peek().is_digit():
+                self.advance()
+
+        # Exponent part
+        if self.peek() == 'e' or self.peek() == 'E':
+            self.advance()
+            if self.peek() == '+' or self.peek() == '-':
+                self.advance()
+            if not self.peek().is_digit():
+                return Failure("Expected digit in exponent", self.pos)
+            while not self.is_at_end() and self.peek().is_digit():
+                self.advance()
+
+        let num_str = self.input[start..self.pos]
+        match parse_float(num_str):
+            | Some(n) => Success(JsonNumber(n), self.remaining())
+            | None => Failure(f"Invalid number: {num_str}", start)
+
+    # Parse array
+    fn parse_array(self) -> ParseResult[JsonValue]:
+        if not self.consume('['):
+            return Failure("Expected '['", self.pos)
+
+        self.skip_whitespace()
+
+        if self.peek() == ']':
+            self.advance()
+            return Success(JsonArray([]), self.remaining())
+
+        let mut elements = []
+
+        loop:
+            self.skip_whitespace()
+
+            match self.parse_value():
+                | Success(val, _) =>
+                    elements.push(val)
+                | Failure(msg, pos) =>
+                    return Failure(msg, pos)
+
+            self.skip_whitespace()
+
+            if self.peek() == ']':
+                self.advance()
+                break
+            elif self.peek() == ',':
+                self.advance()
+            else:
+                return Failure("Expected ',' or ']'", self.pos)
+
+        Success(JsonArray(elements), self.remaining())
+
+    # Parse object
+    fn parse_object(self) -> ParseResult[JsonValue]:
+        if not self.consume('{'):
+            return Failure("Expected '{'", self.pos)
+
+        self.skip_whitespace()
+
+        if self.peek() == '}':
+            self.advance()
+            return Success(JsonObject([]), self.remaining())
+
+        let mut pairs = []
+
+        loop:
+            self.skip_whitespace()
+
+            # Parse key (must be string)
+            if self.peek() != '"':
+                return Failure("Expected string key", self.pos)
+
+            let key_result = self.parse_string()
+            let key = match key_result:
+                | Success(JsonString(s), _) => s
+                | _ => return Failure("Expected string key", self.pos)
+
+            self.skip_whitespace()
+
+            if not self.consume(':'):
+                return Failure("Expected ':' after key", self.pos)
+
+            self.skip_whitespace()
+
+            # Parse value
+            match self.parse_value():
+                | Success(val, _) =>
+                    pairs.push((key, val))
+                | Failure(msg, pos) =>
+                    return Failure(msg, pos)
+
+            self.skip_whitespace()
+
+            if self.peek() == '}':
+                self.advance()
+                break
+            elif self.peek() == ',':
+                self.advance()
+            else:
+                return Failure("Expected ',' or '}'", self.pos)
+
+        Success(JsonObject(pairs), self.remaining())
+
+    # Parse unicode escape
+    fn parse_unicode_escape(self) -> int:
+        let mut code = 0
+        for _ in 0..4:
+            if self.is_at_end():
+                return -1
+            let c = self.advance()
+            let digit = c.to_digit(16)
+            if digit < 0:
+                return -1
+            code = code * 16 + digit
+        code
+
+    # Helper methods
+    fn is_at_end(self) -> bool:
+        self.pos >= self.input.len()
+
+    fn peek(self) -> char:
+        if self.is_at_end():
+            '\0'
+        else:
+            self.input[self.pos]
+
+    fn advance(self) -> char:
+        let c = self.peek()
+        self.pos = self.pos + 1
+        c
+
+    fn remaining(self) -> string:
+        self.input[self.pos..]
+
+    fn skip_whitespace(self):
+        while not self.is_at_end():
+            let c = self.peek()
+            if c == ' ' or c == '\t' or c == '\n' or c == '\r':
+                self.advance()
+            else:
+                break
+
+    fn consume(self, expected: char) -> bool:
+        if self.peek() == expected:
+            self.advance()
+            true
+        else:
+            false
+
+    fn match_literal(self, literal: string) -> bool:
+        if self.input[self.pos..].starts_with(literal):
+            self.pos = self.pos + literal.len()
+            true
+        else:
+            false
+
+# Pretty print JSON
+fn json_to_string(value: JsonValue, indent: int = 0) -> string:
+    let spaces = "  ".repeat(indent)
+
+    match value:
+        | JsonNull => "null"
+        | JsonBool(b) => if b: "true" else: "false"
+        | JsonNumber(n) => f"{n}"
+        | JsonString(s) => f"\"{escape_string(s)}\""
+        | JsonArray(elements) =>
+            if elements.len() == 0:
+                "[]"
+            else:
+                let mut result = "[\n"
+                for i, elem in elements.enumerate():
+                    result = result + "  " + spaces + json_to_string(elem, indent + 1)
+                    if i < elements.len() - 1:
+                        result = result + ","
+                    result = result + "\n"
+                result + spaces + "]"
+        | JsonObject(pairs) =>
+            if pairs.len() == 0:
+                "{}"
+            else:
+                let mut result = "{\n"
+                for i, (key, val) in pairs.enumerate():
+                    result = result + "  " + spaces + f"\"{key}\": "
+                    result = result + json_to_string(val, indent + 1)
+                    if i < pairs.len() - 1:
+                        result = result + ","
+                    result = result + "\n"
+                result + spaces + "}"
+
+# Escape string for JSON
+fn escape_string(s: string) -> string:
+    let mut result = ""
+    for c in s:
+        match c:
+            | '"' => result = result + "\\\""
+            | '\\' => result = result + "\\\\"
+            | '\b' => result = result + "\\b"
+            | '\f' => result = result + "\\f"
+            | '\n' => result = result + "\\n"
+            | '\r' => result = result + "\\r"
+            | '\t' => result = result + "\\t"
+            | _ => result = result + c
+    result
+
+# Helper function to parse float (simplified)
+fn parse_float(s: string) -> Option[float]:
+    # In a real implementation, this would properly parse the float
+    # For demo purposes, we assume it works
+    Some(0.0)
+
+# Helper function to create char from code point
+fn char_from_code(code: int) -> char:
+    # Simplified - would convert unicode code point to char
+    '?'
+
+# Trait extensions for char
+impl char:
+    fn is_digit(self) -> bool:
+        self >= '0' and self <= '9'
+
+    fn to_digit(self, base: int) -> int:
+        if self >= '0' and self <= '9':
+            (self as int) - ('0' as int)
+        elif self >= 'a' and self <= 'f':
+            10 + (self as int) - ('a' as int)
+        elif self >= 'A' and self <= 'F':
+            10 + (self as int) - ('A' as int)
+        else:
+            -1
+
+# Demo
+fn main():
+    print("=== JSON Parser Demo ===\n")
+
+    # Test 1: Simple values
+    print("1. Parsing simple values:")
+    let simple_tests = [
+        "null",
+        "true",
+        "false",
+        "42",
+        "-3.14159",
+        "\"hello world\"",
+    ]
+
+    for test in simple_tests:
+        match JsonParser::parse(test):
+            | Ok(val) => print(f"   '{test}' -> {json_to_string(val)}")
+            | Err(e) => print(f"   '{test}' -> ERROR: {e}")
+
+    # Test 2: Arrays
+    print("\n2. Parsing arrays:")
+    let array_tests = [
+        "[]",
+        "[1, 2, 3]",
+        "[\"a\", \"b\", \"c\"]",
+        "[1, \"mixed\", true, null]",
+        "[[1, 2], [3, 4]]",
+    ]
+
+    for test in array_tests:
+        match JsonParser::parse(test):
+            | Ok(val) => print(f"   '{test}'")
+            | Err(e) => print(f"   ERROR: {e}")
+
+    # Test 3: Objects
+    print("\n3. Parsing objects:")
+    let object_tests = [
+        "{}",
+        '{"name": "John", "age": 30}',
+        '{"nested": {"a": 1, "b": 2}}',
+        '{"array": [1, 2, 3], "bool": true}',
+    ]
+
+    for test in object_tests:
+        match JsonParser::parse(test):
+            | Ok(val) =>
+                print(f"   Input: {test}")
+                print(f"   Output:")
+                print(json_to_string(val))
+            | Err(e) => print(f"   ERROR: {e}")
+
+    # Test 4: Complex document
+    print("\n4. Complex document:")
+    let complex = '{
+        "users": [
+            {"id": 1, "name": "Alice", "active": true},
+            {"id": 2, "name": "Bob", "active": false}
+        ],
+        "count": 2,
+        "metadata": {
+            "version": "1.0",
+            "timestamp": 1234567890
+        }
+    }'
+
+    match JsonParser::parse(complex):
+        | Ok(val) =>
+            print("   Parsed successfully!")
+            print(f"   Serialized:\n{json_to_string(val)}")
+        | Err(e) => print(f"   ERROR: {e}")
+
+    print("\n=== Demo Complete ===")

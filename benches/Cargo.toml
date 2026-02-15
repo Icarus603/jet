@@ -1,0 +1,36 @@
+[package]
+name = "jet-benchmarks"
+version = "1.0.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+jet-lexer = { path = "../compiler/lexer" }
+jet-parser = { path = "../compiler/parser" }
+
+Criterion = { version = "0.5", default-features = false }
+
+[[bench]]
+name = "lexer_benchmark"
+path = "lexer_benchmark.rs"
+harness = false
+
+[[bench]]
+name = "parser_benchmark"
+path = "parser_benchmark.rs"
+harness = false
+
+[[bench]]
+name = "compile_time"
+path = "compile_time.rs"
+harness = false
+
+[[bench]]
+name = "runtime_benchmark"
+path = "runtime_benchmark.rs"
+harness = false
+
+[[bench]]
+name = "gc_benchmark"
+path = "gc_benchmark.rs"
+harness = false

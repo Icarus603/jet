@@ -1,0 +1,16 @@
+[package]
+name = "jet-typeck"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+jet-lexer = { path = "../lexer" }
+jet-parser = { path = "../parser" }
+jet-diagnostics = { path = "../diagnostics" }
+ena = { workspace = true }
+
+[dev-dependencies]
+pretty_assertions.workspace = true
