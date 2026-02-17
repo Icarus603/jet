@@ -2,8 +2,10 @@
 //!
 //! Provides code completion suggestions based on context.
 
-use jet_parser::ast::{Function, Module, ModuleItem, Pattern, StructDef};
-use tower_lsp::lsp_types::{CompletionItem, CompletionItemKind, Position};
+use jet_parser::ast::{
+    Function, ImplItem, Module, ModuleItem, Pattern, StructDef, TraitDef, Type as AstType,
+};
+use tower_lsp::lsp_types::{CompletionItem, CompletionItemKind, Documentation, Position};
 
 /// Keywords in the Jet language
 const KEYWORDS: &[(&str, &str)] = &[
@@ -457,15 +459,491 @@ pub fn get_trigger_completions(
 }
 
 /// Get completions after a dot (field/method access)
-fn get_dot_completions(_ast: &Module, _position: Position) -> Vec<CompletionItem> {
-    // TODO: Analyze expression before dot to provide field/method completions
-    Vec::new()
+fn get_dot_completions(ast: &Module, _position: Position) -> Vec<CompletionItem> {
+    let mut items = Vec::new();
+
+    // Collect all struct definitions for field completions
+    let structs = collect_structs(ast);
+    let impls = collect_impls(ast);
+    let traits = collect_traits(ast);
+
+    // Add struct fields as completions
+    for (struct_name, struct_def) in &structs {
+        for field in &struct_def.fields {
+            let detail = format!("{}: {}", field.name.name, format_type(&field.ty));
+            items.push(CompletionItem {
+                label: field.name.name.clone(),
+                kind: Some(CompletionItemKind::FIELD),
+                detail: Some(detail),
+                documentation: Some(Documentation::String(format!(
+                    "Field of struct `{}`",
+                    struct_name
+                ))),
+                deprecated: None,
+                preselect: None,
+                sort_text: Some(format!("1_{}", field.name.name)),
+                filter_text: None,
+                insert_text: Some(field.name.name.clone()),
+                insert_text_format: None,
+                insert_text_mode: None,
+                text_edit: None,
+                additional_text_edits: None,
+                command: None,
+                commit_characters: None,
+                data: None,
+                tags: None,
+                label_details: Some(tower_lsp::lsp_types::CompletionItemLabelDetails {
+                    detail: Some(format!(" ({})", struct_name)),
+                    description: Some(format_type(&field.ty)),
+                }),
+            });
+        }
+    }
+
+    // Add methods from impl blocks
+    for (type_name, methods) in &impls {
+        for method in methods {
+            let detail = format_method_signature(method);
+            items.push(CompletionItem {
+                label: method.name.name.clone(),
+                kind: Some(CompletionItemKind::METHOD),
+                detail: Some(detail.clone()),
+                documentation: Some(Documentation::String(format!("Method of `{}`", type_name))),
+                deprecated: None,
+                preselect: None,
+                sort_text: Some(format!("2_{}", method.name.name)),
+                filter_text: None,
+                insert_text: Some(format_method_snippet(method)),
+                insert_text_format: Some(tower_lsp::lsp_types::InsertTextFormat::SNIPPET),
+                insert_text_mode: None,
+                text_edit: None,
+                additional_text_edits: None,
+                command: None,
+                commit_characters: None,
+                data: None,
+                tags: None,
+                label_details: Some(tower_lsp::lsp_types::CompletionItemLabelDetails {
+                    detail: Some(format!(" ({})", type_name)),
+                    description: Some(detail),
+                }),
+            });
+        }
+    }
+
+    // Add trait methods
+    for (trait_name, trait_def) in &traits {
+        for item in &trait_def.items {
+            if let jet_parser::ast::TraitItem::Method {
+                name,
+                params,
+                return_type,
+                ..
+            } = item
+            {
+                let detail =
+                    format_trait_method_signature(name.name.as_str(), params, return_type.as_ref());
+                items.push(CompletionItem {
+                    label: name.name.clone(),
+                    kind: Some(CompletionItemKind::METHOD),
+                    detail: Some(detail.clone()),
+                    documentation: Some(Documentation::String(format!(
+                        "Trait method from `{}`",
+                        trait_name
+                    ))),
+                    deprecated: None,
+                    preselect: None,
+                    sort_text: Some(format!("3_{}", name.name)),
+                    filter_text: None,
+                    insert_text: Some(format_trait_method_snippet(name.name.as_str(), params)),
+                    insert_text_format: Some(tower_lsp::lsp_types::InsertTextFormat::SNIPPET),
+                    insert_text_mode: None,
+                    text_edit: None,
+                    additional_text_edits: None,
+                    command: None,
+                    commit_characters: None,
+                    data: None,
+                    tags: None,
+                    label_details: Some(tower_lsp::lsp_types::CompletionItemLabelDetails {
+                        detail: Some(format!(" (trait {})", trait_name)),
+                        description: None,
+                    }),
+                });
+            }
+        }
+    }
+
+    items
+}
+
+/// Collect all struct definitions from the module
+fn collect_structs(ast: &Module) -> Vec<(String, &StructDef)> {
+    let mut structs = Vec::new();
+    for item in &ast.items {
+        if let ModuleItem::Struct(struct_def) = item {
+            structs.push((struct_def.name.name.clone(), struct_def));
+        }
+    }
+    structs
+}
+
+/// Collect all impl blocks and their methods from the module
+fn collect_impls(ast: &Module) -> Vec<(String, Vec<&Function>)> {
+    let mut impls: Vec<(String, Vec<&Function>)> = Vec::new();
+
+    for item in &ast.items {
+        if let ModuleItem::Impl(impl_def) = item {
+            let type_name = format_type(&impl_def.ty);
+            let methods: Vec<&Function> = impl_def
+                .items
+                .iter()
+                .filter_map(|item| {
+                    if let ImplItem::Method(func) = item {
+                        Some(func)
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+
+            if !methods.is_empty() {
+                // Check if we already have an entry for this type
+                if let Some(existing) = impls.iter_mut().find(|(name, _)| name == &type_name) {
+                    existing.1.extend(methods);
+                } else {
+                    impls.push((type_name, methods));
+                }
+            }
+        }
+    }
+
+    impls
+}
+
+/// Collect all trait definitions from the module
+fn collect_traits(ast: &Module) -> Vec<(String, &TraitDef)> {
+    let mut traits = Vec::new();
+    for item in &ast.items {
+        if let ModuleItem::Trait(trait_def) = item {
+            traits.push((trait_def.name.name.clone(), trait_def));
+        }
+    }
+    traits
+}
+
+/// Format a method signature for display
+fn format_method_signature(func: &Function) -> String {
+    let mut result = String::new();
+    result.push_str("fn ");
+    result.push_str(&func.name.name);
+    result.push('(');
+    for (i, param) in func.params.iter().enumerate() {
+        if i > 0 {
+            result.push_str(", ");
+        }
+        result.push_str(&format_pattern(&param.pattern));
+        result.push_str(": ");
+        result.push_str(&format_type(&param.ty));
+    }
+    result.push(')');
+    if let Some(ret) = &func.return_type {
+        result.push_str(" -> ");
+        result.push_str(&format_type(ret));
+    }
+    result
+}
+
+/// Format a method as a snippet for insertion
+fn format_method_snippet(func: &Function) -> String {
+    let mut result = func.name.name.clone();
+    result.push('(');
+    for (i, _param) in func.params.iter().enumerate().skip(1) {
+        // Skip self parameter
+        if i > 1 {
+            result.push_str(", ");
+        }
+        result.push_str(&format!(
+            "${{{}:{}}}",
+            i,
+            "arg".to_string() + &i.to_string()
+        ));
+    }
+    result.push(')');
+    result
+}
+
+/// Format a trait method signature
+fn format_trait_method_signature(
+    name: &str,
+    params: &[jet_parser::ast::Param],
+    return_type: Option<&AstType>,
+) -> String {
+    let mut result = String::new();
+    result.push_str("fn ");
+    result.push_str(name);
+    result.push('(');
+    for (i, param) in params.iter().enumerate() {
+        if i > 0 {
+            result.push_str(", ");
+        }
+        result.push_str(&format_pattern(&param.pattern));
+        result.push_str(": ");
+        result.push_str(&format_type(&param.ty));
+    }
+    result.push(')');
+    if let Some(ret) = return_type {
+        result.push_str(" -> ");
+        result.push_str(&format_type(ret));
+    }
+    result
+}
+
+/// Format a trait method as a snippet
+fn format_trait_method_snippet(name: &str, params: &[jet_parser::ast::Param]) -> String {
+    let mut result = name.to_string();
+    result.push('(');
+    // Skip first param if it's self
+    let start_idx = if params
+        .first()
+        .map(|p| format_pattern(&p.pattern).contains("self"))
+        .unwrap_or(false)
+    {
+        1
+    } else {
+        0
+    };
+    for (i, _param) in params.iter().enumerate().skip(start_idx) {
+        if i > start_idx {
+            result.push_str(", ");
+        }
+        let idx = i - start_idx + 1;
+        result.push_str(&format!(
+            "${{{}:{}}}",
+            idx,
+            "arg".to_string() + &idx.to_string()
+        ));
+    }
+    result.push(')');
+    result
 }
 
 /// Get completions after a colon (type annotations, paths)
-fn get_colon_completions(_ast: &Module, _position: Position) -> Vec<CompletionItem> {
-    // TODO: Provide type completions based on context
-    get_type_completions()
+fn get_colon_completions(ast: &Module, _position: Position) -> Vec<CompletionItem> {
+    let mut items = get_type_completions();
+
+    // Add type constructors for context-aware completion
+    items.extend(get_type_constructors(ast));
+
+    // Add user-defined types from the module
+    items.extend(get_user_defined_types(ast));
+
+    items
+}
+
+/// Get type constructors (struct and enum constructors)
+fn get_type_constructors(ast: &Module) -> Vec<CompletionItem> {
+    let mut items = Vec::new();
+
+    for item in &ast.items {
+        match item {
+            ModuleItem::Struct(struct_def) => {
+                // Add struct constructor if it has fields
+                if !struct_def.fields.is_empty() {
+                    let name = &struct_def.name.name;
+                    let snippet = format_struct_constructor_snippet(struct_def);
+                    items.push(CompletionItem {
+                        label: format!("{} {{...}}", name),
+                        kind: Some(CompletionItemKind::CONSTRUCTOR),
+                        detail: Some(format!("Constructor for struct {}", name)),
+                        documentation: Some(Documentation::String(format!(
+                            "Create a new {} instance",
+                            name
+                        ))),
+                        deprecated: None,
+                        preselect: None,
+                        sort_text: Some(format!("1_{}", name)),
+                        filter_text: Some(name.clone()),
+                        insert_text: Some(snippet),
+                        insert_text_format: Some(tower_lsp::lsp_types::InsertTextFormat::SNIPPET),
+                        insert_text_mode: None,
+                        text_edit: None,
+                        additional_text_edits: None,
+                        command: None,
+                        commit_characters: None,
+                        data: None,
+                        tags: None,
+                        label_details: Some(tower_lsp::lsp_types::CompletionItemLabelDetails {
+                            detail: Some(" (constructor)".to_string()),
+                            description: Some(format!("struct {}", name)),
+                        }),
+                    });
+                }
+            }
+            ModuleItem::Enum(enum_def) => {
+                // Add enum variant constructors
+                for variant in &enum_def.variants {
+                    let name = &variant.name.name;
+                    let snippet = format_enum_variant_snippet(variant);
+                    items.push(CompletionItem {
+                        label: format!("{}::{}", enum_def.name.name, name),
+                        kind: Some(CompletionItemKind::CONSTRUCTOR),
+                        detail: Some(format!("Variant {} of enum {}", name, enum_def.name.name)),
+                        documentation: None,
+                        deprecated: None,
+                        preselect: None,
+                        sort_text: Some(format!("2_{}", name)),
+                        filter_text: Some(format!("{}::{}", enum_def.name.name, name)),
+                        insert_text: Some(snippet),
+                        insert_text_format: Some(tower_lsp::lsp_types::InsertTextFormat::SNIPPET),
+                        insert_text_mode: None,
+                        text_edit: None,
+                        additional_text_edits: None,
+                        command: None,
+                        commit_characters: None,
+                        data: None,
+                        tags: None,
+                        label_details: Some(tower_lsp::lsp_types::CompletionItemLabelDetails {
+                            detail: Some(format!(" ({}::{})", enum_def.name.name, name)),
+                            description: None,
+                        }),
+                    });
+                }
+            }
+            _ => {}
+        }
+    }
+
+    items
+}
+
+/// Format a struct constructor as a snippet
+fn format_struct_constructor_snippet(struct_def: &StructDef) -> String {
+    let mut result = struct_def.name.name.clone();
+    result.push_str(" {\n");
+    for (i, field) in struct_def.fields.iter().enumerate() {
+        result.push_str("    ");
+        result.push_str(&field.name.name);
+        result.push_str(": ");
+        result.push_str(&format!("${{{}:{}}}", i + 1, format_type(&field.ty)));
+        result.push_str(",\n");
+    }
+    result.push('}');
+    result
+}
+
+/// Format an enum variant as a snippet
+fn format_enum_variant_snippet(variant: &jet_parser::ast::EnumVariant) -> String {
+    use jet_parser::ast::VariantBody;
+
+    let mut result = variant.name.name.clone();
+    match &variant.body {
+        VariantBody::Unit => {}
+        VariantBody::Tuple(types) => {
+            result.push('(');
+            for (i, ty) in types.iter().enumerate() {
+                if i > 0 {
+                    result.push_str(", ");
+                }
+                result.push_str(&format!("${{{}:{}}}", i + 1, format_type(ty)));
+            }
+            result.push(')');
+        }
+        VariantBody::Struct(fields) => {
+            result.push_str(" {\n");
+            for (i, field) in fields.iter().enumerate() {
+                result.push_str("    ");
+                result.push_str(&field.name.name);
+                result.push_str(": ");
+                result.push_str(&format!("${{{}:{}}}", i + 1, format_type(&field.ty)));
+                result.push_str(",\n");
+            }
+            result.push('}');
+        }
+        VariantBody::Discriminant(_) => {}
+    }
+    result
+}
+
+/// Get user-defined types from the module
+fn get_user_defined_types(ast: &Module) -> Vec<CompletionItem> {
+    let mut items = Vec::new();
+
+    for item in &ast.items {
+        match item {
+            ModuleItem::Struct(struct_def) => {
+                items.push(CompletionItem {
+                    label: struct_def.name.name.clone(),
+                    kind: Some(CompletionItemKind::STRUCT),
+                    detail: Some(format!("struct {}", struct_def.name.name)),
+                    documentation: None,
+                    deprecated: None,
+                    preselect: None,
+                    sort_text: Some(format!("2_{}", struct_def.name.name)),
+                    filter_text: None,
+                    insert_text: Some(struct_def.name.name.clone()),
+                    insert_text_format: None,
+                    insert_text_mode: None,
+                    text_edit: None,
+                    additional_text_edits: None,
+                    command: None,
+                    commit_characters: None,
+                    data: None,
+                    tags: None,
+                    label_details: None,
+                });
+            }
+            ModuleItem::Enum(enum_def) => {
+                items.push(CompletionItem {
+                    label: enum_def.name.name.clone(),
+                    kind: Some(CompletionItemKind::ENUM),
+                    detail: Some(format!("enum {}", enum_def.name.name)),
+                    documentation: None,
+                    deprecated: None,
+                    preselect: None,
+                    sort_text: Some(format!("2_{}", enum_def.name.name)),
+                    filter_text: None,
+                    insert_text: Some(enum_def.name.name.clone()),
+                    insert_text_format: None,
+                    insert_text_mode: None,
+                    text_edit: None,
+                    additional_text_edits: None,
+                    command: None,
+                    commit_characters: None,
+                    data: None,
+                    tags: None,
+                    label_details: None,
+                });
+            }
+            ModuleItem::TypeAlias(type_alias) => {
+                items.push(CompletionItem {
+                    label: type_alias.name.name.clone(),
+                    kind: Some(CompletionItemKind::TYPE_PARAMETER),
+                    detail: Some(format!(
+                        "type {} = {}",
+                        type_alias.name.name,
+                        format_type(&type_alias.ty)
+                    )),
+                    documentation: None,
+                    deprecated: None,
+                    preselect: None,
+                    sort_text: Some(format!("2_{}", type_alias.name.name)),
+                    filter_text: None,
+                    insert_text: Some(type_alias.name.name.clone()),
+                    insert_text_format: None,
+                    insert_text_mode: None,
+                    text_edit: None,
+                    additional_text_edits: None,
+                    command: None,
+                    commit_characters: None,
+                    data: None,
+                    tags: None,
+                    label_details: None,
+                });
+            }
+            _ => {}
+        }
+    }
+
+    items
 }
 
 #[cfg(test)]
@@ -511,5 +989,102 @@ mod tests {
         );
         // Should at least have keywords
         assert!(!completions.is_empty());
+    }
+
+    #[test]
+    fn test_dot_completions_with_struct() {
+        use jet_lexer::Span;
+        use jet_parser::ast::{FieldDef, Ident, StructDef};
+
+        let mut ast = Module::new(Span::new(0, 0));
+        let struct_def = StructDef {
+            public: true,
+            name: Ident::new("Person", Span::new(0, 0)),
+            generics: vec![],
+            fields: vec![
+                FieldDef {
+                    public: true,
+                    name: Ident::new("name", Span::new(0, 0)),
+                    ty: jet_parser::ast::Type::Path(jet_parser::ast::Path::single(Ident::new(
+                        "string",
+                        Span::new(0, 0),
+                    ))),
+                },
+                FieldDef {
+                    public: true,
+                    name: Ident::new("age", Span::new(0, 0)),
+                    ty: jet_parser::ast::Type::Path(jet_parser::ast::Path::single(Ident::new(
+                        "int",
+                        Span::new(0, 0),
+                    ))),
+                },
+            ],
+            span: Span::new(0, 0),
+        };
+        ast.items.push(ModuleItem::Struct(struct_def));
+
+        let completions = get_dot_completions(
+            &ast,
+            Position {
+                line: 0,
+                character: 0,
+            },
+        );
+
+        // Should have field completions
+        assert!(!completions.is_empty());
+        let name_field = completions.iter().find(|c| c.label == "name");
+        assert!(name_field.is_some());
+        assert_eq!(name_field.unwrap().kind, Some(CompletionItemKind::FIELD));
+    }
+
+    #[test]
+    fn test_colon_completions_with_types() {
+        use jet_lexer::Span;
+        use jet_parser::ast::{FieldDef, Ident, StructDef};
+
+        let mut ast = Module::new(Span::new(0, 0));
+        let struct_def = StructDef {
+            public: true,
+            name: Ident::new("Point", Span::new(0, 0)),
+            generics: vec![],
+            fields: vec![
+                FieldDef {
+                    public: true,
+                    name: Ident::new("x", Span::new(0, 0)),
+                    ty: jet_parser::ast::Type::Path(jet_parser::ast::Path::single(Ident::new(
+                        "int",
+                        Span::new(0, 0),
+                    ))),
+                },
+                FieldDef {
+                    public: true,
+                    name: Ident::new("y", Span::new(0, 0)),
+                    ty: jet_parser::ast::Type::Path(jet_parser::ast::Path::single(Ident::new(
+                        "int",
+                        Span::new(0, 0),
+                    ))),
+                },
+            ],
+            span: Span::new(0, 0),
+        };
+        ast.items.push(ModuleItem::Struct(struct_def));
+
+        let completions = get_colon_completions(
+            &ast,
+            Position {
+                line: 0,
+                character: 0,
+            },
+        );
+
+        // Should have type completions including the struct constructor
+        assert!(!completions.is_empty());
+        let constructor = completions.iter().find(|c| c.label == "Point {...}");
+        assert!(constructor.is_some());
+        assert_eq!(
+            constructor.unwrap().kind,
+            Some(CompletionItemKind::CONSTRUCTOR)
+        );
     }
 }

@@ -400,7 +400,8 @@ mod tests {
 
     #[test]
     fn test_lower_resume() {
-        let mut ctx = LoweringContext::new("test");
+        let tcx = jet_typeck::TypeContext::new();
+        let mut ctx = LoweringContext::new("test", &tcx);
 
         // Add a function
         let func = jet_ir::Function::new("test_func", vec![], Ty::Void);

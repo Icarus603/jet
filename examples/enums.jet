@@ -1,0 +1,191 @@
+# Enums Example
+# Demonstrates enum definitions and pattern matching in Jet
+
+fn main():
+    print("=== Enums in Jet ===\n")
+
+    # Simple Enums (C-style)
+    print("-- Simple Enums --")
+    let direction = Direction::North
+    print(f"Direction: {direction}")
+    print(f"Opposite: {direction.opposite()}")
+    print(f"Is horizontal: {direction.is_horizontal()}")
+
+    # Enums with Data
+    print("\n-- Enums with Data --")
+    let msg1 = Message::Quit
+    let msg2 = Message::Move { x: 10, y: 20 }
+    let msg3 = Message::Write("Hello, Jet!")
+    let msg4 = Message::ChangeColor(255, 0, 128)
+
+    process_message(msg1)
+    process_message(msg2)
+    process_message(msg3)
+    process_message(msg4)
+
+    # Option Type
+    print("\n-- Option Type --")
+    let some_value = Option::Some(42)
+    let no_value: Option[int] = Option::None
+
+    print(f"Some(42).is_some() = {some_value.is_some()}")
+    print(f"None.is_some() = {no_value.is_some()}")
+    print(f"Some(42).unwrap_or(0) = {some_value.unwrap_or(0)}")
+    print(f"None.unwrap_or(0) = {no_value.unwrap_or(0)}")
+
+    # Result Type
+    print("\n-- Result Type --")
+    let success: Result[int, string] = Result::Ok(42)
+    let failure: Result[int, string] = Result::Err("something went wrong")
+
+    print(f"Ok(42).is_ok() = {success.is_ok()}")
+    print(f"Err(...).is_ok() = {failure.is_ok()}")
+
+    match success:
+        | Result::Ok(value) => print(f"Success with value: {value}")
+        | Result::Err(e) => print(f"Error: {e}")
+
+    # Recursive Enums
+    print("\n-- Recursive Enums (Linked List) --")
+    let list = LinkedList::Node(1,
+        LinkedList::Node(2,
+            LinkedList::Node(3,
+                LinkedList::Nil)))
+
+    print(f"List length: {list.len()}")
+    print(f"Sum: {list.sum()}")
+
+    # Enums with Methods
+    print("\n-- Enums with Methods --")
+    let shape1 = Shape::Circle { radius: 5.0 }
+    let shape2 = Shape::Rectangle { width: 10.0, height: 20.0 }
+    let shape3 = Shape::Triangle { base: 8.0, height: 4.0 }
+
+    print(f"Circle area: {shape1.area()}")
+    print(f"Rectangle area: {shape2.area()}")
+    print(f"Triangle area: {shape3.area()}")
+
+    # State Machine Example
+    print("\n-- State Machine (Traffic Light) --")
+    let mut light = TrafficLight::Red
+    for _ in 0..6:
+        print(f"Current state: {light}")
+        light = light.next()
+
+    print("\n=== Enums Example Complete ===")
+
+# Simple enum with variants
+enum Direction:
+    | North
+    | South
+    | East
+    | West
+
+impl Direction:
+    fn opposite(self) -> Direction:
+        match self:
+            | Direction::North => Direction::South
+            | Direction::South => Direction::North
+            | Direction::East => Direction::West
+            | Direction::West => Direction::East
+
+    fn is_horizontal(self) -> bool:
+        match self:
+            | Direction::East | Direction::West => true
+            | Direction::North | Direction::South => false
+
+# Enum with different types of data for each variant
+enum Message:
+    | Quit
+    | Move { x: int, y: int }
+    | Write(string)
+    | ChangeColor(r: int, g: int, b: int)
+
+fn process_message(msg: Message):
+    match msg:
+        | Message::Quit =>
+            print("  Received: Quit")
+        | Message::Move { x, y } =>
+            print(f"  Received: Move to ({x}, {y})")
+        | Message::Write(text) =>
+            print(f"  Received: Write '{text}'")
+        | Message::ChangeColor(r, g, b) =>
+            print(f"  Received: Change color to RGB({r}, {g}, {b})")
+
+# Option enum - represents optional values
+enum Option[T]:
+    | Some(T)
+    | None
+
+impl[T] Option[T]:
+    fn is_some(self) -> bool:
+        match self:
+            | Option::Some(_) => true
+            | Option::None => false
+
+    fn is_none(self) -> bool:
+        return not self.is_some()
+
+    fn unwrap_or(self, default: T) -> T:
+        match self:
+            | Option::Some(value) => value
+            | Option::None => default
+
+# Result enum - represents success or failure
+enum Result[T, E]:
+    | Ok(T)
+    | Err(E)
+
+impl[T, E] Result[T, E]:
+    fn is_ok(self) -> bool:
+        match self:
+            | Result::Ok(_) => true
+            | Result::Err(_) => false
+
+    fn is_err(self) -> bool:
+        return not self.is_ok()
+
+# Recursive enum - linked list
+enum LinkedList:
+    | Nil
+    | Node(value: int, next: LinkedList)
+
+impl LinkedList:
+    fn len(self) -> int:
+        match self:
+            | LinkedList::Nil => 0
+            | LinkedList::Node(_, rest) => 1 + rest.len()
+
+    fn sum(self) -> int:
+        match self:
+            | LinkedList::Nil => 0
+            | LinkedList::Node(val, rest) => val + rest.sum()
+
+# Shape enum with methods
+enum Shape:
+    | Circle { radius: float }
+    | Rectangle { width: float, height: float }
+    | Triangle { base: float, height: float }
+
+impl Shape:
+    fn area(self) -> float:
+        match self:
+            | Shape::Circle { radius } =>
+                3.14159 * radius * radius
+            | Shape::Rectangle { width, height } =>
+                width * height
+            | Shape::Triangle { base, height } =>
+                0.5 * base * height
+
+# State machine enum
+enum TrafficLight:
+    | Red
+    | Yellow
+    | Green
+
+impl TrafficLight:
+    fn next(self) -> TrafficLight:
+        match self:
+            | TrafficLight::Red => TrafficLight::Green
+            | TrafficLight::Green => TrafficLight::Yellow
+            | TrafficLight::Yellow => TrafficLight::Red

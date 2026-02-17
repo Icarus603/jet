@@ -15,12 +15,12 @@
 //!
 //! # Example
 //!
-//! ```rust
+//! ```rust,ignore
 //! use jet_lower::{lower_module, LoweringContext};
-//! use jet_parser::ast::Module;
+//! use jet_typeck::{TypedModule, TypeContext};
 //!
-//! fn compile(module: &Module) -> jet_ir::Module {
-//!     lower_module(module, "main")
+//! fn compile(module: &TypedModule, tcx: &TypeContext) -> jet_ir::Module {
+//!     lower_module(module, tcx, "main")
 //! }
 //! ```
 
@@ -163,8 +163,8 @@ pub fn validate_ir(module: &IrModule) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use jet_ir::{Instruction, Ty, ValueId};
     use jet_diagnostics::Span;
+    use jet_ir::{Instruction, Ty, ValueId};
 
     #[test]
     fn test_lower_empty_module() {

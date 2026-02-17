@@ -1,0 +1,148 @@
+# Control Flow Example
+# Demonstrates if/else, loops, and pattern matching in Jet
+
+fn main():
+    print("=== Control Flow in Jet ===\n")
+
+    # If/Else Statements
+    print("-- If/Else Statements --")
+
+    let score = 85
+
+    if score >= 90:
+        print("Grade: A")
+    elif score >= 80:
+        print("Grade: B")
+    elif score >= 70:
+        print("Grade: C")
+    elif score >= 60:
+        print("Grade: D")
+    else:
+        print("Grade: F")
+
+    # If as an expression
+    let age = 20
+    let category = if age < 13:
+        "child"
+    elif age < 20:
+        "teenager"
+    else:
+        "adult"
+    print(f"Age {age} is category: {category}")
+
+    # While Loop
+    print("\n-- While Loop --")
+    let mut count = 0
+    while count < 5:
+        print(f"Count: {count}")
+        count += 1
+
+    # For Loop with Range
+    print("\n-- For Loop with Range --")
+    print("Range 0..5 (exclusive):")
+    for i in 0..5:
+        print(f"  i = {i}")
+
+    # Range inclusive (includes end value)
+    print("\nRange 0..=5 (inclusive):")
+    for i in 0..=5:
+        print(f"  i = {i}")
+
+    # Iterate over array
+    print("\n-- Iterating over Array --")
+    let colors = ["red", "green", "blue"]
+    for color in colors:
+        print(f"  Color: {color}")
+
+    # Iterate with index
+    print("\n-- With Index --")
+    for i, color in colors.enumerate():
+        print(f"  {i}: {color}")
+
+    # Loop Control
+    print("\n-- Loop Control --")
+
+    # Break - exits the loop
+    print("Break at 5:")
+    for i in 0..10:
+        if i == 5:
+            break
+        print(f"  {i}")
+
+    # Continue - skips to next iteration
+    print("\nContinue (skip evens):")
+    for i in 0..10:
+        if i % 2 == 0:
+            continue
+        print(f"  {i}")
+
+    # Match Statement
+    print("\n-- Match Statement --")
+
+    let day = "Tuesday"
+
+    match day:
+        | "Monday" => print("Start of work week")
+        | "Friday" => print("Almost weekend!")
+        | "Saturday" | "Sunday" => print("Weekend!")
+        | _ => print("Mid-week day")
+
+    # Match with guards
+    print("\n-- Match with Guards --")
+    let temperature = 75
+
+    match temperature:
+        | t if t < 32 => print("Freezing!")
+        | t if t < 60 => print("Cold")
+        | t if t < 80 => print("Comfortable")
+        | t if t < 100 => print("Hot")
+        | _ => print("Extreme!")
+
+    # Match on enums
+    print("\n-- Match on Enums --")
+    let result = OperationResult::Success(42)
+
+    match result:
+        | OperationResult::Success(value) =>
+            print(f"Operation succeeded with value: {value}")
+        | OperationResult::Failure(message) =>
+            print(f"Operation failed: {message}")
+        | OperationResult::Pending =>
+            print("Operation is still pending")
+
+    # FizzBuzz Example
+    print("\n-- FizzBuzz (1-20) --")
+    for i in 1..=20:
+        if i % 3 == 0 and i % 5 == 0:
+            print("FizzBuzz")
+        elif i % 3 == 0:
+            print("Fizz")
+        elif i % 5 == 0:
+            print("Buzz")
+        else:
+            print(f"{i}")
+
+    # Nested Loops with Labels
+    print("\n-- Nested Loops --")
+    for i in 0..3:
+        for j in 0..3:
+            print(f"  ({i}, {j})")
+            if i == 1 and j == 1:
+                break
+
+    # Loop expression (infinite loop with return)
+    print("\n-- Loop Expression --")
+    let mut n = 0
+    let found = loop:
+        n += 1
+        if n * n > 100:
+            break n
+    print(f"First number whose square > 100: {found}")
+
+    print("\n=== Control Flow Example Complete ===")
+
+# Enum for match demonstration
+enum OperationResult:
+    | Success(value: int)
+    | Failure(message: string)
+    | Pending

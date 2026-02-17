@@ -1,0 +1,242 @@
+# FFI Example
+# Demonstrates calling C libraries from Jet
+
+# FFI allows Jet to call functions written in C and other languages.
+# This is useful for reusing existing libraries and accessing system APIs.
+
+fn main():
+    print("=== FFI in Jet ===\n")
+
+    # Basic C Library Calls
+    print("-- Basic C Library Calls --")
+
+    # Calling standard C library functions
+    let pid = libc::getpid()
+    print(f"Current process ID: {pid}")
+
+    let uid = libc::getuid()
+    print(f"Current user ID: {uid}")
+
+    # String handling with C
+    print("\n-- String Handling --")
+
+    # Convert Jet string to C string
+    let message = "Hello from Jet!"
+    let c_string = ffi::to_c_string(message)
+
+    # Get string length using C's strlen
+    let len = libc::strlen(c_string)
+    print(f"String length (from C): {len}")
+
+    # Convert back to Jet string
+    let back_to_jet = ffi::from_c_string(c_string)
+    print(f"Converted back: {back_to_jet}")
+
+    # Memory Management
+    print("\n-- Memory Management --")
+
+    # Allocate memory using C's malloc
+    let buffer = libc::malloc(1024)
+    print(f"Allocated buffer at: {buffer}")
+
+    # Use the buffer...
+    libc::memset(buffer, 0, 1024)
+    print("Zeroed the buffer")
+
+    # Free the memory
+    libc::free(buffer)
+    print("Freed the buffer")
+
+    # Math Functions
+    print("\n-- C Math Library --")
+
+    let x = 2.0
+    let sqrt_result = libc::sqrt(x)
+    print(f"sqrt({x}) = {sqrt_result}")
+
+    let pow_result = libc::pow(2.0, 10.0)
+    print(f"pow(2, 10) = {pow_result}")
+
+    let pi = libc::acos(-1.0)
+    print(f"pi (from acos(-1)) = {pi}")
+
+    # File Operations
+    print("\n-- File Operations --")
+
+    # Open a file using C's fopen
+    let filename = ffi::to_c_string("/tmp/test.txt")
+    let mode = ffi::to_c_string("w")
+    let file = libc::fopen(filename, mode)
+
+    if file != ffi::null():
+        print("File opened successfully")
+
+        # Write to file
+        let content = ffi::to_c_string("Hello from Jet via FFI!\n")
+        libc::fputs(content, file)
+        print("Wrote to file")
+
+        # Close file
+        libc::fclose(file)
+        print("Closed file")
+    else:
+        print("Failed to open file")
+
+    # Time Functions
+    print("\n-- Time Functions --")
+
+    let time_now = libc::time(ffi::null())
+    print(f"Current time (seconds since epoch): {time_now}")
+
+    # Working with Structs
+    print("\n-- C Structs --")
+
+    # Define a C-compatible struct
+    let timespec = TimeSpec { tv_sec: 0, tv_nsec: 0 }
+    let timespec_ptr = ffi::addr_of(timespec)
+
+    # Call clock_gettime
+    libc::clock_gettime(0, timespec_ptr)  # CLOCK_REALTIME = 0
+    print(f"Clock time: {timespec.tv_sec}s {timespec.tv_nsec}ns")
+
+    # Safe Wrappers
+    print("\n-- Safe Wrappers --")
+
+    # Using safe wrappers around unsafe FFI
+    let file_content = safe_read_file("/tmp/test.txt")
+    match file_content:
+        | Result::Ok(content) => print(f"File content: {content}")
+        | Result::Err(e) => print(f"Error: {e}")
+
+    print("\n=== FFI Example Complete ===")
+
+# C-compatible struct for timespec
+struct TimeSpec:
+    tv_sec: int64
+    tv_nsec: int64
+
+# Safe wrapper around C file reading
+fn safe_read_file(path: string) -> Result[string, string]:
+    let c_path = ffi::to_c_string(path)
+    let mode = ffi::to_c_string("r")
+    let file = libc::fopen(c_path, mode)
+
+    if file == ffi::null():
+        return Result::Err(f"Cannot open file: {path}")
+
+    # Get file size
+    libc::fseek(file, 0, 2)  # SEEK_END
+    let size = libc::ftell(file)
+    libc::fseek(file, 0, 0)  # SEEK_SET
+
+    # Allocate buffer and read
+    let buffer = libc::malloc(size + 1)
+    libc::fread(buffer, 1, size, file)
+    libc::fclose(file)
+
+    # Null-terminate
+    libc::memset(buffer.offset(size), 0, 1)
+
+    # Convert to Jet string
+    let content = ffi::from_c_string(buffer)
+    libc::free(buffer)
+
+    return Result::Ok(content)
+
+# Result type for error handling
+enum Result[T, E]:
+    | Ok(T)
+    | Err(E)
+
+#
+# FFI Declarations for libc functions
+#
+
+module libc:
+    # Process functions
+    extern "C" fn getpid() -> int
+    extern "C" fn getuid() -> int
+    extern "C" fn getgid() -> int
+
+    # String functions
+    extern "C" fn strlen(s: ffi::CString) -> int
+    extern "C" fn strcpy(dest: ffi::Pointer, src: ffi::CString) -> ffi::Pointer
+    extern "C" fn strncpy(dest: ffi::Pointer, src: ffi::CString, n: int) -> ffi::Pointer
+
+    # Memory functions
+    extern "C" fn malloc(size: int) -> ffi::Pointer
+    extern "C" fn calloc(nmemb: int, size: int) -> ffi::Pointer
+    extern "C" fn realloc(ptr: ffi::Pointer, size: int) -> ffi::Pointer
+    extern "C" fn free(ptr: ffi::Pointer)
+    extern "C" fn memset(ptr: ffi::Pointer, c: int, n: int) -> ffi::Pointer
+    extern "C" fn memcpy(dest: ffi::Pointer, src: ffi::Pointer, n: int) -> ffi::Pointer
+    extern "C" fn memmove(dest: ffi::Pointer, src: ffi::Pointer, n: int) -> ffi::Pointer
+
+    # Math functions
+    extern "C" fn sqrt(x: float) -> float
+    extern "C" fn pow(x: float, y: float) -> float
+    extern "C" fn sin(x: float) -> float
+    extern "C" fn cos(x: float) -> float
+    extern "C" fn tan(x: float) -> float
+    extern "C" fn log(x: float) -> float
+    extern "C" fn exp(x: float) -> float
+    extern "C" fn floor(x: float) -> float
+    extern "C" fn ceil(x: float) -> float
+    extern "C" fn acos(x: float) -> float
+    extern "C" fn asin(x: float) -> float
+    extern "C" fn atan(x: float) -> float
+    extern "C" fn atan2(y: float, x: float) -> float
+
+    # File operations
+    extern "C" fn fopen(filename: ffi::CString, mode: ffi::CString) -> ffi::Pointer
+    extern "C" fn fclose(stream: ffi::Pointer) -> int
+    extern "C" fn fread(ptr: ffi::Pointer, size: int, nmemb: int, stream: ffi::Pointer) -> int
+    extern "C" fn fwrite(ptr: ffi::Pointer, size: int, nmemb: int, stream: ffi::Pointer) -> int
+    extern "C" fn fseek(stream: ffi::Pointer, offset: int, whence: int) -> int
+    extern "C" fn ftell(stream: ffi::Pointer) -> int
+    extern "C" fn fputs(s: ffi::CString, stream: ffi::Pointer) -> int
+    extern "C" fn fgets(s: ffi::Pointer, n: int, stream: ffi::Pointer) -> ffi::Pointer
+
+    # Time functions
+    extern "C" fn time(tloc: ffi::Pointer) -> int64
+    extern "C" fn clock_gettime(clk_id: int, tp: ffi::Pointer) -> int
+    extern "C" fn sleep(seconds: int) -> int
+    extern "C" fn usleep(useconds: int) -> int
+
+    # Environment
+    extern "C" fn getenv(name: ffi::CString) -> ffi::CString
+    extern "C" fn setenv(name: ffi::CString, value: ffi::CString, overwrite: int) -> int
+    extern "C" fn unsetenv(name: ffi::CString) -> int
+
+#
+# FFI Types and Utilities
+#
+
+module ffi:
+    # Opaque types for FFI
+    type Pointer
+    type CString
+
+    # Convert Jet string to C string
+    fn to_c_string(s: string) -> CString:
+        return unsafe { /* implementation */ }
+
+    # Convert C string to Jet string
+    fn from_c_string(s: CString) -> string:
+        return unsafe { /* implementation */ }
+
+    # Get address of a value
+    fn addr_of[T](value: T) -> Pointer:
+        return unsafe { /* implementation */ }
+
+    # Null pointer
+    fn null() -> Pointer:
+        return unsafe { /* implementation */ }
+
+    # Check if pointer is null
+    fn is_null(ptr: Pointer) -> bool:
+        return ptr == null()
+
+    # Offset a pointer
+    fn offset(ptr: Pointer, bytes: int) -> Pointer:
+        return unsafe { /* implementation */ }

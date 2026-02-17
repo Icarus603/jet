@@ -1,0 +1,36 @@
+# Basics Example
+# Demonstrates variables, types, and operators in Jet
+
+fn main():
+    print("=== Jet Basics ===\n")
+
+    # Variables and Mutability
+    print("-- Variables --")
+
+    # Immutable variable (default)
+    let name = "Jet"
+    print(f"Language: {name}")
+
+    # Mutable variable - can be changed after creation
+    let mut counter = 0
+    print(f"Counter starts at: {counter}")
+    counter = 1
+    print(f"Counter is now: {counter}")
+
+    # Type annotations (optional but recommended for clarity)
+    let age: int = 5
+    let pi: float = 3.14159
+    let is_cool: bool = true
+    print(f"Age: {age}, Pi: {pi}, Is cool: {is_cool}")
+
+    # Constants - values known at compile time
+    const MAX_SIZE = 100
+    print(f"Maximum size: {MAX_SIZE}")
+
+    # Variable shadowing - creating a new variable with the same name
+    let message = "Hello"
+    print(f"First message: {message}")
+    let message = "Goodbye"
+    print(f"Shadowed message: {message}")
+
+    print("\n=== Basics Example Complete ===")

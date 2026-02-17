@@ -53,6 +53,9 @@ pub fn lower_typed_function(ctx: &mut LoweringContext, func: &jet_typeck::TypedF
     // Start lowering the function body
     ctx.start_function(func_index);
 
+    // Set value counter to start after parameters to avoid ID conflicts
+    ctx.set_value_counter(func.params.len() as u32);
+
     // Create entry block
     let entry_block = ctx.create_block("entry");
     ctx.set_current_block(entry_block);
@@ -137,6 +140,9 @@ pub fn lower_function_in_impl(ctx: &mut LoweringContext, func: &ast::Function) -
 
     // Start lowering the function body
     ctx.start_function(func_index);
+
+    // Set value counter to start after parameters to avoid ID conflicts
+    ctx.set_value_counter(func.params.len() as u32);
 
     // Create entry block
     let entry_block = ctx.create_block("entry");
@@ -237,10 +243,16 @@ fn lower_effect(effect: &ast::Type) -> Option<Effect> {
 }
 
 /// Lowers a typeck effect instance to an IR effect.
-fn lower_typed_effect(effect: &jet_typeck::EffectInstance, _tcx: &jet_typeck::TypeContext) -> Option<Effect> {
+fn lower_typed_effect(
+    effect: &jet_typeck::EffectInstance,
+    _tcx: &jet_typeck::TypeContext,
+) -> Option<Effect> {
     // For now, we use the DefId to create a named effect
     // In a full implementation, we'd look up the effect name from the context
-    Some(Effect::Raise(Ty::Named(format!("effect_{}", effect.effect.0))))
+    Some(Effect::Raise(Ty::Named(format!(
+        "effect_{}",
+        effect.effect.0
+    ))))
 }
 
 /// Gets the name from a pattern.
@@ -371,7 +383,8 @@ mod tests {
 
     #[test]
     fn test_lower_simple_function() {
-        let mut ctx = LoweringContext::new("test");
+        let tcx = jet_typeck::TypeContext::new();
+        let mut ctx = LoweringContext::new("test", &tcx);
 
         // fn add(x: int, y: int) -> int: x + y
         let func = ast::Function {
@@ -408,7 +421,7 @@ mod tests {
             span: Span::new(0, 0),
         };
 
-        let func_idx = lower_function(&mut ctx, &func);
+        let func_idx = lower_function_in_impl(&mut ctx, &func);
 
         assert_eq!(func_idx, 0);
         assert_eq!(ctx.module.functions.len(), 1);
@@ -421,7 +434,8 @@ mod tests {
 
     #[test]
     fn test_lower_external_function() {
-        let mut ctx = LoweringContext::new("test");
+        let tcx = jet_typeck::TypeContext::new();
+        let mut ctx = LoweringContext::new("test", &tcx);
 
         let params = vec![ast::Param {
             pattern: Pattern::Ident {
@@ -452,7 +466,8 @@ mod tests {
 
     #[test]
     fn test_lower_struct_def() {
-        let mut ctx = LoweringContext::new("test");
+        let tcx = jet_typeck::TypeContext::new();
+        let mut ctx = LoweringContext::new("test", &tcx);
 
         let struct_def = ast::StructDef {
             public: true,

@@ -131,6 +131,7 @@ pub enum Token {
     // Special
     Eof,
     Error(String),
+    DocComment(String),
 }
 
 impl fmt::Display for Token {
@@ -241,6 +242,7 @@ impl fmt::Display for Token {
             Token::Dedent => write!(f, "DEDENT"),
             Token::Eof => write!(f, "EOF"),
             Token::Error(s) => write!(f, "ERROR({})", s),
+            Token::DocComment(s) => write!(f, "///{}", s),
         }
     }
 }

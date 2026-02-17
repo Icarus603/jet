@@ -384,13 +384,11 @@ fn lower_typeck_type_with_subs_recursive(
             Ty::Struct(field_tys)
         }
         TypeKind::Array(elem, size) => {
-            let elem_ty =
-                lower_typeck_type_with_subs_cached(elem, tcx, param_substitutions, cache);
+            let elem_ty = lower_typeck_type_with_subs_cached(elem, tcx, param_substitutions, cache);
             Ty::Array(Box::new(elem_ty), size)
         }
         TypeKind::Slice(elem) => {
-            let elem_ty =
-                lower_typeck_type_with_subs_cached(elem, tcx, param_substitutions, cache);
+            let elem_ty = lower_typeck_type_with_subs_cached(elem, tcx, param_substitutions, cache);
             Ty::Ptr(Box::new(elem_ty))
         }
         TypeKind::Struct(def_id) => Ty::Named(format!("struct_{}", def_id.0)),
@@ -425,8 +423,7 @@ fn lower_typeck_type_with_subs_recursive(
             }
         }
         TypeKind::Channel(elem) => {
-            let elem_ty =
-                lower_typeck_type_with_subs_cached(elem, tcx, param_substitutions, cache);
+            let elem_ty = lower_typeck_type_with_subs_cached(elem, tcx, param_substitutions, cache);
             Ty::Ptr(Box::new(elem_ty))
         }
         TypeKind::Async(inner) => {
@@ -542,7 +539,10 @@ mod tests {
         assert_eq!(lower_typeck_type(TypeId::INT, &tcx), Ty::I64);
         assert_eq!(lower_typeck_type(TypeId::BOOL, &tcx), Ty::Bool);
         assert_eq!(lower_typeck_type(TypeId::FLOAT, &tcx), Ty::F64);
-        assert_eq!(lower_typeck_type(TypeId::STRING, &tcx), Ty::Ptr(Box::new(Ty::I8)));
+        assert_eq!(
+            lower_typeck_type(TypeId::STRING, &tcx),
+            Ty::Ptr(Box::new(Ty::I8))
+        );
         assert_eq!(lower_typeck_type(TypeId::UNIT, &tcx), Ty::Void);
         assert_eq!(lower_typeck_type(TypeId::NEVER, &tcx), Ty::Void);
     }

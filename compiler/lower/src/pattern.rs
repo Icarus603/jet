@@ -487,7 +487,7 @@ fn lower_literal_const(ctx: &mut LoweringContext, lit: &ast::Literal) -> ValueId
 }
 
 /// Binds a pattern to a value during match.
-fn bind_match_pattern(ctx: &mut LoweringContext, pattern: &ast::Pattern, value: ValueId, ty: &Ty) {
+pub fn bind_match_pattern(ctx: &mut LoweringContext, pattern: &ast::Pattern, value: ValueId, ty: &Ty) {
     match pattern {
         ast::Pattern::Wildcard(_) => {
             // Nothing to bind
@@ -648,7 +648,8 @@ mod tests {
 
     #[test]
     fn test_compile_simple_match() {
-        let mut ctx = LoweringContext::new("test");
+        let tcx = jet_typeck::TypeContext::new();
+        let mut ctx = LoweringContext::new("test", &tcx);
 
         // Add a function
         let func = Function::new("test_func", vec![], Ty::I32);

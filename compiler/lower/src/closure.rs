@@ -442,26 +442,17 @@ fn create_closure_value(
         }
     }
 
-    // Create closure struct: { function_ptr, env_ptr }
+    // For now, return just the function pointer (not the full closure struct)
+    // This limits closures to non-capturing functions, but avoids type mismatch
+    // between the function pointer return type and the closure struct
     let func_ptr = ctx.new_value();
+    let func_name = ctx.module.functions[func_index].name.clone();
     ctx.emit(Instruction::Const {
         result: func_ptr,
-        value: ConstantValue::Int(func_index as i64, Ty::Ptr(Box::new(Ty::Void))),
+        value: ConstantValue::String(func_name),
     });
 
-    let closure_val = ctx.new_value();
-    let closure_ty = Ty::Struct(vec![
-        Ty::Ptr(Box::new(Ty::Void)),         // function pointer
-        Ty::Ptr(Box::new(env_type.clone())), // environment pointer
-    ]);
-
-    ctx.emit(Instruction::StructAgg {
-        result: closure_val,
-        fields: vec![func_ptr, env_ptr],
-        ty: closure_ty,
-    });
-
-    closure_val
+    func_ptr
 }
 
 /// Gets the name from a pattern.
@@ -535,7 +526,8 @@ mod tests {
 
     #[test]
     fn test_closure_function_creation() {
-        let mut ctx = LoweringContext::new("test");
+        let tcx = jet_typeck::TypeContext::new();
+        let mut ctx = LoweringContext::new("test", &tcx);
 
         // Create a simple lambda: |x| -> x + y
         let _params = [ast::Param {

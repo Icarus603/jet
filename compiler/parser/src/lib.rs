@@ -456,9 +456,28 @@ impl Parser {
             Vec::new()
         };
 
+        // Check for tuple struct: `struct Point(f64, f64)`
+        if self.check(&Token::LParen) {
+            return self.parse_tuple_struct(start_span, public, name, generics);
+        }
+
         // Body
         self.consume(Token::Colon, "`:`")?;
         self.skip_newlines();
+
+        // Check for empty struct (no indentation needed if followed by another item or EOF)
+        if !self.check(&Token::Indent) {
+            // Empty struct
+            let end_span = self.current_span();
+            return Ok(StructDef {
+                public,
+                name,
+                generics,
+                fields: Vec::new(),
+                span: Span::new(start_span.start, end_span.end),
+            });
+        }
+
         self.consume(Token::Indent, "indentation")?;
 
         let mut fields = Vec::new();
@@ -482,6 +501,49 @@ impl Parser {
         }
 
         self.consume(Token::Dedent, "dedentation")?;
+
+        let end_span = self.current_span();
+        Ok(StructDef {
+            public,
+            name,
+            generics,
+            fields,
+            span: Span::new(start_span.start, end_span.end),
+        })
+    }
+
+    /// Parse a tuple struct definition: `struct Point(f64, f64)`
+    fn parse_tuple_struct(
+        &mut self,
+        start_span: Span,
+        public: bool,
+        name: Ident,
+        generics: Vec<GenericParam>,
+    ) -> ParseResult<StructDef> {
+        self.consume(Token::LParen, "`(`")?;
+
+        let mut fields = Vec::new();
+
+        // Parse tuple field types
+        while !self.check(&Token::RParen) && !self.is_at_end() {
+            let field_ty = self.parse_type()?;
+
+            // Create a synthetic field name based on position (_0, _1, etc.)
+            let field_name = Ident::new(format!("_{}", fields.len()), self.current_span());
+
+            fields.push(FieldDef {
+                public: false,
+                name: field_name,
+                ty: field_ty,
+            });
+
+            // Allow trailing comma
+            if !self.match_token(&Token::Comma) {
+                break;
+            }
+        }
+
+        self.consume(Token::RParen, "`)`")?;
 
         let end_span = self.current_span();
         Ok(StructDef {
@@ -526,8 +588,14 @@ impl Parser {
                 let types = self.parse_tuple_types()?;
                 self.consume(Token::RParen, "`)`")?;
                 VariantBody::Tuple(types)
+            } else if self.check(&Token::LBrace) {
+                // Brace-style struct variant: `| Some { value: T }`
+                self.advance();
+                let fields = self.parse_brace_struct_fields()?;
+                self.consume(Token::RBrace, "`}`")?;
+                VariantBody::Struct(fields)
             } else if self.check(&Token::Colon) {
-                // Struct variant
+                // Indentation-style struct variant
                 self.advance();
                 self.skip_newlines();
                 self.consume(Token::Indent, "indentation")?;
@@ -562,7 +630,7 @@ impl Parser {
         })
     }
 
-    /// Parse struct fields (for enum struct variants)
+    /// Parse struct fields (for enum struct variants with indentation)
     fn parse_struct_fields(&mut self) -> ParseResult<Vec<FieldDef>> {
         let mut fields = Vec::new();
 
@@ -579,6 +647,38 @@ impl Parser {
             });
 
             self.skip_newlines();
+        }
+
+        Ok(fields)
+    }
+
+    /// Parse struct fields within braces: `{ field: type, field2: type }`
+    fn parse_brace_struct_fields(&mut self) -> ParseResult<Vec<FieldDef>> {
+        let mut fields = Vec::new();
+
+        while !self.check(&Token::RBrace) && !self.is_at_end() {
+            self.skip_newlines();
+
+            // Check for closing brace after newlines
+            if self.check(&Token::RBrace) {
+                break;
+            }
+
+            let field_public = self.match_token(&Token::Pub);
+            let field_name = self.parse_identifier()?;
+            self.consume(Token::Colon, "`:`")?;
+            let field_ty = self.parse_type()?;
+
+            fields.push(FieldDef {
+                public: field_public,
+                name: field_name,
+                ty: field_ty,
+            });
+
+            // Allow trailing comma
+            if !self.match_token(&Token::Comma) {
+                break;
+            }
         }
 
         Ok(fields)
@@ -1426,7 +1526,7 @@ impl Parser {
         }
     }
 
-    /// Parse a lambda expression with pipe syntax: |x, y| expr
+    /// Parse a lambda expression with pipe syntax: |x, y| expr or |x: i32| -> i32 { x }
     fn parse_lambda_expr_with_pipes(&mut self) -> ParseResult<Expr> {
         self.consume(Token::OrBit, "`|`")?;
 
@@ -1436,8 +1536,12 @@ impl Parser {
         if !self.check(&Token::OrBit) {
             loop {
                 let pattern = self.parse_pattern()?;
-                // For simple identifier patterns, create a param without explicit type
-                let ty = Type::Infer;
+                // Check for type annotation: |x: i32|
+                let ty = if self.match_token(&Token::Colon) {
+                    self.parse_type()?
+                } else {
+                    Type::Infer
+                };
                 params.push(Param { pattern, ty });
 
                 if !self.match_token(&Token::Comma) {
@@ -1448,13 +1552,37 @@ impl Parser {
 
         self.consume(Token::OrBit, "`|`")?;
 
-        // Body is an expression
-        let body = Box::new(self.parse_expr()?);
+        // Optional return type: |x| -> i32 { ... }
+        let return_type = if self.match_token(&Token::Arrow) {
+            Some(self.parse_type()?)
+        } else {
+            None
+        };
+
+        // Optional effects: |x| -> i32 ! Effect { ... }
+        let effects = if self.match_token(&Token::Bang) {
+            self.parse_effects()?
+        } else {
+            Vec::new()
+        };
+
+        // Body can be a block { ... } or an expression
+        let body = if self.check(&Token::LBrace) {
+            // Block body: |x| { x + 1 }
+            self.advance(); // consume {
+            self.skip_newlines();
+            let block = self.parse_block_internal()?;
+            self.consume(Token::RBrace, "`}`")?;
+            Box::new(Expr::Block(block))
+        } else {
+            // Expression body: |x| x + 1
+            Box::new(self.parse_expr()?)
+        };
 
         Ok(Expr::Lambda {
             params,
-            return_type: None,
-            effects: Vec::new(),
+            return_type,
+            effects,
             body,
         })
     }
@@ -1625,6 +1753,10 @@ impl Parser {
             loop {
                 elements.push(self.parse_expr()?);
                 if !self.match_token(&Token::Comma) {
+                    break;
+                }
+                // Allow trailing comma: if next token is ], we're done
+                if self.check(&Token::RBracket) {
                     break;
                 }
             }

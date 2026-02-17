@@ -445,8 +445,8 @@ impl<'a> Lexer<'a> {
                 content.push(ch);
                 self.advance();
             }
-            // Return as regular comment for now (could add DocComment token type)
-            return Token::Error(format!("Doc comment: {}", content));
+            // Return as doc comment token
+            return Token::DocComment(content);
         }
 
         // Regular comment - skip it and get next token

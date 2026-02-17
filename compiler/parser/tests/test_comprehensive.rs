@@ -142,8 +142,8 @@ fn test_struct_declarations() {
     y: float"#,
     );
 
-    // Empty struct - not yet supported (requires at least one field)
-    // assert_parses(r#"struct Empty:"#);
+    // Empty struct
+    assert_parses(r#"struct Empty:"#);
 
     // Struct with many fields
     assert_parses(
@@ -180,11 +180,12 @@ fn test_struct_declarations() {
     pub y: float"#,
     );
 
-    // Tuple struct - not yet supported
-    // assert_parses(r#"struct Meters(float)"#);
+    // Tuple struct
+    assert_parses(r#"struct Meters(float)"#);
+    assert_parses(r#"struct Point(f64, f64)"#);
 
-    // Unit struct - not yet supported (requires at least one field)
-    // assert_parses(r#"struct Unit:"#);
+    // Unit struct
+    assert_parses(r#"struct Unit:"#);
 }
 
 #[test]
@@ -204,18 +205,12 @@ fn test_enum_declarations() {
     | None"#,
     );
 
-    // Enum with struct variants - struct syntax not yet supported
-    // assert_parses(
-    //     r#"enum HttpError:
-    // | NotFound
-    // | BadRequest { message: string }
-    // | ServerError { code: int, message: string }"#,
-    // );
+    // Enum with struct variants
     assert_parses(
         r#"enum HttpError:
     | NotFound
-    | BadRequest(string)
-    | ServerError(int, string)"#,
+    | BadRequest { message: string }
+    | ServerError { code: int, message: string }"#,
     );
 
     // Generic enum
@@ -678,7 +673,9 @@ fn test_collection_expressions() {
     // Array literal
     assert!(parse_expr("[]").is_ok());
     assert!(parse_expr("[1, 2, 3]").is_ok());
-    // Trailing comma not yet supported: assert!(parse_expr("[1,]").is_ok());
+    // Trailing comma in array
+    assert!(parse_expr("[1,]").is_ok());
+    assert!(parse_expr("[1, 2, 3,]").is_ok());
 
     // Tuple literal
     assert!(parse_expr("()").is_ok());
@@ -688,7 +685,8 @@ fn test_collection_expressions() {
 
     // Struct literal
     assert!(parse_expr("Point { x: 1.0, y: 2.0 }").is_ok());
-    // Shorthand not yet supported: assert!(parse_expr("Point { x, y }").is_ok());
+    // Struct field shorthand
+    assert!(parse_expr("Point { x, y }").is_ok());
 
     // Range
     assert!(parse_expr("0..10").is_ok());
@@ -697,27 +695,29 @@ fn test_collection_expressions() {
 
 #[test]
 fn test_lambda_expressions() {
-    // Lambda syntax not yet fully implemented
-    // These tests document expected future syntax
-    // For now, just test that the parser doesn't panic
+    // Pipe-based lambda syntax: |params| -> return_type { body }
 
-    // Simple lambda - arrow syntax not yet supported
-    // assert!(parse_expr("fn(x) => x + 1").is_ok());
+    // Simple lambda
+    assert!(parse_expr("|x| x + 1").is_ok());
 
     // Lambda with multiple params
-    // assert!(parse_expr("fn(x, y) => x + y").is_ok());
+    assert!(parse_expr("|x, y| x + y").is_ok());
 
     // Lambda with no params
-    // assert!(parse_expr("fn() => 42").is_ok());
+    assert!(parse_expr("|| 42").is_ok());
+
+    // Lambda with typed params
+    assert!(parse_expr("|x: i32| x + 1").is_ok());
+    assert!(parse_expr("|x: i32, y: i32| x + y").is_ok());
 
     // Lambda with return type
-    // assert!(parse_expr("fn(x: int) -> int => x + 1").is_ok());
+    assert!(parse_expr("|x: i32| -> i32 x + 1").is_ok());
 
-    // Lambda with effects
-    // assert!(parse_expr("fn(x) -> int ! Error => x").is_ok());
+    // Lambda with block body
+    assert!(parse_expr("|x| { x + 1 }").is_ok());
 
-    // Placeholder assertion to keep test valid
-    assert!(parse_expr("42").is_ok());
+    // Full syntax: typed params, return type, block body
+    assert!(parse_expr("|x: i32, y: i32| -> i32 { x + y }").is_ok());
 }
 
 #[test]

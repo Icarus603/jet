@@ -1,0 +1,133 @@
+# Functions Example
+# Demonstrates functions, closures, and higher-order functions in Jet
+
+fn main():
+    print("=== Functions in Jet ===\n")
+
+    # Basic Functions
+    print("-- Basic Functions --")
+    let result = add(5, 3)
+    print(f"add(5, 3) = {result}")
+
+    let greeting = make_greeting("Alice")
+    print(f"{greeting}")
+
+    # Functions with Default Parameters
+    print("\n-- Default Parameters --")
+    print(f"power(2) = {power(2)}")         # Uses default exponent 2
+    print(f"power(2, 3) = {power(2, 3)}")   # Uses exponent 3
+
+    # Functions with Multiple Return Values (Tuple)
+    print("\n-- Multiple Return Values --")
+    let (quotient, remainder) = divide_with_remainder(17, 5)
+    print(f"17 / 5 = {quotient} remainder {remainder}")
+
+    # Pattern Matching in Function Parameters
+    print("\n-- Pattern Matching in Parameters --")
+    let point = (3, 4)
+    print(f"Point {point} distance from origin: {distance_from_origin(point)}")
+
+    # Recursive Functions
+    print("\n-- Recursive Functions --")
+    print(f"factorial(5) = {factorial(5)}")
+    print(f"fibonacci(10) = {fibonacci(10)}")
+
+    # Closures (Lambda Functions)
+    print("\n-- Closures --")
+
+    # Simple closure
+    let double = fn(x: int) -> int => x * 2
+    print(f"double(5) = {double(5)}")
+
+    # Closure with multiple parameters
+    let multiply = fn(a: int, b: int) -> int => a * b
+    print(f"multiply(3, 4) = {multiply(3, 4)}")
+
+    # Closure capturing environment
+    let offset = 10
+    let add_offset = fn(x: int) -> int => x + offset
+    print(f"add_offset(5) = {add_offset(5)}")
+
+    # Higher-Order Functions
+    print("\n-- Higher-Order Functions --")
+
+    # Function that takes a function as parameter
+    let numbers = [1, 2, 3, 4, 5]
+    let doubled = map(numbers, fn(x) => x * 2)
+    print(f"map({numbers}, x*2) = {doubled}")
+
+    let evens = filter(numbers, fn(x) => x % 2 == 0)
+    print(f"filter({numbers}, is_even) = {evens}")
+
+    # Function that returns a function
+    let add_five = make_adder(5)
+    print(f"add_five(10) = {add_five(10)}")
+
+    print("\n=== Functions Example Complete ===")
+
+# Basic function with parameters and return type
+fn add(a: int, b: int) -> int:
+    return a + b
+
+# Function with string return
+fn make_greeting(name: string) -> string:
+    return f"Hello, {name}! Welcome to Jet."
+
+# Function with default parameter
+fn power(base: int, exponent: int = 2) -> int:
+    let mut result = 1
+    for _ in 0..exponent:
+        result *= base
+    return result
+
+# Function returning multiple values as tuple
+fn divide_with_remainder(dividend: int, divisor: int) -> (int, int):
+    let quotient = dividend / divisor
+    let remainder = dividend % divisor
+    return (quotient, remainder)
+
+# Pattern matching in function parameters
+fn distance_from_origin((x, y): (int, int)) -> float:
+    return sqrt((x * x + y * y) as float)
+
+# Recursive factorial
+fn factorial(n: int) -> int:
+    if n <= 1:
+        return 1
+    return n * factorial(n - 1)
+
+# Recursive fibonacci
+fn fibonacci(n: int) -> int:
+    if n <= 1:
+        return n
+    return fibonacci(n - 1) + fibonacci(n - 2)
+
+# Higher-order function: map
+fn map(items: [int], f: fn(int) -> int) -> [int]:
+    let mut result = []
+    for item in items:
+        result.push(f(item))
+    return result
+
+# Higher-order function: filter
+fn filter(items: [int], predicate: fn(int) -> bool) -> [int]:
+    let mut result = []
+    for item in items:
+        if predicate(item):
+            result.push(item)
+    return result
+
+# Function that returns a function
+fn make_adder(n: int) -> fn(int) -> int:
+    return fn(x: int) => x + n
+
+# Helper function (simplified sqrt)
+fn sqrt(n: float) -> float:
+    if n < 0.0:
+        return 0.0
+    let mut guess = n / 2.0
+    if guess == 0.0:
+        return n
+    for _ in 0..10:
+        guess = (guess + n / guess) / 2.0
+    return guess

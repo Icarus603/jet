@@ -76,16 +76,40 @@ fn create_import_suggestion(_uri: &Url, diagnostic: &Diagnostic) -> CodeActionOr
 
 /// Create a type fix suggestion code action
 fn create_type_fix_suggestion(uri: &Url, diagnostic: &Diagnostic) -> CodeActionOrCommand {
+    // Try to extract expected and found types from the diagnostic message
+    let message = &diagnostic.message;
+
+    // Parse common type mismatch patterns
+    // Pattern: "expected `Type`, found `Type`" or "expected Type, found Type"
+    let expected_type = extract_type_from_message(message, "expected");
+    let found_type = extract_type_from_message(message, "found");
+
+    let (title, new_text) = if let (Some(expected), Some(_found)) = (&expected_type, &found_type) {
+        // Suggest adding a type annotation with the expected type
+        let suggestion = format!("/* expected: {} */", expected);
+        (format!("Add type annotation: {}", expected), suggestion)
+    } else if let Some(expected) = expected_type {
+        (
+            format!("Expected type: {}", expected),
+            format!("/* expected: {} */", expected),
+        )
+    } else {
+        (
+            "Add type annotation comment".to_string(),
+            "/* TODO: Fix type mismatch */".to_string(),
+        )
+    };
+
     let edit = TextEdit {
         range: diagnostic.range,
-        new_text: "/* TODO: Fix type mismatch */".to_string(),
+        new_text,
     };
 
     let mut changes = std::collections::HashMap::new();
     changes.insert(uri.clone(), vec![edit]);
 
     CodeActionOrCommand::CodeAction(CodeAction {
-        title: "Add type annotation comment".to_string(),
+        title,
         kind: Some(CodeActionKind::QUICKFIX),
         diagnostics: Some(vec![diagnostic.clone()]),
         edit: Some(WorkspaceEdit {
@@ -98,6 +122,36 @@ fn create_type_fix_suggestion(uri: &Url, diagnostic: &Diagnostic) -> CodeActionO
         disabled: None,
         data: None,
     })
+}
+
+/// Extract a type name from a diagnostic message
+fn extract_type_from_message(message: &str, prefix: &str) -> Option<String> {
+    // Look for patterns like "expected `Type`" or "expected Type,"
+    let patterns = [format!("{} `", prefix), format!("{} ", prefix)];
+
+    for pattern in &patterns {
+        if let Some(start) = message.find(pattern) {
+            let after_prefix = &message[start + pattern.len()..];
+
+            // Find the end of the type name
+            let end = if let Some(backtick) = after_prefix.find('`') {
+                backtick
+            } else if let Some(comma) = after_prefix.find(',') {
+                comma
+            } else if let Some(newline) = after_prefix.find('\n') {
+                newline
+            } else {
+                after_prefix.len()
+            };
+
+            let type_name = after_prefix[..end].trim();
+            if !type_name.is_empty() && type_name != "type" {
+                return Some(type_name.to_string());
+            }
+        }
+    }
+
+    None
 }
 
 /// Create a code action to remove unused code

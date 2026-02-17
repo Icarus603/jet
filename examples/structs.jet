@@ -1,0 +1,184 @@
+# Structs Example
+# Demonstrates struct definitions, methods, and field access in Jet
+
+fn main():
+    print("=== Structs in Jet ===\n")
+
+    # Basic Struct Usage
+    print("-- Basic Structs --")
+
+    # Creating struct instances
+    let point = Point { x: 10.0, y: 20.0 }
+    print(f"Point: ({point.x}, {point.y})")
+
+    # Struct update syntax
+    let point2 = Point { x: 5.0, ..point }
+    print(f"Point2 (updated x): ({point2.x}, {point2.y})")
+
+    # Using constructor methods
+    let origin = Point::origin()
+    print(f"Origin: ({origin.x}, {origin.y})")
+
+    # Nested Structs
+    print("\n-- Nested Structs --")
+    let person = Person {
+        name: "Alice",
+        age: 30,
+        email: "alice@example.com",
+        address: Address {
+            street: "123 Main St",
+            city: "Boston",
+            zip: "02101"
+        }
+    }
+    print(f"Person: {person.name}, {person.age} years old")
+    print(f"Address: {person.address.street}, {person.address.city}")
+
+    # Methods
+    print("\n-- Methods --")
+
+    let p1 = Point { x: 3.0, y: 4.0 }
+    print(f"Point ({p1.x}, {p1.y}):")
+    print(f"  Distance from origin: {p1.distance_from_origin()}")
+
+    let p2 = Point { x: 0.0, y: 0.0 }
+    print(f"  Distance to (0, 0): {p1.distance_to(p2)}")
+
+    let translated = p1.translate(5.0, 5.0)
+    print(f"  Translated by (5, 5): ({translated.x}, {translated.y})")
+
+    # Rectangle with methods
+    print("\n-- Rectangle Methods --")
+    let rect = Rectangle {
+        top_left: Point { x: 0.0, y: 0.0 },
+        width: 100.0,
+        height: 50.0
+    }
+    print(f"Rectangle: {rect.width} x {rect.height}")
+    print(f"  Area: {rect.area()}")
+    print(f"  Perimeter: {rect.perimeter()}")
+    print(f"  Center: ({rect.center().x}, {rect.center().y})")
+    print(f"  Contains (50, 25): {rect.contains(Point { x: 50.0, y: 25.0 })}")
+
+    # Mutable Methods
+    print("\n-- Mutable Methods --")
+    let mut counter = Counter::new()
+    print(f"Counter starts at: {counter.value}")
+    counter.increment()
+    counter.increment()
+    print(f"After 2 increments: {counter.value}")
+    counter.add(5)
+    print(f"After adding 5: {counter.value}")
+
+    # Associated Functions (constructors)
+    print("\n-- Associated Functions --")
+    let circle = Circle::new(5.0)
+    print(f"Circle with radius {circle.radius}")
+    print(f"  Area: {circle.area()}")
+
+    print("\n=== Structs Example Complete ===")
+
+# Basic struct with named fields
+struct Point:
+    x: float
+    y: float
+
+# Implementation block for Point
+impl Point:
+    # Constructor (associated function)
+    fn new(x: float, y: float) -> Point:
+        return Point { x, y }
+
+    # Default constructor
+    fn origin() -> Point:
+        return Point { x: 0.0, y: 0.0 }
+
+    # Instance method (immutable borrow)
+    fn distance_from_origin(self) -> float:
+        return sqrt(self.x * self.x + self.y * self.y)
+
+    # Instance method with parameters
+    fn distance_to(self, other: Point) -> float:
+        let dx = self.x - other.x
+        let dy = self.y - other.y
+        return sqrt(dx * dx + dy * dy)
+
+    # Method that returns a new struct (not mutating self)
+    fn translate(self, dx: float, dy: float) -> Point:
+        return Point {
+            x: self.x + dx,
+            y: self.y + dy
+        }
+
+# Nested struct
+struct Address:
+    street: string
+    city: string
+    zip: string
+
+struct Person:
+    name: string
+    age: int
+    email: string
+    address: Address
+
+# Rectangle with various methods
+struct Rectangle:
+    top_left: Point
+    width: float
+    height: float
+
+impl Rectangle:
+    fn area(self) -> float:
+        return self.width * self.height
+
+    fn perimeter(self) -> float:
+        return 2.0 * (self.width + self.height)
+
+    fn contains(self, point: Point) -> bool:
+        return point.x >= self.top_left.x and
+               point.x <= self.top_left.x + self.width and
+               point.y >= self.top_left.y and
+               point.y <= self.top_left.y + self.height
+
+    fn center(self) -> Point:
+        return Point {
+            x: self.top_left.x + self.width / 2.0,
+            y: self.top_left.y + self.height / 2.0
+        }
+
+# Mutable struct with mutable methods
+struct Counter:
+    value: int
+
+impl Counter:
+    fn new() -> Counter:
+        return Counter { value: 0 }
+
+    fn increment(mut self):
+        self.value += 1
+
+    fn add(mut self, amount: int):
+        self.value += amount
+
+# Circle with associated functions
+struct Circle:
+    radius: float
+
+impl Circle:
+    fn new(radius: float) -> Circle:
+        return Circle { radius }
+
+    fn area(self) -> float:
+        return 3.14159 * self.radius * self.radius
+
+# Helper function
+fn sqrt(n: float) -> float:
+    if n < 0.0:
+        return 0.0
+    let mut guess = n / 2.0
+    if guess == 0.0:
+        return n
+    for _ in 0..10:
+        guess = (guess + n / guess) / 2.0
+    return guess

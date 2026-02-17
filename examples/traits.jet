@@ -1,0 +1,131 @@
+# Traits Example
+# Demonstrates trait definitions and implementations in Jet
+
+fn main():
+    print("=== Traits in Jet ===\n")
+
+    # Basic Trait Usage
+    print("-- Basic Traits --")
+
+    let circle = Circle { radius: 5.0 }
+    let rect = Rectangle { width: 10.0, height: 20.0 }
+
+    print("Drawing shapes:")
+    circle.draw()
+    rect.draw()
+
+    print(f"\nCircle area: {circle.area()}")
+    print(f"Rectangle area: {rect.area()}")
+
+    # Default Trait Methods
+    print("\n-- Default Trait Methods --")
+    print(f"Circle description: {circle.describe()}")
+    print(f"Rectangle description: {rect.describe()}")
+
+    # Trait Bounds
+    print("\n-- Trait Bounds --")
+    print_larger(&circle, &rect)
+
+    # Multiple Trait Bounds
+    print("\n-- Multiple Trait Bounds --")
+    process_drawable(&circle)
+
+    # Generic Functions with Traits
+    print("\n-- Generic Functions with Traits --")
+    let shapes: [dyn Drawable] = [&circle, &rect]
+    draw_all(shapes)
+
+    # Trait Objects
+    print("\n-- Trait Objects --")
+    let drawables: [dyn Drawable] = [circle, rect]
+    for shape in drawables:
+        shape.draw()
+
+    print("\n=== Traits Example Complete ===")
+
+# Define a trait with required methods and a default method
+trait Drawable:
+    fn draw(self)
+    fn area(self) -> float
+    fn describe(self) -> string:
+        # Default implementation
+        return f"A shape with area {self.area()}"
+
+# Implement trait for a struct
+struct Circle:
+    radius: float
+
+impl Drawable for Circle:
+    fn draw(self):
+        print(f"Drawing a circle with radius {self.radius}")
+
+    fn area(self) -> float:
+        return 3.14159 * self.radius * self.radius
+
+struct Rectangle:
+    width: float
+    height: float
+
+impl Drawable for Rectangle:
+    fn draw(self):
+        print(f"Drawing a rectangle {self.width} x {self.height}")
+
+    fn area(self) -> float:
+        return self.width * self.height
+
+    # Override default describe method
+    fn describe(self) -> string:
+        return f"A rectangle with dimensions {self.width} x {self.height}"
+
+# Trait with multiple methods
+trait Comparable:
+    fn compare(self, other: Self) -> int
+
+    fn less_than(self, other: Self) -> bool:
+        return self.compare(other) < 0
+
+    fn greater_than(self, other: Self) -> bool:
+        return self.compare(other) > 0
+
+    fn equals(self, other: Self) -> bool:
+        return self.compare(other) == 0
+
+impl Comparable for Rectangle:
+    fn compare(self, other: Rectangle) -> int:
+        let self_area = self.area()
+        let other_area = other.area()
+        if self_area < other_area:
+            return -1
+        elif self_area > other_area:
+            return 1
+        else:
+            return 0
+
+# Generic function with trait bound
+fn print_larger[T: Drawable + Comparable](a: &T, b: &T):
+    print("Comparing areas:")
+    if a.greater_than(b):
+        print(f"  First shape is larger (area: {a.area()})")
+    elif b.greater_than(a):
+        print(f"  Second shape is larger (area: {b.area()})")
+    else:
+        print("  Both shapes have equal area")
+
+# Multiple trait bounds
+trait Display:
+    fn display(self)
+
+impl Display for Circle:
+    fn display(self):
+        print(f"Circle(r={self.radius})")
+
+fn process_drawable[T: Drawable + Display](item: &T):
+    print("Processing drawable item:")
+    item.display()
+    item.draw()
+
+# Function taking trait objects
+fn draw_all(items: [dyn Drawable]):
+    print("Drawing all items:")
+    for item in items:
+        item.draw()

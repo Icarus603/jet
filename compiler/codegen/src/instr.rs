@@ -249,8 +249,23 @@ fn compile_constant<'ctx>(
 ) -> CodegenResult<BasicValueEnum<'ctx>> {
     match value {
         ConstantValue::Int(val, ty) => {
-            let int_ty = codegen.jet_to_llvm(ty)?.into_int_type();
-            Ok(int_ty.const_int(*val as u64, true).into())
+            let llvm_ty = codegen.jet_to_llvm(ty)?;
+            if llvm_ty.is_int_type() {
+                Ok(llvm_ty.into_int_type().const_int(*val as u64, true).into())
+            } else if llvm_ty.is_pointer_type() {
+                // Create an integer value and cast it to pointer
+                let int_val = codegen.context.i64_type().const_int(*val as u64, false);
+                Ok(codegen
+                    .builder
+                    .build_int_to_ptr(int_val, llvm_ty.into_pointer_type(), "int_to_ptr")
+                    .map_err(|e| CodegenError::instruction_error(format!("{e:?}")))?
+                    .into())
+            } else {
+                Err(CodegenError::unsupported_instruction(format!(
+                    "Int constant with non-int/non-ptr type: {:?}",
+                    ty
+                )))
+            }
         }
         ConstantValue::Float(val, ty) => {
             let float_ty = if ty == &Ty::F32 {
@@ -266,12 +281,18 @@ fn compile_constant<'ctx>(
             .const_int(*val as u64, false)
             .into()),
         ConstantValue::String(s) => {
-            // Create a global string constant
-            let string_ptr = codegen
-                .builder
-                .build_global_string_ptr(s, "str")
-                .map_err(|e| CodegenError::instruction_error(e.to_string()))?;
-            Ok(string_ptr.as_pointer_value().into())
+            // Check if this is a function name (used for closure function pointers)
+            if let Ok(func_val) = codegen.get_function(s) {
+                // Return the function pointer
+                Ok(func_val.as_global_value().as_pointer_value().into())
+            } else {
+                // Create a global string constant
+                let string_ptr = codegen
+                    .builder
+                    .build_global_string_ptr(s, "str")
+                    .map_err(|e| CodegenError::instruction_error(e.to_string()))?;
+                Ok(string_ptr.as_pointer_value().into())
+            }
         }
         ConstantValue::Null(ty) => {
             let ptr_ty = codegen.jet_to_llvm(ty)?.into_pointer_type();
@@ -984,7 +1005,20 @@ fn compile_call_indirect<'ctx>(
     args: &[ValueId],
     ty: &Ty,
 ) -> CodegenResult<BasicValueEnum<'ctx>> {
-    let fn_ptr = codegen.get_value(ptr)?.into_pointer_value();
+    let ptr_val = codegen.get_value(ptr)?;
+
+    // Handle closure structs - extract the function pointer from field 0
+    let fn_ptr = if ptr_val.is_struct_value() {
+        let struct_val = ptr_val.into_struct_value();
+        // Extract the function pointer (first field of closure struct)
+        let func_ptr_val = codegen
+            .builder
+            .build_extract_value(struct_val, 0, "closure_func_ptr")
+            .map_err(|e| CodegenError::instruction_error(format!("{e:?}")))?;
+        func_ptr_val.into_pointer_value()
+    } else {
+        ptr_val.into_pointer_value()
+    };
 
     let arg_values: Vec<BasicMetadataValueEnum<'ctx>> = args
         .iter()

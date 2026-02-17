@@ -186,6 +186,8 @@ pub struct TypeChecker<'tcx> {
     current_level: Level,
     diagnostics: DiagnosticBag,
     return_type: Option<TypeId>,
+    /// The current Self type (for impl blocks and traits)
+    self_type: Option<TypeId>,
 }
 
 impl<'tcx> TypeChecker<'tcx> {
@@ -200,6 +202,7 @@ impl<'tcx> TypeChecker<'tcx> {
             current_level: 1,
             diagnostics: DiagnosticBag::new(),
             return_type: None,
+            self_type: None,
         }
     }
 
@@ -502,32 +505,7 @@ impl<'tcx> TypeChecker<'tcx> {
     /// Resolve an AST type to a TypeId
     fn resolve_type(&mut self, ast_type: &AstType) -> Result<TypeId, Diagnostic> {
         match ast_type {
-            AstType::Path(path) => {
-                let name = path.segments.last().map(|s| s.name.as_str()).unwrap_or("");
-                match name {
-                    "unit" => Ok(TypeId::UNIT),
-                    "bool" => Ok(TypeId::BOOL),
-                    "int" => Ok(TypeId::INT),
-                    "int8" => Ok(self.tcx.mk_int(IntSize::I8)),
-                    "int16" => Ok(self.tcx.mk_int(IntSize::I16)),
-                    "int32" => Ok(self.tcx.mk_int(IntSize::I32)),
-                    "int64" => Ok(self.tcx.mk_int(IntSize::I64)),
-                    "uint" => Ok(TypeId::UINT),
-                    "uint8" => Ok(self.tcx.mk_uint(IntSize::I8)),
-                    "uint16" => Ok(self.tcx.mk_uint(IntSize::I16)),
-                    "uint32" => Ok(self.tcx.mk_uint(IntSize::I32)),
-                    "uint64" => Ok(self.tcx.mk_uint(IntSize::I64)),
-                    "float" => Ok(TypeId::FLOAT),
-                    "float32" => Ok(self.tcx.mk_float(FloatSize::F32)),
-                    "float64" => Ok(self.tcx.mk_float(FloatSize::F64)),
-                    "char" => Ok(TypeId::CHAR),
-                    "string" => Ok(TypeId::STRING),
-                    _ => {
-                        // Unknown type - create a type variable for now
-                        Ok(self.fresh_var())
-                    }
-                }
-            }
+            AstType::Path(path) => self.resolve_type_path(path),
             AstType::Generic(base, _args) => {
                 // For now, just resolve the base type
                 self.resolve_type(base)
@@ -580,8 +558,100 @@ impl<'tcx> TypeChecker<'tcx> {
             }
             AstType::Infer => Ok(self.fresh_var()),
             AstType::SelfType => {
-                // TODO: Handle self type properly
-                Ok(self.fresh_var())
+                // Self type refers to the type being implemented in an impl block
+                // or the type implementing a trait in a trait definition
+                if let Some(self_ty) = self.self_type {
+                    Ok(self_ty)
+                } else {
+                    // Self used outside of impl block or trait context
+                    self.diagnostics.push(Diagnostic::error(
+                        "`Self` type can only be used within an impl block or trait definition".to_string(),
+                        Span::default(),
+                    ));
+                    Ok(self.fresh_var())
+                }
+            }
+        }
+    }
+
+    /// Resolve a type path to a TypeId
+    ///
+    /// Handles qualified paths like:
+    /// - Simple types: `int`, `bool`, `MyStruct`
+    /// - Module-qualified types: `std::collections::Vec`
+    /// - Associated types: `<T as Trait>::Item`
+    fn resolve_type_path(
+        &mut self,
+        path: &jet_parser::ast::Path,
+    ) -> Result<TypeId, Diagnostic> {
+        // Handle single-segment paths (primitive types and simple type names)
+        if path.segments.len() == 1 {
+            let name = path.segments[0].name.as_str();
+            match name {
+                "unit" => return Ok(TypeId::UNIT),
+                "bool" => return Ok(TypeId::BOOL),
+                "int" => return Ok(TypeId::INT),
+                "int8" => return Ok(self.tcx.mk_int(IntSize::I8)),
+                "int16" => return Ok(self.tcx.mk_int(IntSize::I16)),
+                "int32" => return Ok(self.tcx.mk_int(IntSize::I32)),
+                "int64" => return Ok(self.tcx.mk_int(IntSize::I64)),
+                "uint" => return Ok(TypeId::UINT),
+                "uint8" => return Ok(self.tcx.mk_uint(IntSize::I8)),
+                "uint16" => return Ok(self.tcx.mk_uint(IntSize::I16)),
+                "uint32" => return Ok(self.tcx.mk_uint(IntSize::I32)),
+                "uint64" => return Ok(self.tcx.mk_uint(IntSize::I64)),
+                "float" => return Ok(TypeId::FLOAT),
+                "float32" => return Ok(self.tcx.mk_float(FloatSize::F32)),
+                "float64" => return Ok(self.tcx.mk_float(FloatSize::F64)),
+                "char" => return Ok(TypeId::CHAR),
+                "string" => return Ok(TypeId::STRING),
+                _ => {
+                    // Check if it's a type variable bound in scope
+                    if let Some((ty, _)) = self.lookup_variable(name) {
+                        return Ok(ty);
+                    }
+                    // Unknown type - create a type variable for now
+                    return Ok(self.fresh_var());
+                }
+            }
+        }
+
+        // Handle multi-segment qualified paths
+        // For now, we resolve qualified paths by looking up the final segment
+        // In a full implementation, this would traverse the module hierarchy
+        let final_segment = path.segments.last().unwrap();
+        let name = final_segment.name.as_str();
+
+        // Check if the final segment refers to a known type
+        match name {
+            "unit" => Ok(TypeId::UNIT),
+            "bool" => Ok(TypeId::BOOL),
+            "int" => Ok(TypeId::INT),
+            "int8" => Ok(self.tcx.mk_int(IntSize::I8)),
+            "int16" => Ok(self.tcx.mk_int(IntSize::I16)),
+            "int32" => Ok(self.tcx.mk_int(IntSize::I32)),
+            "int64" => Ok(self.tcx.mk_int(IntSize::I64)),
+            "uint" => Ok(TypeId::UINT),
+            "uint8" => Ok(self.tcx.mk_uint(IntSize::I8)),
+            "uint16" => Ok(self.tcx.mk_uint(IntSize::I16)),
+            "uint32" => Ok(self.tcx.mk_uint(IntSize::I32)),
+            "uint64" => Ok(self.tcx.mk_uint(IntSize::I64)),
+            "float" => Ok(TypeId::FLOAT),
+            "float32" => Ok(self.tcx.mk_float(FloatSize::F32)),
+            "float64" => Ok(self.tcx.mk_float(FloatSize::F64)),
+            "char" => Ok(TypeId::CHAR),
+            "string" => Ok(TypeId::STRING),
+            _ => {
+                // For qualified paths like `module::Type` or `Type::Associated`,
+                // look up the type in the current scope
+                if let Some((ty, _)) = self.lookup_variable(name) {
+                    Ok(ty)
+                } else {
+                    // Unknown qualified path - create a type variable
+                    // In a full implementation, this would properly resolve
+                    // the path through the module hierarchy
+                    Ok(self.fresh_var())
+                }
             }
         }
     }
@@ -608,6 +678,75 @@ impl<'tcx> TypeChecker<'tcx> {
             Literal::Bool(_) => TypeId::BOOL,
             Literal::Unit => TypeId::UNIT,
         }
+    }
+
+    /// Infer the type of a qualified path expression
+    ///
+    /// Handles paths like:
+    /// - Simple variables: `x`, `my_var`
+    /// - Qualified paths: `module::submodule::item`
+    /// - Associated items: `Type::method`, `<T as Trait>::method`
+    fn infer_qualified_path(
+        &mut self,
+        path: &jet_parser::ast::Path,
+        span: Span,
+    ) -> Result<TypedExpr, Diagnostic> {
+        // Single-segment paths are treated like variables
+        if path.segments.len() == 1 {
+            let name = &path.segments[0].name;
+            if let Some((ty, _is_mut)) = self.lookup_variable(name) {
+                return Ok(TypedExpr {
+                    kind: TypedExprKind::Variable(path.segments[0].clone()),
+                    ty,
+                    span,
+                });
+            } else if name == "print"
+                || name == "print_int"
+                || name == "print_float"
+                || name == "print_bool"
+                || name == "chan"
+                || name
+                    .chars()
+                    .next()
+                    .map(|c| c.is_ascii_uppercase())
+                    .unwrap_or(false)
+            {
+                return Ok(TypedExpr {
+                    kind: TypedExprKind::Variable(path.segments[0].clone()),
+                    ty: self.fresh_var(),
+                    span,
+                });
+            } else {
+                return Err(Diagnostic::error(
+                    format!("variable not found: {}", name),
+                    convert_span(path.span),
+                ));
+            }
+        }
+
+        // Multi-segment qualified paths
+        // For now, resolve by looking up the final segment
+        // In a full implementation, this would traverse the module hierarchy
+        let final_segment = path.segments.last().unwrap();
+        let name = &final_segment.name;
+
+        // Try to look up the final segment as a variable
+        if let Some((ty, _is_mut)) = self.lookup_variable(name) {
+            return Ok(TypedExpr {
+                kind: TypedExprKind::Variable(final_segment.clone()),
+                ty,
+                span,
+            });
+        }
+
+        // For qualified paths like `module::Type::method` or `Type::Associated`,
+        // create a fresh type variable as a placeholder
+        // In a full implementation, this would properly resolve the path
+        Ok(TypedExpr {
+            kind: TypedExprKind::Literal(Literal::Unit),
+            ty: self.fresh_var(),
+            span,
+        })
     }
 
     /// Infer the type of a binary operation
@@ -1150,48 +1289,7 @@ impl<'tcx> TypeChecker<'tcx> {
                 })
             }
 
-            Expr::Path(path) => {
-                // Single-segment paths are treated like variables
-                if path.segments.len() == 1 {
-                    let name = &path.segments[0].name;
-                    if let Some((ty, _is_mut)) = self.lookup_variable(name) {
-                        Ok(TypedExpr {
-                            kind: TypedExprKind::Variable(path.segments[0].clone()),
-                            ty,
-                            span,
-                        })
-                    } else if name == "print"
-                        || name == "print_int"
-                        || name == "print_float"
-                        || name == "print_bool"
-                        || name == "chan"
-                        || name
-                            .chars()
-                            .next()
-                            .map(|c| c.is_ascii_uppercase())
-                            .unwrap_or(false)
-                    {
-                        Ok(TypedExpr {
-                            kind: TypedExprKind::Variable(path.segments[0].clone()),
-                            ty: self.fresh_var(),
-                            span,
-                        })
-                    } else {
-                        Err(Diagnostic::error(
-                            format!("variable not found: {}", name),
-                            convert_span(path.span),
-                        ))
-                    }
-                } else {
-                    // For now, multi-segment paths just create a fresh variable
-                    // TODO: Handle qualified paths properly
-                    Ok(TypedExpr {
-                        kind: TypedExprKind::Literal(Literal::Unit),
-                        ty: self.fresh_var(),
-                        span,
-                    })
-                }
-            }
+            Expr::Path(path) => self.infer_qualified_path(path, span),
 
             Expr::MethodCall {
                 receiver,
@@ -1694,7 +1792,13 @@ impl<'tcx> TypeChecker<'tcx> {
         let has_return = self.has_explicit_return(&func.body);
         if !has_return {
             self.try_unify(body.ty, return_type, convert_span(func.span));
-            if return_type != TypeId::UNIT && body.ty != TypeId::NEVER {
+            // After unification, check if the body type resolves to the return type
+            let resolved_body_ty = self.follow_var_links(body.ty);
+            let resolved_return_ty = self.follow_var_links(return_type);
+            if resolved_return_ty != TypeId::UNIT
+                && resolved_body_ty != TypeId::NEVER
+                && resolved_body_ty != resolved_return_ty
+            {
                 self.diagnostics.push(Diagnostic::error(
                     format!("missing return in function `{}`", func.name.name),
                     convert_span(func.span),
@@ -1716,6 +1820,53 @@ impl<'tcx> TypeChecker<'tcx> {
             body,
             span: convert_span(func.span),
         })
+    }
+
+    /// Type check an impl block
+    ///
+    /// This sets up the Self type context so that `Self` in method signatures
+    /// and bodies refers to the type being implemented.
+    fn type_check_impl_block(
+        &mut self,
+        impl_def: &jet_parser::ast::ImplDef,
+        items: &mut Vec<TypedModuleItem>,
+    ) {
+        use jet_parser::ast::ImplItem;
+
+        // Resolve the type being implemented
+        let impl_ty = match self.resolve_type(&impl_def.ty) {
+            Ok(ty) => ty,
+            Err(_) => {
+                // If we can't resolve the type, use a fresh variable
+                // Error has already been reported
+                self.fresh_var()
+            }
+        };
+
+        // Set the Self type context
+        let old_self_type = self.self_type;
+        self.self_type = Some(impl_ty);
+
+        // Type-check each impl item
+        for item in &impl_def.items {
+            match item {
+                ImplItem::Method(func) => {
+                    match self.infer_function(func) {
+                        Ok(typed_func) => {
+                            items.push(TypedModuleItem::Function(typed_func));
+                        }
+                        Err(diag) => {
+                            self.diagnostics.push(diag);
+                        }
+                    }
+                }
+                // TODO: Handle const and type alias items in impl blocks
+                _ => {}
+            }
+        }
+
+        // Restore the previous Self type context
+        self.self_type = old_self_type;
     }
 
     /// Type check a module
@@ -1769,7 +1920,7 @@ impl<'tcx> TypeChecker<'tcx> {
             }
         }
 
-        // Second pass: type check function bodies
+        // Second pass: type check function bodies and impl blocks
         for item in &module.items {
             match item {
                 ModuleItem::Function(func) => match self.infer_function(func) {
@@ -1780,6 +1931,10 @@ impl<'tcx> TypeChecker<'tcx> {
                         self.diagnostics.push(diag);
                     }
                 },
+                ModuleItem::Impl(impl_def) => {
+                    // Type-check impl block methods with Self type context
+                    self.type_check_impl_block(impl_def, &mut items);
+                }
                 _ => {
                     // TODO: Handle other module items
                 }

@@ -299,6 +299,30 @@ fn test_lambda_no_params() {
     assert_parses("|| 42");
 }
 
+#[test]
+fn test_lambda_typed_params() {
+    assert_parses("|x: i32| x + 1");
+    assert_parses("|x: i32, y: i32| x + y");
+}
+
+#[test]
+fn test_lambda_return_type() {
+    assert_parses("|x: i32| -> i32 x + 1");
+    assert_parses("|x, y| -> i32 x + y");
+}
+
+#[test]
+fn test_lambda_block_body() {
+    assert_parses("|x| { x + 1 }");
+    assert_parses("|x: i32| -> i32 { x + 1 }");
+}
+
+#[test]
+fn test_lambda_full_syntax() {
+    // Full syntax: |params| -> return_type { body }
+    assert_parses("|x: i32, y: i32| -> i32 { x + y }");
+}
+
 // =============================================================================
 // Tuple Expressions
 // =============================================================================
