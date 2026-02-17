@@ -17,13 +17,9 @@ use crate::incremental::{IncrementalState, Module, ModuleId};
 use crate::linker::LinkerBuilder;
 use crate::platform::TargetConfig;
 
-// Compiler pipeline imports
-use jet_codegen::{CodeGen, compile_module as codegen_compile_module};
-use jet_ir::Module as IrModule;
+use jet_codegen::CodeGen;
 use jet_lower::lower_module;
-use jet_parser::ast::Module as AstModule;
 use jet_resolve::Resolver;
-use jet_typeck::TypeChecker;
 
 /// Build target type
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -460,7 +456,7 @@ impl BuildSystem {
 /// Compile a single unit
 async fn compile_unit(
     unit: &CompilationUnit,
-    target: &TargetConfig,
+    _target: &TargetConfig,
     _config: &BuildConfig,
 ) -> CompilationResult {
     use inkwell::context::Context;
@@ -520,8 +516,10 @@ async fn compile_unit(
         }
     };
 
-    // Step 5: Lower to IR (takes AST, not TAST)
-    let ir = lower_module(&ast, &unit.name);
+    // Step 5: Lower to IR (takes TAST with type context)
+    // Create a temporary type context for lowering
+    let tcx = jet_typeck::TypeContext::new();
+    let ir = lower_module(&tast, &tcx, &unit.name);
 
     // Step 6: Generate object code using LLVM
     let context = Context::create();

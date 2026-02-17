@@ -110,6 +110,8 @@ struct FunctionCompiler<'ctx, 'module> {
     function_map: HashMap<String, FunctionValue<'ctx>>,
     /// Current function being compiled
     current_function: Option<FunctionValue<'ctx>>,
+    /// Tracks the LLVM type stored in each alloca (for load/GEP operations)
+    alloca_types: HashMap<jet_ir::ValueId, BasicTypeEnum<'ctx>>,
 }
 
 impl<'ctx, 'module> FunctionCompiler<'ctx, 'module> {
@@ -126,6 +128,7 @@ impl<'ctx, 'module> FunctionCompiler<'ctx, 'module> {
             block_map: HashMap::new(),
             function_map: HashMap::new(),
             current_function: None,
+            alloca_types: HashMap::new(),
         }
     }
 
@@ -160,6 +163,7 @@ impl<'ctx, 'module> FunctionCompiler<'ctx, 'module> {
         // Clear per-function maps
         self.value_map.clear();
         self.block_map.clear();
+        self.alloca_types.clear();
 
         // Map function parameters to value IDs
         for (i, param) in func.params.iter().enumerate() {
@@ -419,16 +423,17 @@ impl<'ctx, 'module> FunctionCompiler<'ctx, 'module> {
                     .build_alloca(llvm_ty, "alloca")
                     .map_err(|e| CodegenError::instruction_error(e.to_string()))?;
                 self.value_map.insert(*result, alloca.into());
+                // Track the type stored in this alloca for later load/GEP
+                self.alloca_types.insert(*result, llvm_ty);
                 Ok(Some(alloca.into()))
             }
 
-            jet_ir::Instruction::Load { result, ptr } => {
+            jet_ir::Instruction::Load { result, ptr, ty } => {
                 let ptr_val = self.get_value(*ptr)?.into_pointer_value();
-                // Get the pointee type from the pointer
-                let pointee_ty = self.get_pointee_type(*ptr)?;
+                let load_ty = self.jet_type_to_llvm(ty)?;
                 let loaded = self
                     .builder
-                    .build_load(pointee_ty, ptr_val, "load")
+                    .build_load(load_ty, ptr_val, "load")
                     .map_err(|e| CodegenError::instruction_error(e.to_string()))?;
                 self.value_map.insert(*result, loaded);
                 Ok(Some(loaded))
@@ -443,7 +448,9 @@ impl<'ctx, 'module> FunctionCompiler<'ctx, 'module> {
                 Ok(None)
             }
 
-            jet_ir::Instruction::Call { result, func, args } => {
+            jet_ir::Instruction::Call {
+                result, func, args, ..
+            } => {
                 let fn_val = *self
                     .function_map
                     .get(func)
@@ -466,11 +473,15 @@ impl<'ctx, 'module> FunctionCompiler<'ctx, 'module> {
                 Ok(result_val)
             }
 
-            jet_ir::Instruction::Phi { result, incoming } => {
-                let phi_ty = self.get_value(incoming[0].1)?;
+            jet_ir::Instruction::Phi {
+                result,
+                incoming,
+                ty,
+            } => {
+                let phi_ty = self.jet_type_to_llvm(ty)?;
                 let phi = self
                     .builder
-                    .build_phi(phi_ty.get_type(), "phi")
+                    .build_phi(phi_ty, "phi")
                     .map_err(|e| CodegenError::instruction_error(e.to_string()))?;
 
                 for (block_id, value_id) in incoming {
@@ -540,14 +551,13 @@ impl<'ctx, 'module> FunctionCompiler<'ctx, 'module> {
                 result,
                 ptr,
                 field_index,
+                struct_ty,
             } => {
                 let ptr_val = self.get_value(*ptr)?.into_pointer_value();
-                // We need the struct type to use build_struct_gep
-                // For now, we'll need to track the pointee type
-                let pointee_ty = self.get_pointee_type(*ptr)?;
+                let struct_llvm_ty = self.jet_type_to_llvm(struct_ty)?;
                 let field_ptr = self
                     .builder
-                    .build_struct_gep(pointee_ty, ptr_val, *field_index as u32, "fieldptr")
+                    .build_struct_gep(struct_llvm_ty, ptr_val, *field_index as u32, "fieldptr")
                     .map_err(|e| CodegenError::instruction_error(e.to_string()))?;
                 self.value_map.insert(*result, field_ptr.into());
                 Ok(Some(field_ptr.into()))
@@ -555,29 +565,6 @@ impl<'ctx, 'module> FunctionCompiler<'ctx, 'module> {
 
             // TODO: Implement more instructions
             _ => Err(CodegenError::unsupported_instruction(format!("{:?}", inst))),
-        }
-    }
-
-    /// Gets the pointee type for a pointer value.
-    /// This is a helper to track types for operations like load and gep.
-    fn get_pointee_type(&self, ptr_id: jet_ir::ValueId) -> CodegenResult<BasicTypeEnum<'ctx>> {
-        // For now, we need to infer the type from the context
-        // In a full implementation, we'd track the type of each value
-        // This is a simplified version that tries to get the type from the value
-        let ptr_val = self.get_value(ptr_id)?;
-        if ptr_val.is_pointer_value() {
-            // Try to get element type from the pointer type
-            let _ptr_type = ptr_val.into_pointer_value().get_type();
-            // We can't easily get the element type from the pointer type in inkwell
-            // In a real implementation, we'd track this in a type map
-            Err(CodegenError::unsupported_type(
-                "cannot determine pointee type - type tracking not implemented",
-            ))
-        } else {
-            Err(CodegenError::type_mismatch(
-                "pointer",
-                format!("{:?}", ptr_val),
-            ))
         }
     }
 
@@ -757,10 +744,24 @@ impl<'ctx, 'module> FunctionCompiler<'ctx, 'module> {
 
     /// Gets a value from the value map.
     fn get_value(&self, id: jet_ir::ValueId) -> CodegenResult<BasicValueEnum<'ctx>> {
-        self.value_map
-            .get(&id)
-            .copied()
-            .ok_or_else(|| CodegenError::value_not_found(id.0))
+        self.value_map.get(&id).copied().ok_or_else(|| {
+            let func_name = self
+                .current_function
+                .map(|f| {
+                    let name = f.get_name();
+                    name.to_str().unwrap_or("?").to_string()
+                })
+                .unwrap_or_else(|| "?".to_string());
+            eprintln!(
+                "DEBUG: Value {} not found in function '{}'",
+                id.0, func_name
+            );
+            eprintln!(
+                "DEBUG: Available values: {:?}",
+                self.value_map.keys().map(|k| k.0).collect::<Vec<_>>()
+            );
+            CodegenError::value_not_found(id.0)
+        })
     }
 
     /// Converts a Jet IR type to an LLVM type.
@@ -817,17 +818,22 @@ impl<'ctx, 'module> FunctionCompiler<'ctx, 'module> {
                 };
                 Ok(fn_ty.ptr_type(AddressSpace::default()).into())
             }
-            jet_ir::Ty::Named(name) => {
-                // Named types would need type definition lookup
-                Err(CodegenError::unsupported_type(format!(
-                    "named type: {}",
-                    name
-                )))
+            jet_ir::Ty::Named(_name) => {
+                // Named types are GC-allocated heap objects, represented as opaque pointers
+                Ok(self
+                    .context
+                    .i8_type()
+                    .ptr_type(AddressSpace::default())
+                    .into())
             }
-            jet_ir::Ty::Generic(name, _args) => Err(CodegenError::unsupported_type(format!(
-                "generic type: {}",
-                name
-            ))),
+            jet_ir::Ty::Generic(_name, _args) => {
+                // Generic types are GC-allocated heap objects, represented as opaque pointers
+                Ok(self
+                    .context
+                    .i8_type()
+                    .ptr_type(AddressSpace::default())
+                    .into())
+            }
         }
     }
 }

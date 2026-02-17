@@ -71,6 +71,11 @@ impl Module {
         self.functions.iter_mut().find(|f| f.name == name)
     }
 
+    /// Gets a type definition by name.
+    pub fn get_type_def(&self, name: &str) -> Option<&TypeDef> {
+        self.type_defs.iter().find(|t| t.name == name)
+    }
+
     /// Validates all functions in the module.
     pub fn validate(&self) -> Result<(), String> {
         for func in &self.functions {

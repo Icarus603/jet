@@ -859,6 +859,9 @@ impl<'tcx> TypeChecker<'tcx> {
                     .unwrap_or(false)
                     || ident.name == "chan"
                     || ident.name == "print"
+                    || ident.name == "print_int"
+                    || ident.name == "print_float"
+                    || ident.name == "print_bool"
                 {
                     Ok(TypedExpr {
                         kind: TypedExprKind::Variable(ident.clone()),
@@ -1158,6 +1161,9 @@ impl<'tcx> TypeChecker<'tcx> {
                             span,
                         })
                     } else if name == "print"
+                        || name == "print_int"
+                        || name == "print_float"
+                        || name == "print_bool"
                         || name == "chan"
                         || name
                             .chars()

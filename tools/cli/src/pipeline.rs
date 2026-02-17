@@ -338,18 +338,40 @@ impl CompilationPipeline {
     async fn run_resolution_phase(&mut self) -> Result<()> {
         let start = std::time::Instant::now();
 
+        // First pass: collect module bindings and items from all units
+        // This ensures all top-level definitions are available for cross-module imports
+        self.pre_populate_module_bindings();
+
+        // Collect items from all modules first (without resolving imports/references)
+        for unit in &mut self.units {
+            if !unit.needs_rebuild {
+                continue;
+            }
+
+            if let Some(ref ast) = unit.ast {
+                match self.resolver.collect_module_items_only(ast) {
+                    jet_resolve::ResolutionResult { success: true, .. } => {}
+                    jet_resolve::ResolutionResult { errors, .. } => {
+                        unit.errors.extend(errors.to_diagnostics());
+                    }
+                }
+            }
+        }
+
+        // Second pass: resolve imports and references in each module
+        // Now all module items are available in the symbol table
         for unit in &mut self.units {
             if !unit.needs_rebuild {
                 continue;
             }
 
             if let Some(ref mut ast) = unit.ast {
-                match jet_resolve::resolve_with_module_id(ast, jet_resolve::ModuleId::root()) {
-                    Ok(()) => {
+                match self.resolver.resolve_module_imports_and_refs(ast) {
+                    jet_resolve::ResolutionResult { success: true, .. } => {
                         unit.resolved = Some(ast.clone());
                     }
-                    Err(diagnostics) => {
-                        unit.errors.extend(diagnostics);
+                    jet_resolve::ResolutionResult { errors, .. } => {
+                        unit.errors.extend(errors.to_diagnostics());
                     }
                 }
             }
@@ -363,6 +385,45 @@ impl CompilationPipeline {
 
         self.stats.resolve_time_ms = start.elapsed().as_millis() as u64;
         Ok(())
+    }
+
+    /// Pre-populate the resolver's symbol table with module bindings for all source files
+    ///
+    /// This allows imports to find modules defined in other source files
+    fn pre_populate_module_bindings(&mut self) {
+        use jet_resolve::{Binding, BindingKind};
+
+        for unit in &self.units {
+            let module_name = &unit.source_file.module_name;
+
+            // Skip the main entry point - it's not importable as a module
+            if unit.source_file.is_main {
+                continue;
+            }
+
+            // Skip if already defined
+            if self
+                .resolver
+                .symbol_table
+                .lookup_module(module_name)
+                .is_some()
+            {
+                continue;
+            }
+
+            // Create a module binding for this source file
+            let def_id = self.resolver.next_def_id();
+            let binding = Binding::new(
+                module_name.clone(),
+                jet_lexer::Span::new(0, 0),
+                BindingKind::Module,
+                def_id,
+                self.resolver.current_module,
+            )
+            .with_public(true);
+
+            self.resolver.symbol_table.insert_module_binding(binding);
+        }
     }
 
     /// Run type checking phase
@@ -408,9 +469,13 @@ impl CompilationPipeline {
                 continue;
             }
 
-            if let Some(ref ast) = unit.resolved {
-                // Lower the AST to IR
-                let ir = jet_lower::lower_module(ast, &unit.source_file.module_name);
+            if let Some(ref typed) = unit.typed {
+                // Lower the typed AST to IR, passing the type context for type information
+                let ir = jet_lower::lower_module(
+                    typed,
+                    self.type_session.type_context(),
+                    &unit.source_file.module_name,
+                );
                 unit.ir = Some(ir);
             }
         }

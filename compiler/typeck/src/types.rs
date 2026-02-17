@@ -243,6 +243,7 @@ pub enum TypeKind {
 }
 
 /// Context for interning and managing types
+#[derive(Debug)]
 pub struct TypeContext {
     /// Arena of interned types
     types: Vec<TypeKind>,
@@ -251,8 +252,10 @@ pub struct TypeContext {
     /// Type variables (unification variables)
     type_vars: Vec<TypeVar>,
     /// Counter for generating fresh variable IDs
+    #[allow(dead_code)]
     var_counter: AtomicU32,
     /// Counter for generating fresh definition IDs
+    #[allow(dead_code)]
     def_counter: AtomicU32,
 }
 

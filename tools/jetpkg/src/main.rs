@@ -27,6 +27,10 @@
 //! jetpkg show <name>
 //! ```
 
+#![allow(clippy::manual_strip)]
+#![allow(clippy::collapsible_if)]
+#![allow(clippy::for_kv_map)]
+
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use serde::{Deserialize, Serialize};
@@ -36,8 +40,14 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
 
+mod registry;
+mod resolve;
+
+use registry::{PackageMetadata, RegistryClient};
+use resolve::{is_lock_file_up_to_date, write_lock_file, Resolver};
+
 /// Default registry URL
-const DEFAULT_REGISTRY: &str = "https://crates.jet-lang.org";
+const DEFAULT_REGISTRY: &str = registry::DEFAULT_REGISTRY;
 
 /// Jet package manager CLI
 #[derive(Parser)]
@@ -315,49 +325,6 @@ struct DetailedDependency {
     optional: bool,
 }
 
-/// Package metadata from registry
-#[derive(Debug, Clone, Deserialize, Serialize)]
-struct PackageMetadata {
-    name: String,
-    version: String,
-    #[serde(default)]
-    description: Option<String>,
-    #[serde(default)]
-    authors: Vec<String>,
-    #[serde(default)]
-    license: Option<String>,
-    #[serde(default)]
-    repository: Option<String>,
-    #[serde(default)]
-    homepage: Option<String>,
-    #[serde(default)]
-    documentation: Option<String>,
-    #[serde(default)]
-    keywords: Vec<String>,
-    #[serde(default)]
-    readme: Option<String>,
-    #[serde(default)]
-    downloads: u64,
-    #[serde(default)]
-    created_at: String,
-    #[serde(default)]
-    updated_at: String,
-    #[serde(default)]
-    versions: Vec<String>,
-    #[serde(default)]
-    dependencies: Vec<DependencyInfo>,
-    #[serde(default)]
-    checksum: Option<String>,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-struct DependencyInfo {
-    name: String,
-    version_req: String,
-    #[serde(default)]
-    optional: bool,
-}
-
 /// Registry credentials
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 struct Credentials {
@@ -372,24 +339,7 @@ struct RegistryCredential {
     username: Option<String>,
 }
 
-/// Search result
-#[derive(Debug, Clone, Deserialize)]
-struct SearchResult {
-    name: String,
-    #[serde(default)]
-    description: Option<String>,
-    #[serde(default)]
-    version: Option<String>,
-    #[serde(default)]
-    downloads: u64,
-}
-
-/// Search response from registry
-#[derive(Debug, Clone, Deserialize)]
-struct SearchResponse {
-    packages: Vec<SearchResult>,
-    total: usize,
-}
+// SearchResult is now imported from registry module
 
 struct InstallOptions {
     name: Option<String>,
@@ -778,32 +728,24 @@ async fn cmd_search(registry: Option<&str>, query: String, limit: usize) -> Resu
 
     print_info(&format!("Searching for '{}'...", query));
 
-    // Search the registry
-    let client = reqwest::Client::new();
-    let url = format!("{}/api/v1/crates?q={}&limit={}", registry, query, limit);
+    // Search the registry using the registry client
+    let client = RegistryClient::new(registry);
 
-    match client.get(&url).send().await {
-        Ok(response) => {
-            if response.status().is_success() {
-                let search_result: SearchResponse = response.json().await?;
-
-                if search_result.packages.is_empty() {
-                    println!("No packages found matching '{}'", query);
-                } else {
-                    println!("Found {} package(s):\n", search_result.total);
-
-                    for pkg in search_result.packages {
-                        print_package_summary(&pkg);
-                    }
-                }
+    match client.search(&query, limit, 0).await {
+        Ok(search_result) => {
+            if search_result.packages.is_empty() {
+                println!("No packages found matching '{}'", query);
             } else {
-                print_warning(&format!("Registry returned error: {}", response.status()));
-                // Fallback to demo results
-                show_demo_search_results(&query);
+                println!("Found {} package(s):\n", search_result.total);
+
+                for pkg in search_result.packages {
+                    print_package_summary(&pkg);
+                }
             }
         }
-        Err(_) => {
-            // Registry not available, show demo results
+        Err(e) => {
+            print_warning(&format!("Registry search failed: {}", e));
+            // Fallback to demo results
             show_demo_search_results(&query);
         }
     }
@@ -843,7 +785,7 @@ fn show_demo_search_results(query: &str) {
     }
 }
 
-fn print_package_summary(pkg: &SearchResult) {
+fn print_package_summary(pkg: &registry::SearchResult) {
     print_highlight(&pkg.name);
     if let Some(ref version) = pkg.version {
         print!(" = {}", version);
@@ -870,7 +812,9 @@ async fn cmd_show(
 ) -> Result<()> {
     let registry = registry.unwrap_or(DEFAULT_REGISTRY);
 
-    match fetch_package_metadata(registry, &name).await {
+    let client = RegistryClient::new(registry);
+
+    match client.fetch_package(&name, None).await {
         Ok(metadata) => {
             print_highlight(&metadata.name);
             println!(" = {}", metadata.version);
@@ -898,13 +842,24 @@ async fn cmd_show(
                 println!("Documentation: {}", docs);
             }
 
-            if show_versions && !metadata.versions.is_empty() {
-                println!("\nAvailable versions:");
-                for version in metadata.versions.iter().take(10) {
-                    println!("  - {}", version);
-                }
-                if metadata.versions.len() > 10 {
-                    println!("  ... and {} more", metadata.versions.len() - 10);
+            if show_versions {
+                // Fetch all versions
+                match client.get_versions(&name).await {
+                    Ok(versions) => {
+                        if !versions.is_empty() {
+                            println!("\nAvailable versions:");
+                            for version in versions.iter().take(10) {
+                                let yank_marker = if version.yanked { " (yanked)" } else { "" };
+                                println!("  - {}{}", version.version, yank_marker);
+                            }
+                            if versions.len() > 10 {
+                                println!("  ... and {} more", versions.len() - 10);
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        print_warning(&format!("Could not fetch versions: {}", e));
+                    }
                 }
             }
 
@@ -1190,14 +1145,24 @@ async fn cmd_yank(registry: Option<&str>, name: String, version: String, undo: b
 
     // Check authentication
     let creds = load_credentials()?;
-    if !creds.registries.contains_key(registry) {
-        anyhow::bail!("Not logged in to {}", registry);
-    }
+    let token = creds
+        .registries
+        .get(registry)
+        .map(|c| c.token.clone())
+        .ok_or_else(|| anyhow::anyhow!("Not logged in to {}", registry))?;
 
     let action = if undo { "unyank" } else { "yank" };
     print_info(&format!("{}ing {} v{}...", action, name, version));
 
-    // Would make API call to registry here
+    // Create registry client with authentication
+    let client = RegistryClient::new(registry).with_auth(token);
+
+    if undo {
+        client.unyank(&name, &version).await?;
+    } else {
+        client.yank(&name, &version, None).await?;
+    }
+
     print_success(&format!("{}ed {} v{}", action, name, version));
 
     Ok(())
@@ -1464,35 +1429,27 @@ fn get_credentials_path() -> Result<PathBuf> {
 }
 
 async fn fetch_package_metadata(registry: &str, name: &str) -> Result<PackageMetadata> {
-    let client = reqwest::Client::new();
-    let url = format!("{}/api/v1/crates/{}", registry, name);
-
-    let response = client
-        .get(&url)
-        .send()
-        .await
-        .with_context(|| format!("Failed to connect to registry at {}", registry))?;
-
-    if !response.status().is_success() {
-        anyhow::bail!("Package '{}' not found in registry", name);
-    }
-
-    let metadata: PackageMetadata = response
-        .json()
-        .await
-        .with_context(|| "Failed to parse registry response")?;
-
-    Ok(metadata)
+    let client = RegistryClient::new(registry);
+    client.fetch_package(name, None).await
 }
 
 async fn install_dependencies(manifest: &Manifest, registry: &str, frozen: bool) -> Result<()> {
-    let (_registry, _frozen) = (registry, frozen);
+    let lock_path = Path::new("jet.lock");
+    let manifest_path = Path::new("jet.toml");
 
-    let all_deps: Vec<_> = manifest
+    // Check if we can use the existing lock file
+    if frozen {
+        if !lock_path.exists() {
+            anyhow::bail!("--frozen flag requires an existing jet.lock file");
+        }
+    }
+
+    let all_deps: HashMap<String, Dependency> = manifest
         .dependencies
-        .iter()
-        .chain(manifest.dev_dependencies.iter())
-        .chain(manifest.build_dependencies.iter())
+        .clone()
+        .into_iter()
+        .chain(manifest.dev_dependencies.clone())
+        .chain(manifest.build_dependencies.clone())
         .collect();
 
     if all_deps.is_empty() {
@@ -1507,25 +1464,36 @@ async fn install_dependencies(manifest: &Manifest, registry: &str, frozen: bool)
 
     fs::create_dir_all(&cache_dir)?;
 
-    for (name, dep) in &all_deps {
-        match dep {
-            Dependency::Simple(_)
-            | Dependency::Detailed(DetailedDependency {
-                version: Some(_), ..
-            }) => {
-                print_info(&format!("Fetching {}...", name));
-                // Would download and cache package
-            }
-            Dependency::Detailed(DetailedDependency {
-                path: Some(path), ..
-            }) => {
-                print_info(&format!("Using local {} from {}", name, path.display()));
-            }
-            Dependency::Detailed(DetailedDependency { git: Some(url), .. }) => {
-                print_info(&format!("Fetching {} from {}...", name, url));
-                // Would clone/fetch git repo
-            }
-            _ => {}
+    // Check if lock file is up to date
+    let use_lock_file =
+        !frozen && lock_path.exists() && is_lock_file_up_to_date(lock_path, manifest_path).await;
+
+    if use_lock_file {
+        print_info("Using existing lock file");
+        let lock = resolve::read_lock_file(lock_path).await?;
+
+        // Download packages from lock file
+        let client = RegistryClient::new(registry);
+        for package in &lock.packages {
+            download_and_install_package(&client, package, &cache_dir).await?;
+        }
+    } else {
+        // Resolve dependencies
+        print_info("Resolving dependencies...");
+        let client = RegistryClient::new(registry);
+        let mut resolver = Resolver::new(client.clone());
+
+        let graph = resolver
+            .resolve(&manifest.package.name, &manifest.package.version, &all_deps)
+            .await?;
+
+        // Generate and write lock file
+        let lock = resolver.generate_lock_file(&graph);
+        write_lock_file(lock_path, &lock).await?;
+
+        // Download packages
+        for (_, package) in &graph.packages {
+            download_and_install_package(&client, package, &cache_dir).await?;
         }
     }
 
@@ -1533,21 +1501,87 @@ async fn install_dependencies(manifest: &Manifest, registry: &str, frozen: bool)
     Ok(())
 }
 
+async fn download_and_install_package(
+    client: &RegistryClient,
+    package: &resolve::ResolvedPackage,
+    cache_dir: &Path,
+) -> Result<()> {
+    print_info(&format!("Fetching {} {}...", package.name, package.version));
+
+    let package_dir = cache_dir.join(&package.name).join(&package.version);
+    fs::create_dir_all(&package_dir)?;
+
+    let tarball_path = package_dir.join("package.tar.gz");
+
+    // Download if not already cached
+    if !tarball_path.exists() {
+        client
+            .download_package(&package.name, &package.version, tarball_path.clone())
+            .await
+            .with_context(|| {
+                format!(
+                    "Failed to download package {} {}",
+                    package.name, package.version
+                )
+            })?;
+    }
+
+    // Extract tarball
+    let extract_dir = package_dir.join("source");
+    if !extract_dir.exists() {
+        fs::create_dir_all(&extract_dir)?;
+        // TODO: Extract tarball
+        print_info(&format!(
+            "Extracted {} {} to {}",
+            package.name,
+            package.version,
+            extract_dir.display()
+        ));
+    }
+
+    Ok(())
+}
+
 async fn update_lock_file(manifest: &Manifest) -> Result<()> {
-    // Create a simplified lock file
-    let lock_content = format!(
-        r#"# This file is automatically generated by Jet.
-# It is not intended for manual editing.
-version = 1
+    let all_deps: HashMap<String, Dependency> = manifest
+        .dependencies
+        .clone()
+        .into_iter()
+        .chain(manifest.dev_dependencies.clone())
+        .chain(manifest.build_dependencies.clone())
+        .collect();
 
-[[package]]
-name = "{}"
-version = "{}"
-"#,
-        manifest.package.name, manifest.package.version
-    );
+    if all_deps.is_empty() {
+        // Write empty lock file
+        let lock = resolve::LockFile {
+            version: 1,
+            root: resolve::ResolvedPackage {
+                name: manifest.package.name.clone(),
+                version: manifest.package.version.clone(),
+                dependencies: HashMap::new(),
+                source: resolve::PackageSource::default(),
+                checksum: None,
+            },
+            packages: vec![],
+            metadata: Some(resolve::LockMetadata {
+                generated_at: chrono::Utc::now().to_rfc3339(),
+                registry: DEFAULT_REGISTRY.to_string(),
+            }),
+        };
+        write_lock_file(Path::new("jet.lock"), &lock).await?;
+        return Ok(());
+    }
 
-    fs::write("jet.lock", lock_content)?;
+    let client = RegistryClient::default_registry();
+    let mut resolver = Resolver::new(client);
+
+    let graph = resolver
+        .resolve(&manifest.package.name, &manifest.package.version, &all_deps)
+        .await?;
+
+    let lock = resolver.generate_lock_file(&graph);
+    write_lock_file(Path::new("jet.lock"), &lock).await?;
+
     Ok(())
 }
 
@@ -1599,8 +1633,8 @@ async fn create_package_archive(manifest: &Manifest) -> Result<Vec<u8>> {
 
 async fn publish_to_registry(
     registry: &str,
-    _manifest: &Manifest,
-    _archive: &[u8],
+    manifest: &Manifest,
+    archive: &[u8],
     creds: &Credentials,
 ) -> Result<()> {
     let token = creds
@@ -1609,16 +1643,66 @@ async fn publish_to_registry(
         .map(|c| c.token.clone())
         .ok_or_else(|| anyhow::anyhow!("No credentials for registry"))?;
 
-    let _client = reqwest::Client::new();
-    let _url = format!("{}/api/v1/crates/new", registry);
+    // Create registry client with authentication
+    let client = RegistryClient::new(registry).with_auth(token);
 
-    // Would make authenticated PUT request with archive
-    // For now, simulate success
+    // Create package metadata
+    let metadata = PackageMetadata {
+        name: manifest.package.name.clone(),
+        version: manifest.package.version.clone(),
+        description: manifest.package.description.clone(),
+        authors: manifest.package.authors.clone(),
+        license: manifest.package.license.clone(),
+        repository: manifest.package.repository.clone(),
+        homepage: manifest.package.homepage.clone(),
+        documentation: manifest.package.documentation.clone(),
+        keywords: manifest.package.keywords.clone(),
+        readme: manifest.package.readme.clone(),
+        downloads: 0,
+        created_at: String::new(),
+        updated_at: String::new(),
+        versions: vec![],
+        dependencies: manifest
+            .dependencies
+            .iter()
+            .map(|(name, dep)| match dep {
+                Dependency::Simple(version) => registry::DependencyInfo {
+                    name: name.clone(),
+                    version_req: version.clone(),
+                    optional: false,
+                    features: vec![],
+                },
+                Dependency::Detailed(d) => registry::DependencyInfo {
+                    name: name.clone(),
+                    version_req: d.version.clone().unwrap_or_else(|| "*".to_string()),
+                    optional: d.optional,
+                    features: d.features.clone(),
+                },
+            })
+            .collect(),
+        checksum: None,
+        download_url: None,
+    };
 
-    let _ = token; // Silence unused warning for demo
+    // Publish the package
+    let response = client
+        .publish_internal(
+            &manifest.package.name,
+            &manifest.package.version,
+            archive.to_vec(),
+            metadata,
+        )
+        .await?;
 
-    // Simulate network delay
-    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+    if !response.warnings.is_empty() {
+        for warning in &response.warnings {
+            print_warning(warning);
+        }
+    }
+
+    if let Some(ref message) = response.message {
+        print_info(message);
+    }
 
     Ok(())
 }

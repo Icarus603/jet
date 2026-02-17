@@ -8,7 +8,7 @@
 //! that minimizes redundant tests and produces efficient code.
 
 use crate::context::LoweringContext;
-use crate::expr::lower_expr;
+use crate::expr::{infer_expr_type, lower_expr};
 use jet_ir::{BlockId, ConstantValue, Instruction, Terminator, Ty, ValueId};
 use jet_parser::ast;
 
@@ -128,9 +128,13 @@ pub fn compile_match(
         // No arms - return unit (should be unreachable)
         lower_unit(ctx)
     } else {
+        // Get type from first arm result
+        let ty = infer_expr_type(ctx, &arms[0].body);
+
         ctx.emit(Instruction::Phi {
             result,
             incoming: arm_results,
+            ty,
         });
         result
     }
@@ -404,7 +408,7 @@ fn generate_decision_tree_code(
 fn test_constructor(
     ctx: &mut LoweringContext,
     value: ValueId,
-    _ty: &Ty,
+    ty: &Ty,
     ctor: &Constructor,
 ) -> ValueId {
     match ctor {
@@ -427,12 +431,14 @@ fn test_constructor(
                 result: discr_ptr,
                 ptr: value,
                 field_index: 0,
+                struct_ty: ty.clone(),
             });
 
             let discr = ctx.new_value();
             ctx.emit(Instruction::Load {
                 result: discr,
                 ptr: discr_ptr,
+                ty: Ty::I64,
             });
 
             // For now, use a hash of the variant name as discriminant value
@@ -533,6 +539,13 @@ fn bind_match_pattern(ctx: &mut LoweringContext, pattern: &ast::Pattern, value: 
             }
         }
         ast::Pattern::Array(patterns) => {
+            // Extract element type
+            let elem_ty = if let Ty::Array(elem, _) = ty {
+                *elem.clone()
+            } else {
+                Ty::I64 // Fallback
+            };
+
             for (i, pat) in patterns.iter().enumerate() {
                 let elem_ptr = ctx.new_value();
                 let index_val = ctx.new_value();
@@ -544,11 +557,13 @@ fn bind_match_pattern(ctx: &mut LoweringContext, pattern: &ast::Pattern, value: 
                     result: elem_ptr,
                     ptr: value,
                     index: index_val,
+                    elem_ty: elem_ty.clone(),
                 });
                 let elem_val = ctx.new_value();
                 ctx.emit(Instruction::Load {
                     result: elem_val,
                     ptr: elem_ptr,
+                    ty: elem_ty.clone(),
                 });
                 bind_match_pattern(ctx, pat, elem_val, ty);
             }

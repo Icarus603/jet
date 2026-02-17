@@ -3,7 +3,7 @@
 //! This module provides a UTF-8 encoded string type with small string optimization
 //! (SSO) for strings up to 23 bytes on 64-bit systems.
 
-use std::alloc::{alloc, dealloc, Layout};
+use crate::alloc::{gc_alloc, gc_free};
 use std::ptr;
 use std::slice;
 use std::str::{self, Utf8Error};
@@ -49,8 +49,8 @@ impl JetString {
             return JetString::new();
         }
 
-        let layout = Layout::array::<u8>(capacity).expect("Layout computation failed");
-        let ptr = unsafe { alloc(layout) };
+        let align = std::mem::align_of::<u8>();
+        let ptr = unsafe { gc_alloc(capacity, align) };
 
         if ptr.is_null() {
             panic!("Allocation failed");
@@ -351,9 +351,9 @@ impl JetString {
 
     fn grow(&mut self, min_capacity: usize) {
         let new_capacity = (min_capacity * 2).max(64);
-        let new_layout = Layout::array::<u8>(new_capacity).expect("Layout computation failed");
+        let align = std::mem::align_of::<u8>();
 
-        let new_ptr = unsafe { alloc(new_layout) };
+        let new_ptr = unsafe { gc_alloc(new_capacity, align) };
         if new_ptr.is_null() {
             panic!("Allocation failed");
         }
@@ -365,10 +365,8 @@ impl JetString {
 
         // If we were heap-allocated, free the old buffer
         if !self.is_inline() {
-            let old_layout =
-                Layout::array::<u8>(self.heap_capacity).expect("Layout computation failed");
             unsafe {
-                dealloc(self.heap_ptr, old_layout);
+                gc_free(self.heap_ptr, self.heap_capacity, align);
             }
         }
 
@@ -392,10 +390,9 @@ impl Clone for JetString {
 impl Drop for JetString {
     fn drop(&mut self) {
         if !self.is_inline() {
-            let layout =
-                Layout::array::<u8>(self.heap_capacity).expect("Layout computation failed");
+            let align = std::mem::align_of::<u8>();
             unsafe {
-                dealloc(self.heap_ptr, layout);
+                gc_free(self.heap_ptr, self.heap_capacity, align);
             }
         }
     }

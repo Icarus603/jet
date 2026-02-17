@@ -575,13 +575,12 @@ edition = "2024"
         // Create placeholder directories for workspace
         std::fs::create_dir_all(path.join("crates"))?;
     } else if lib {
-        let lib_content = r#"/// Returns a greeting message
-pub fn hello() -> string:
+        let lib_content = r#"pub fn hello() -> string:
     "Hello from Jet!"
 "#;
         std::fs::write(path.join("src/lib.jet"), lib_content)?;
     } else {
-        let main_content = r#"from stdlib import *
+        let main_content = r#"import stdlib
 
 fn main():
     print("Hello, Jet!")

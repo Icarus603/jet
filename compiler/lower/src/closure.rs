@@ -13,7 +13,7 @@
 
 use crate::context::LoweringContext;
 use crate::ty::lower_type;
-use jet_ir::{ConstantValue, Function, Instruction, Param, Ty, ValueId};
+use jet_ir::{ConstantValue, Function, Instruction, Param, Terminator, Ty, ValueId};
 use jet_parser::ast;
 use std::collections::HashSet;
 
@@ -50,8 +50,8 @@ pub fn convert_lambda(
     let env_field_types: Vec<Ty> = captures.iter().map(|(_, ty, _)| ty.clone()).collect();
     let env_type = Ty::Struct(env_field_types);
 
-    // Create the closure function
-    let closure_func = create_closure_function(
+    // Create the closure function (this adds it to the module and returns the function)
+    let _closure_func = create_closure_function(
         ctx,
         &function_name,
         params,
@@ -62,9 +62,13 @@ pub fn convert_lambda(
         &env_type,
     );
 
-    // Add the closure function to the module
-    let func_index = ctx.module.functions.len();
-    ctx.module.add_function(closure_func);
+    // Find the function index (it was added by create_closure_function)
+    let func_index = ctx
+        .module
+        .functions
+        .iter()
+        .position(|f| f.name == function_name)
+        .expect("Closure function should have been added to module");
 
     // Create the closure value (function pointer + environment)
     create_closure_value(ctx, func_index, &captures, &env_type)
@@ -239,13 +243,13 @@ fn collect_free_variables_from_stmt(stmt: &ast::Stmt, free_vars: &mut HashSet<St
 /// Creates the closure function.
 #[allow(clippy::too_many_arguments)]
 fn create_closure_function(
-    _ctx: &mut LoweringContext,
+    ctx: &mut LoweringContext,
     name: &str,
     params: &[ast::Param],
     return_type: Option<&ast::Type>,
     effects: &[ast::Type],
-    _body: &ast::Expr,
-    _captures: &[(String, Ty, bool)],
+    body: &ast::Expr,
+    captures: &[(String, Ty, bool)],
     env_type: &Ty,
 ) -> Function {
     // Create function parameters: env pointer + original params
@@ -269,7 +273,7 @@ fn create_closure_function(
     let ret_ty = return_type.map(lower_type).unwrap_or(Ty::Void);
 
     // Create the function
-    let mut func = Function::new(name, func_params, ret_ty);
+    let mut func = Function::new(name, func_params.clone(), ret_ty.clone());
 
     // Add effects
     for effect in effects {
@@ -278,11 +282,119 @@ fn create_closure_function(
         }
     }
 
-    // We need to lower the body with the captured variables in scope
-    // For now, create a placeholder function
-    // In a full implementation, we'd lower the body here
+    // Add function to module temporarily so we can lower its body
+    let func_index = ctx.module.functions.len();
+    ctx.module.add_function(func.clone());
 
-    func
+    // Save current state
+    let saved_function = ctx.get_current_function_index();
+    let saved_block = ctx.current_block();
+    let saved_value_counter = ctx.get_value_counter();
+    let saved_block_counter = ctx.get_block_counter();
+    let saved_scope_stack = ctx.clone_scope_stack();
+    let saved_loop_targets = ctx.clone_loop_targets();
+
+    // Set up context for lowering the closure function body
+    ctx.set_current_function_index(Some(func_index));
+    ctx.set_value_counter(1); // Start at 1 because __env is value 0
+    ctx.set_block_counter(0);
+    ctx.enter_scope();
+    ctx.clear_loop_targets();
+
+    // Create entry block
+    let entry_block_id = ctx.new_block_id();
+    let entry_block = jet_ir::BasicBlock::with_name(entry_block_id, "entry");
+    ctx.module.functions[func_index].add_block(entry_block);
+    ctx.set_current_block(entry_block_id);
+
+    // Load captured variables from environment and bind them
+    for (i, (capture_name, capture_ty, is_mut)) in captures.iter().enumerate() {
+        // Get pointer to the captured field in the environment
+        let field_ptr = ctx.new_value();
+        ctx.emit(Instruction::GetFieldPtr {
+            result: field_ptr,
+            ptr: ValueId::new(0), // __env parameter
+            field_index: i,
+            struct_ty: env_type.clone(),
+        });
+
+        // Load the captured value
+        let loaded_val = ctx.new_value();
+        ctx.emit(Instruction::Load {
+            result: loaded_val,
+            ptr: field_ptr,
+            ty: capture_ty.clone(),
+        });
+
+        // Allocate space for the captured variable and store the loaded value
+        let alloc = ctx.new_value();
+        ctx.emit(Instruction::Alloc {
+            result: alloc,
+            ty: capture_ty.clone(),
+        });
+        ctx.emit(Instruction::Store {
+            ptr: alloc,
+            value: loaded_val,
+        });
+
+        // Bind the captured variable name to its allocation
+        ctx.bind_variable(capture_name.clone(), alloc, capture_ty.clone(), *is_mut);
+    }
+
+    // Bind lambda parameters
+    for (i, param) in params.iter().enumerate() {
+        let param_ty = lower_type(&param.ty);
+        let param_name = get_pattern_name(&param.pattern);
+        let param_value = ValueId::new((i + 1) as u32);
+        let is_mut = is_pattern_mutable(&param.pattern);
+
+        // Allocate space for the parameter and store the value
+        let alloc = ctx.new_value();
+        ctx.emit(Instruction::Alloc {
+            result: alloc,
+            ty: param_ty.clone(),
+        });
+        ctx.emit(Instruction::Store {
+            ptr: alloc,
+            value: param_value,
+        });
+
+        ctx.bind_variable(param_name.to_string(), alloc, param_ty, is_mut);
+    }
+
+    // Lower the body expression
+    let body_value = crate::expr::lower_expr(ctx, body);
+
+    // Add return terminator if not already terminated
+    let current_block = ctx.get_current_block();
+    if current_block.map(|b| !b.is_terminated()).unwrap_or(false) {
+        let ret_value = if ret_ty.is_void() {
+            None
+        } else {
+            Some(body_value)
+        };
+        ctx.terminate(Terminator::Return(ret_value));
+    }
+
+    // Restore original state
+    ctx.set_current_function_index(saved_function);
+    ctx.set_current_block_opt(saved_block);
+    ctx.set_value_counter(saved_value_counter);
+    ctx.set_block_counter(saved_block_counter);
+    ctx.set_scope_stack(saved_scope_stack);
+    ctx.set_loop_targets(saved_loop_targets);
+
+    // Return the completed function
+    ctx.module.functions[func_index].clone()
+}
+
+/// Checks if a pattern is mutable.
+fn is_pattern_mutable(pattern: &ast::Pattern) -> bool {
+    match pattern {
+        ast::Pattern::Ident { mutable, .. } => *mutable,
+        ast::Pattern::Mut(_) => true,
+        _ => false,
+    }
 }
 
 /// Creates a closure value (function pointer + environment).
@@ -307,6 +419,7 @@ fn create_closure_value(
                 result: field_ptr,
                 ptr: env_ptr,
                 field_index: i,
+                struct_ty: env_type.clone(),
             });
 
             // Cast if necessary

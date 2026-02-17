@@ -120,9 +120,73 @@ impl Resolver {
         self.module_id_gen.next()
     }
 
+    /// Collects module items without resolving imports or references
+    ///
+    /// This is used in multi-module compilation to collect all top-level
+    /// definitions from all modules before resolving cross-module imports.
+    pub fn collect_module_items_only(&mut self, module: &Module) -> ResolutionResult {
+        self.errors = ResolutionErrors::new();
+
+        // Inject prelude (builtin types and functions) before collecting
+        self.inject_prelude();
+
+        // Collect all top-level definitions
+        if let Err(err) = self.collect_module_items(module) {
+            self.errors.push(err);
+        }
+
+        ResolutionResult {
+            success: !self.errors.has_errors(),
+            errors: self.errors.clone(),
+        }
+    }
+
+    /// Resolves imports and references for a module
+    ///
+    /// This assumes that `collect_module_items_only` has already been called
+    /// for all modules, so all top-level definitions are available.
+    pub fn resolve_module_imports_and_refs(&mut self, module: &Module) -> ResolutionResult {
+        self.errors = ResolutionErrors::new();
+
+        // First pass: resolve imports
+        let imports: Vec<_> = module
+            .items
+            .iter()
+            .filter_map(|item| {
+                if let ModuleItem::Import(import) = item {
+                    Some(import.clone())
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        if !imports.is_empty() {
+            let mut import_resolver = ImportResolver::new(self);
+            let import_diagnostics = import_resolver.resolve_imports(&imports);
+            // Store import diagnostics as a separate field
+            self.import_diagnostics = import_diagnostics;
+        }
+
+        // Second pass: resolve all references
+        for item in &module.items {
+            if let Err(err) = self.resolve_item(item) {
+                self.errors.push(err);
+            }
+        }
+
+        ResolutionResult {
+            success: !self.errors.has_errors(),
+            errors: self.errors.clone(),
+        }
+    }
+
     /// Resolves a module
     ///
     /// This is the main entry point for name resolution.
+    /// For single-module compilation, use this method.
+    /// For multi-module compilation, use `collect_module_items_only` followed by
+    /// `resolve_module_imports_and_refs`.
     pub fn resolve_module(&mut self, module: &Module) -> ResolutionResult {
         self.errors = ResolutionErrors::new();
 
@@ -204,6 +268,9 @@ impl Resolver {
             "assert",
             "assert_eq",
             "panic",
+            "print_int",
+            "print_float",
+            "print_bool",
             "len",
             "capacity",
         ];
@@ -242,9 +309,10 @@ impl Resolver {
                 ModuleItem::Trait(t) => {
                     self.collect_trait(t)?;
                 }
-                ModuleItem::Impl(_) => {
-                    // Impl blocks don't define new top-level names
-                    // They implement existing types/traits
+                ModuleItem::Impl(i) => {
+                    // Collect impl methods as module-level bindings
+                    // This allows Type::method syntax to work
+                    self.collect_impl(i)?;
                 }
                 ModuleItem::TypeAlias(t) => {
                     self.collect_type_alias(t)?;
@@ -419,6 +487,56 @@ impl Resolver {
             .with_public(c.public);
 
         self.symbol_table.insert_module_binding(binding);
+
+        Ok(())
+    }
+
+    /// Collects an impl block definition
+    fn collect_impl(&mut self, i: &ImplDef) -> Result<(), ResolutionError> {
+        // Collect methods from the impl block as module-level bindings
+        // This allows Type::method syntax to work
+        for item in &i.items {
+            match item {
+                ImplItem::Method(func) => {
+                    let def_id = self.next_def_id();
+                    let name = func.name.name.clone();
+
+                    // Only insert if no existing binding with this name
+                    // (Different types can have methods with the same name)
+                    if self.symbol_table.lookup_module(&name).is_none() {
+                        let binding = Binding::from_ident(
+                            &func.name,
+                            BindingKind::Function,
+                            def_id,
+                            self.current_module,
+                        )
+                        .with_public(func.public);
+
+                        self.symbol_table.insert_module_binding(binding);
+                    }
+                }
+                ImplItem::Const { name, .. } => {
+                    let def_id = self.next_def_id();
+                    let const_name = name.name.clone();
+
+                    // Only insert if no existing binding with this name
+                    if self.symbol_table.lookup_module(&const_name).is_none() {
+                        let binding = Binding::from_ident(
+                            name,
+                            BindingKind::Const,
+                            def_id,
+                            self.current_module,
+                        )
+                        .with_public(true);
+
+                        self.symbol_table.insert_module_binding(binding);
+                    }
+                }
+                ImplItem::TypeAlias(type_alias) => {
+                    self.collect_type_alias(type_alias)?;
+                }
+            }
+        }
 
         Ok(())
     }
@@ -617,6 +735,17 @@ impl Resolver {
         // Push a scope for generic parameters
         self.symbol_table.push_scope(ScopeKind::Block);
 
+        // Bind `Self` as a type name referring to the trait
+        let self_def_id = self.next_def_id();
+        let self_binding = Binding::new(
+            "Self",
+            t.name.span,
+            BindingKind::Type,
+            self_def_id,
+            self.current_module,
+        );
+        self.symbol_table.insert(self_binding);
+
         // Resolve generic parameters
         for generic in &t.generics {
             let def_id = self.next_def_id();
@@ -699,6 +828,17 @@ impl Resolver {
 
         // Resolve the type being implemented
         self.resolve_type(&i.ty)?;
+
+        // Bind `Self` as a type name referring to the implemented type
+        let self_def_id = self.next_def_id();
+        let self_binding = Binding::new(
+            "Self",
+            i.span,
+            BindingKind::Type,
+            self_def_id,
+            self.current_module,
+        );
+        self.symbol_table.insert(self_binding);
 
         // Resolve where clause
         for bound in &i.where_clause {
@@ -1279,16 +1419,69 @@ impl Resolver {
             ));
         }
 
-        // For multi-segment paths, we need to resolve each segment
-        // For now, we verify that all segments could be resolved in the appropriate scope
-        // A full implementation would resolve nested modules, associated items, etc.
+        // For multi-segment paths, resolve remaining segments in the context of the first
+        let mut current_binding = first_binding;
 
-        // Try to resolve remaining segments in the context of the first segment
         for segment in &path.segments[1..] {
-            // For now, we just check if the name exists in the module scope
-            // In a full implementation, this would resolve associated types, methods, etc.
-            if self.symbol_table.lookup(&segment.name).is_none() {
-                return Err(ErrorHelpers::unresolved_name(&segment.name, segment.span));
+            match current_binding.kind {
+                BindingKind::Module => {
+                    // Look up the next segment in the module's bindings
+                    // Find the module that contains this binding
+                    let module_id = self
+                        .symbol_table
+                        .modules
+                        .iter()
+                        .find(|(_, m)| m.bindings().any(|b| b.def_id == current_binding.def_id))
+                        .map(|(id, _)| *id);
+
+                    if let Some(module_id) = module_id {
+                        if let Some(module) = self.symbol_table.get_module(module_id) {
+                            if let Some(binding) = module.get(&segment.name) {
+                                // Check visibility
+                                if binding.module_id != self.current_module && !binding.is_public {
+                                    return Err(ErrorHelpers::private_item_access(
+                                        &segment.name,
+                                        segment.span,
+                                        binding.span,
+                                        binding.def_id,
+                                    ));
+                                }
+                                current_binding = binding.clone();
+                            } else {
+                                return Err(ErrorHelpers::unresolved_name(
+                                    &segment.name,
+                                    segment.span,
+                                ));
+                            }
+                        } else {
+                            return Err(ErrorHelpers::unresolved_name(&segment.name, segment.span));
+                        }
+                    } else {
+                        return Err(ErrorHelpers::unresolved_name(&segment.name, segment.span));
+                    }
+                }
+                BindingKind::Type => {
+                    // For types, look up associated items (methods, associated types, etc.)
+                    // For now, we just check if the name exists in the current scope
+                    // This is a simplified implementation
+                    if self.symbol_table.lookup(&segment.name).is_none() {
+                        return Err(ErrorHelpers::unresolved_name(&segment.name, segment.span));
+                    }
+                    // Update current_binding for next iteration
+                    if let Some(binding) = self.symbol_table.lookup(&segment.name) {
+                        current_binding = binding.clone();
+                    }
+                }
+                _ => {
+                    // For other kinds, just check if the name exists
+                    if self.symbol_table.lookup(&segment.name).is_none() {
+                        return Err(ErrorHelpers::unresolved_name(&segment.name, segment.span));
+                    }
+                    // Update current_binding for next iteration
+                    if let Some(binding) = self.symbol_table.lookup(&segment.name) {
+                        current_binding = binding.clone();
+                    }
+                }
             }
         }
 
@@ -1575,5 +1768,165 @@ mod tests {
         assert_eq!(bindings.len(), 2);
         assert_eq!(bindings[0].name, "std");
         assert_eq!(bindings[1].name, "print");
+    }
+
+    #[test]
+    fn test_resolve_module_qualified_path() {
+        let mut resolver = Resolver::new(ModuleId::root());
+
+        // Create a module binding for "lib"
+        let module_def_id = resolver.next_def_id();
+        let module_binding = Binding::new(
+            "lib",
+            make_span(),
+            BindingKind::Module,
+            module_def_id,
+            ModuleId::root(),
+        )
+        .with_public(true);
+        resolver.symbol_table.insert_module_binding(module_binding);
+
+        // Add a function binding "helper" in the lib module
+        let helper_def_id = resolver.next_def_id();
+        let helper_binding = Binding::new(
+            "helper",
+            make_span(),
+            BindingKind::Function,
+            helper_def_id,
+            ModuleId::root(),
+        )
+        .with_public(true);
+        // Insert into the module scope directly
+        resolver
+            .symbol_table
+            .current_module_mut()
+            .insert(helper_binding);
+
+        // Create a qualified path "lib::helper"
+        let path = jet_parser::ast::Path::new(
+            vec![
+                jet_parser::ast::Ident::new("lib", make_span()),
+                jet_parser::ast::Ident::new("helper", make_span()),
+            ],
+            make_span(),
+        );
+
+        // Resolve the path
+        let result = resolver.resolve_path(&path);
+        assert!(
+            result.is_ok(),
+            "Failed to resolve module-qualified path: {:?}",
+            result.err()
+        );
+    }
+
+    #[test]
+    fn test_self_in_trait_resolution() {
+        use jet_parser::ast::{Param, Pattern, TraitDef, TraitItem, Type};
+
+        let mut resolver = Resolver::new(ModuleId::root());
+
+        // Inject prelude so primitive types are available
+        resolver.inject_prelude();
+
+        // Create a trait definition with Self reference:
+        // trait Comparable:
+        //     fn compare(self, other: Self) -> int
+        let trait_def = TraitDef {
+            public: true,
+            name: jet_parser::ast::Ident::new("Comparable", make_span()),
+            generics: vec![],
+            super_traits: vec![],
+            items: vec![TraitItem::Method {
+                name: jet_parser::ast::Ident::new("compare", make_span()),
+                generics: vec![],
+                params: vec![
+                    Param {
+                        pattern: Pattern::Ident {
+                            name: jet_parser::ast::Ident::new("self", make_span()),
+                            mutable: false,
+                        },
+                        ty: Type::Infer,
+                    },
+                    Param {
+                        pattern: Pattern::Ident {
+                            name: jet_parser::ast::Ident::new("other", make_span()),
+                            mutable: false,
+                        },
+                        ty: Type::SelfType, // Self type reference
+                    },
+                ],
+                return_type: Some(Type::Path(jet_parser::ast::Path::single(
+                    jet_parser::ast::Ident::new("int", make_span()),
+                ))),
+                effects: vec![],
+                where_clause: vec![],
+            }],
+            span: make_span(),
+        };
+
+        // Collect the trait first
+        resolver.collect_trait(&trait_def).unwrap();
+
+        // Now resolve the trait - this should succeed with Self bound
+        let result = resolver.resolve_trait(&trait_def);
+        assert!(
+            result.is_ok(),
+            "Failed to resolve trait with Self: {:?}",
+            result.err()
+        );
+    }
+
+    #[test]
+    fn test_self_in_impl_resolution() {
+        use jet_parser::ast::{Expr, Function, ImplDef, ImplItem, Literal};
+
+        let mut resolver = Resolver::new(ModuleId::root());
+
+        // First, define a struct type "Point"
+        let struct_def_id = resolver.next_def_id();
+        let struct_binding = Binding::new(
+            "Point",
+            make_span(),
+            BindingKind::Type,
+            struct_def_id,
+            ModuleId::root(),
+        )
+        .with_public(true);
+        resolver.symbol_table.insert_module_binding(struct_binding);
+
+        // Create an impl block:
+        // impl Point:
+        //     fn new() -> Self:
+        //         ...
+        let impl_def = ImplDef {
+            generics: vec![],
+            trait_path: None,
+            ty: Type::Path(jet_parser::ast::Path::single(jet_parser::ast::Ident::new(
+                "Point",
+                make_span(),
+            ))),
+            where_clause: vec![],
+            items: vec![ImplItem::Method(Function {
+                public: true,
+                name: jet_parser::ast::Ident::new("new", make_span()),
+                generics: vec![],
+                params: vec![],
+                return_type: Some(Type::SelfType), // Return Self
+                effects: vec![],
+                where_clause: vec![],
+                body: Expr::Literal(Literal::Unit),
+                span: make_span(),
+            })],
+            span: make_span(),
+        };
+
+        // Resolve the impl block - this should succeed with Self bound
+        let result = resolver.resolve_impl(&impl_def);
+        assert!(
+            result.is_ok(),
+            "Failed to resolve impl with Self: {:?}",
+            result.err()
+        );
     }
 }

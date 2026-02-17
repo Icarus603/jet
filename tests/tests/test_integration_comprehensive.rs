@@ -181,10 +181,7 @@ fn test_for_loop() {
         .unwrap();
 
     let result = harness.compile().unwrap();
-    assert!(
-        result.success,
-        "Compilation failed: {}", result.stderr
-    );
+    assert!(result.success, "Compilation failed: {}", result.stderr);
 }
 
 #[test]
@@ -205,10 +202,7 @@ fn main():
         .unwrap();
 
     let result = harness.compile().unwrap();
-    assert!(
-        result.success,
-        "Compilation failed: {}", result.stderr
-    );
+    assert!(result.success, "Compilation failed: {}", result.stderr);
 }
 
 // ============================================================================
@@ -226,15 +220,12 @@ fn test_struct_definition() {
 
 fn main():
     let p = Point { x: 1.0, y: 2.0 }
-    print(p.x)"#,
+    print_float(p.x)"#,
         )
         .unwrap();
 
     let result = harness.compile().unwrap();
-    assert!(
-        result.success,
-        "Compilation failed: {}", result.stderr
-    );
+    assert!(result.success, "Compilation failed: {}", result.stderr);
 }
 
 #[test]
@@ -282,10 +273,7 @@ fn main():
         .unwrap();
 
     let result = harness.compile().unwrap();
-    assert!(
-        result.success,
-        "Compilation failed: {}", result.stderr
-    );
+    assert!(result.success, "Compilation failed: {}", result.stderr);
 }
 
 // ============================================================================
@@ -315,10 +303,7 @@ fn main():
         .unwrap();
 
     let result = harness.compile().unwrap();
-    assert!(
-        result.success,
-        "Compilation failed: {}", result.stderr
-    );
+    assert!(result.success, "Compilation failed: {}", result.stderr);
 }
 
 #[test]
@@ -345,10 +330,7 @@ fn main():
         .unwrap();
 
     let result = harness.compile().unwrap();
-    assert!(
-        result.success,
-        "Compilation failed: {}", result.stderr
-    );
+    assert!(result.success, "Compilation failed: {}", result.stderr);
 }
 
 // ============================================================================
@@ -375,10 +357,7 @@ fn main():
         .unwrap();
 
     let result = harness.compile().unwrap();
-    assert!(
-        result.success,
-        "Compilation failed: {}", result.stderr
-    );
+    assert!(result.success, "Compilation failed: {}", result.stderr);
 }
 
 #[test]
@@ -405,10 +384,7 @@ fn main():
         .unwrap();
 
     let result = harness.compile().unwrap();
-    assert!(
-        result.success,
-        "Compilation failed: {}", result.stderr
-    );
+    assert!(result.success, "Compilation failed: {}", result.stderr);
 }
 
 // ============================================================================
@@ -437,7 +413,13 @@ fn test_concurrent_block() {
     let harness = TestHarness::new().unwrap();
     harness
         .write_main(
-            r#"fn main():
+            r#"fn task1():
+    print("task1")
+
+fn task2():
+    print("task2")
+
+fn main():
     concurrent:
         spawn task1()
         spawn task2()"#,
@@ -445,10 +427,7 @@ fn test_concurrent_block() {
         .unwrap();
 
     let result = harness.compile().unwrap();
-    assert!(
-        result.success,
-        "Compilation failed: {}", result.stderr
-    );
+    assert!(result.success, "Compilation failed: {}", result.stderr);
 }
 
 #[test]
@@ -492,10 +471,7 @@ fn main():
         .unwrap();
 
     let result = harness.compile().unwrap();
-    assert!(
-        result.success,
-        "Compilation failed: {}", result.stderr
-    );
+    assert!(result.success, "Compilation failed: {}", result.stderr);
 }
 
 #[test]
@@ -522,10 +498,7 @@ fn main():
         .unwrap();
 
     let result = harness.compile().unwrap();
-    assert!(
-        result.success,
-        "Compilation failed: {}", result.stderr
-    );
+    assert!(result.success, "Compilation failed: {}", result.stderr);
 }
 
 // ============================================================================
@@ -652,10 +625,7 @@ fn main():
         .unwrap();
 
     let result = harness.compile().unwrap();
-    assert!(
-        result.success,
-        "Compilation failed: {}", result.stderr
-    );
+    assert!(result.success, "Compilation failed: {}", result.stderr);
 }
 
 #[test]
@@ -686,10 +656,7 @@ fn main():
         .unwrap();
 
     let result = harness.compile().unwrap();
-    assert!(
-        result.success,
-        "Compilation failed: {}", result.stderr
-    );
+    assert!(result.success, "Compilation failed: {}", result.stderr);
 }
 
 #[test]
@@ -717,10 +684,7 @@ fn main():
         .unwrap();
 
     let result = harness.compile().unwrap();
-    assert!(
-        result.success,
-        "Compilation failed: {}", result.stderr
-    );
+    assert!(result.success, "Compilation failed: {}", result.stderr);
 }
 
 // ============================================================================
@@ -804,8 +768,5 @@ fn test_deeply_nested_program() {
     harness.write_main(&source).unwrap();
 
     let result = harness.compile().unwrap();
-    assert!(
-        result.success,
-        "Compilation failed: {}", result.stderr
-    );
+    assert!(result.success, "Compilation failed: {}", result.stderr);
 }

@@ -3,6 +3,7 @@
 //! This module handles the compilation of Jet IR functions to LLVM functions.
 //! It includes function declaration, body compilation, and parameter handling.
 
+use crate::coerce::coerce_value;
 use crate::context::CodeGen;
 use crate::error::{CodegenError, CodegenResult};
 use crate::instr::compile_instruction;
@@ -229,12 +230,68 @@ fn compile_basic_block<'ctx>(codegen: &mut CodeGen<'ctx>, block: &BasicBlock) ->
 fn compile_terminator<'ctx>(codegen: &CodeGen<'ctx>, term: &Terminator) -> CodegenResult<()> {
     match term {
         Terminator::Return(val) => {
+            // Get the function's declared return type from the current function
+            let current_func = codegen.current_function().ok_or_else(|| {
+                CodegenError::instruction_error("no current function for return".to_string())
+            })?;
+            let fn_type = current_func.get_type();
+            let ret_type = fn_type.get_return_type();
+
             if let Some(val_id) = val {
                 let val = codegen.get_value(*val_id)?;
-                codegen
-                    .builder
-                    .build_return(Some(&val))
-                    .map_err(|e| CodegenError::instruction_error(e.to_string()))?;
+
+                // If the value is an empty struct (which represents Void), treat it as void return
+                if val.is_struct_value() && val.into_struct_value().get_type().count_fields() == 0 {
+                    codegen
+                        .builder
+                        .build_return(None)
+                        .map_err(|e| CodegenError::instruction_error(e.to_string()))?;
+                } else if let Some(expected_ret_ty) = ret_type {
+                    // We have a declared return type - coerce the value to match
+                    let expected_basic_ty = expected_ret_ty.as_basic_type_enum();
+
+                    if val.get_type() == expected_basic_ty {
+                        // Types match exactly, no coercion needed
+                        codegen
+                            .builder
+                            .build_return(Some(&val))
+                            .map_err(|e| CodegenError::instruction_error(e.to_string()))?;
+                    } else {
+                        // Need to coerce the return value
+                        match coerce_value(codegen, val, expected_basic_ty) {
+                            Ok(coerced_val) => {
+                                codegen
+                                    .builder
+                                    .build_return(Some(&coerced_val))
+                                    .map_err(|e| CodegenError::instruction_error(e.to_string()))?;
+                            }
+                            Err(_) => {
+                                // If coercion fails, try building return anyway
+                                // LLVM will report if there's a type mismatch
+                                codegen
+                                    .builder
+                                    .build_return(Some(&val))
+                                    .map_err(|e| CodegenError::instruction_error(e.to_string()))?;
+                            }
+                        }
+                    }
+                } else {
+                    // Function returns void but we're returning a value - this is an error
+                    // However, if it's an empty struct, treat as void
+                    if val.is_struct_value()
+                        && val.into_struct_value().get_type().count_fields() == 0
+                    {
+                        codegen
+                            .builder
+                            .build_return(None)
+                            .map_err(|e| CodegenError::instruction_error(e.to_string()))?;
+                    } else {
+                        codegen
+                            .builder
+                            .build_return(Some(&val))
+                            .map_err(|e| CodegenError::instruction_error(e.to_string()))?;
+                    }
+                }
             } else {
                 codegen
                     .builder

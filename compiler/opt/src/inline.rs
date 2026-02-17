@@ -67,6 +67,7 @@ impl FunctionInlining {
                     func: callee_name,
                     args,
                     result,
+                    ty: _,
                 } = inst
                 {
                     if let Some(callee) = module.get_function(callee_name) {
@@ -274,9 +275,10 @@ impl FunctionInlining {
                 operand: remap(operand),
             },
             Instruction::Alloc { result, ty } => Instruction::Alloc { result, ty },
-            Instruction::Load { result, ptr } => Instruction::Load {
+            Instruction::Load { result, ptr, ty } => Instruction::Load {
                 result,
                 ptr: remap(ptr),
+                ty,
             },
             Instruction::Store { ptr, value } => Instruction::Store {
                 ptr: remap(ptr),
@@ -286,15 +288,23 @@ impl FunctionInlining {
                 result,
                 ptr,
                 field_index,
+                struct_ty,
             } => Instruction::GetFieldPtr {
                 result,
                 ptr: remap(ptr),
                 field_index,
+                struct_ty,
             },
-            Instruction::GetElementPtr { result, ptr, index } => Instruction::GetElementPtr {
+            Instruction::GetElementPtr {
+                result,
+                ptr,
+                index,
+                elem_ty,
+            } => Instruction::GetElementPtr {
                 result,
                 ptr: remap(ptr),
                 index: remap(index),
+                elem_ty,
             },
             Instruction::BitCast { result, value, ty } => Instruction::BitCast {
                 result,
@@ -321,19 +331,36 @@ impl FunctionInlining {
                 value: remap(value),
                 ty,
             },
-            Instruction::Call { result, func, args } => Instruction::Call {
+            Instruction::Call {
+                result,
+                func,
+                args,
+                ty,
+            } => Instruction::Call {
                 result,
                 func,
                 args: args.into_iter().map(remap).collect(),
+                ty,
             },
-            Instruction::CallIndirect { result, ptr, args } => Instruction::CallIndirect {
+            Instruction::CallIndirect {
+                result,
+                ptr,
+                args,
+                ty,
+            } => Instruction::CallIndirect {
                 result,
                 ptr: remap(ptr),
                 args: args.into_iter().map(remap).collect(),
+                ty,
             },
-            Instruction::Phi { result, incoming } => Instruction::Phi {
+            Instruction::Phi {
+                result,
+                incoming,
+                ty,
+            } => Instruction::Phi {
                 result,
                 incoming: incoming.into_iter().map(|(b, v)| (b, remap(v))).collect(),
+                ty,
             },
             Instruction::StructAgg { result, fields, ty } => Instruction::StructAgg {
                 result,

@@ -42,6 +42,7 @@
 
 pub mod async_gen;
 pub mod closure;
+pub mod coerce;
 pub mod context;
 pub mod effect;
 pub mod error;
@@ -60,6 +61,10 @@ pub use async_gen::{
     compile_async_function, compile_await, compile_spawn, AsyncFunctionInfo, AsyncStage,
 };
 pub use closure::{closure_type, compile_closure, compile_closure_call, ClosureInfo};
+pub use coerce::{
+    coerce_float_to_float, coerce_int_to_int, coerce_pointer_to_pointer, coerce_value,
+    types_compatible, widen_type, wider_float_type, wider_int_type,
+};
 pub use context::CodeGen;
 pub use error::{CodegenError, CodegenResult};
 pub use gc::{

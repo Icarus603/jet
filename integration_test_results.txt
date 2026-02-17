@@ -1,0 +1,211 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.03s
+     Running tests/test_integration_comprehensive.rs (target/debug/deps/test_integration_comprehensive-deee239b30d19e6c)
+
+running 37 tests
+test test_binary_tree_program ... FAILED
+test test_effects_example ... ok
+test test_async_example ... ok
+test test_calculator_program ... FAILED
+test test_concurrent_block ... FAILED
+test test_deeply_nested_program ... FAILED
+test test_concurrency_example ... ok
+test test_file_io_example ... ok
+test test_error_type ... FAILED
+test test_fibonacci_example ... ok
+test test_from_import ... FAILED
+test test_generics_example ... ok
+test test_guess_number_example ... ok
+test test_generic_struct ... FAILED
+test test_if_statement ... FAILED
+test test_linked_list_program ... FAILED
+test test_enum_definition ... ok
+test test_async_function ... ok
+test test_module_import ... FAILED
+test test_channel_usage ... ok
+test test_simple_arithmetic ... FAILED
+test test_syntax_error_reporting ... ok
+test test_hello_example ... ok
+test test_hello_world_compilation ... ok
+test test_trait_bounds ... FAILED
+test test_match_statement ... ok
+test test_trait_definition ... FAILED
+test test_try_operator ... FAILED
+test test_while_loop ... FAILED
+test test_for_loop ... ok
+test test_generic_function ... ok
+test test_function_definition ... ok
+test test_large_program_compilation ... ok
+test test_struct_definition ... ok
+test test_recursive_function ... ok
+test test_type_error_reporting ... ok
+test test_variable_declarations ... ok
+
+failures:
+
+---- test_binary_tree_program stdout ----
+
+thread 'test_binary_tree_program' (68163140) panicked at tests/tests/test_integration_comprehensive.rs:653:5:
+Compilation failed: [0m[1m[31merror[0m: Name resolution failed: Name resolution failed with errors
+[0m[1m[31merror[0m[E0002]: cannot find `new` in this scope
+
+[0m[1m[31maborting due to 1 error(s)
+[0m[0m[1m[31merror[0m[E0001]: compilation failed for project test_project
+
+
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- test_calculator_program stdout ----
+
+thread 'test_calculator_program' (68163141) panicked at tests/tests/test_integration_comprehensive.rs:681:5:
+Compilation failed: [0m[1m[31merror[0m: Code generation failed: Code generation failed for main: LLVM compilation failed: VerificationFailed("Function return type does not match operand type of return inst!\n  ret {} zeroinitializer\n i32")
+[0m[1m[31merror[0m[E0001]: compilation failed for project test_project
+
+
+
+---- test_concurrent_block stdout ----
+
+thread 'test_concurrent_block' (68163144) panicked at tests/tests/test_integration_comprehensive.rs:424:5:
+Compilation failed: [0m[1m[31merror[0m: Name resolution failed: Name resolution failed with errors
+[0m[1m[31merror[0m[E0002]: cannot find `task1` in this scope
+
+[0m[1m[31maborting due to 1 error(s)
+[0m[0m[1m[31merror[0m[E0001]: compilation failed for project test_project
+
+
+
+---- test_deeply_nested_program stdout ----
+
+thread 'test_deeply_nested_program' (68163145) panicked at tests/tests/test_integration_comprehensive.rs:765:5:
+Compilation failed: [0m[1m[31merror[0m: Code generation failed: Code generation failed for main: LLVM compilation failed: ValueNotFound(59)
+[0m[1m[31merror[0m[E0001]: compilation failed for project test_project
+
+
+
+---- test_error_type stdout ----
+
+thread 'test_error_type' (68163208) panicked at tests/tests/test_integration_comprehensive.rs:360:5:
+Compilation failed: [0m[1m[31merror[0m: Code generation failed: Code generation failed for main: LLVM compilation failed: VerificationFailed("Function return type does not match operand type of return inst!\n  ret i32 0\n ptr")
+[0m[1m[31merror[0m[E0001]: compilation failed for project test_project
+
+
+
+---- test_from_import stdout ----
+
+thread 'test_from_import' (68163263) panicked at tests/tests/test_integration_comprehensive.rs:495:5:
+Compilation failed: [0m[1m[31merror[0m: Name resolution failed: Name resolution failed with errors
+[0m[1m[31merror[0m[E0002]: cannot find `add` in this scope
+
+[0m[1m[31merror[0m[E0002]: unresolved import: `add`
+
+[0m[1m[31maborting due to 2 error(s)
+[0m[0m[1m[31merror[0m[E0001]: compilation failed for project test_project
+
+
+
+---- test_generic_struct stdout ----
+
+thread 'test_generic_struct' (68163339) panicked at tests/tests/test_integration_comprehensive.rs:276:5:
+Compilation failed: [0m[1m[31merror[0m: Name resolution failed: Name resolution failed with errors
+[0m[1m[31merror[0m[E0002]: cannot find `new` in this scope
+
+[0m[1m[31maborting due to 1 error(s)
+[0m[0m[1m[31merror[0m[E0001]: compilation failed for project test_project
+
+
+
+---- test_if_statement stdout ----
+
+thread 'test_if_statement' (68163420) panicked at tests/tests/test_integration_comprehensive.rs:152:5:
+Compilation failed: [0m[1m[31merror[0m: Code generation failed: Code generation failed for main: LLVM compilation failed: VerificationFailed("Both operands to ICmp instruction are not of the same type!\n  %icmp = icmp sgt i64 %load, i32 5\nPHI node operands are not the same type as the result!\n  %phi = phi i64 [ 0, %then ], [ 0, %else ]\n")
+[0m[1m[31merror[0m[E0001]: compilation failed for project test_project
+
+
+
+---- test_linked_list_program stdout ----
+
+thread 'test_linked_list_program' (68163466) panicked at tests/tests/test_integration_comprehensive.rs:622:5:
+Compilation failed: [0m[1m[31merror[0m: Name resolution failed: Name resolution failed with errors
+[0m[1m[31merror[0m[E0002]: cannot find `new` in this scope
+
+[0m[1m[31maborting due to 1 error(s)
+[0m[0m[1m[31merror[0m[E0001]: compilation failed for project test_project
+
+
+
+---- test_module_import stdout ----
+
+thread 'test_module_import' (68163504) panicked at tests/tests/test_integration_comprehensive.rs:468:5:
+Compilation failed: [0m[1m[31merror[0m: Name resolution failed: Name resolution failed with errors
+[0m[1m[31merror[0m[E0002]: cannot find `lib` in this scope
+
+[0m[1m[31merror[0m[E0002]: unresolved import: `lib`
+
+[0m[1m[31maborting due to 2 error(s)
+[0m[0m[1m[31merror[0m[E0001]: compilation failed for project test_project
+
+
+
+---- test_simple_arithmetic stdout ----
+
+thread 'test_simple_arithmetic' (68163560) panicked at tests/tests/test_integration_comprehensive.rs:52:5:
+Compilation failed: [0m[1m[31merror[0m: Code generation failed: Code generation failed for main: LLVM compilation failed: VerificationFailed("Both operands to a binary operator are not of the same type!\n  %mul = mul i64 %load, i32 3\n")
+[0m[1m[31merror[0m[E0001]: compilation failed for project test_project
+
+
+
+---- test_trait_bounds stdout ----
+
+thread 'test_trait_bounds' (68163637) panicked at tests/tests/test_integration_comprehensive.rs:333:5:
+Compilation failed: [0m[1m[31merror[0m: Name resolution failed: Name resolution failed with errors
+[0m[1m[31merror[0m[E0002]: cannot find `Self` in this scope
+
+[0m[1m[31maborting due to 1 error(s)
+[0m[0m[1m[31merror[0m[E0001]: compilation failed for project test_project
+
+
+
+---- test_trait_definition stdout ----
+
+thread 'test_trait_definition' (68163641) panicked at tests/tests/test_integration_comprehensive.rs:306:5:
+Compilation failed: [0m[1m[31merror[0m: Code generation failed: Code generation failed for main: LLVM compilation failed: VerificationFailed("Call parameter type does not match function signature!\n  %load = load { double, double }, ptr %alloca, align 8\n ptr  %call = call ptr @display({ double, double } %load)\n")
+[0m[1m[31merror[0m[E0001]: compilation failed for project test_project
+
+
+
+---- test_try_operator stdout ----
+
+thread 'test_try_operator' (68163658) panicked at tests/tests/test_integration_comprehensive.rs:387:5:
+Compilation failed: [0m[1m[31merror[0m: Code generation failed: Code generation failed for main: LLVM compilation failed: VerificationFailed("Function return type does not match operand type of return inst!\n  ret i32 0\n ptrBoth operands to a binary operator are not of the same type!\n  %mul = mul i64 %load, i32 2\nFunction return type does not match operand type of return inst!\n  ret i32 0\n ptr")
+[0m[1m[31merror[0m[E0001]: compilation failed for project test_project
+
+
+
+---- test_while_loop stdout ----
+
+thread 'test_while_loop' (68163679) panicked at tests/tests/test_integration_comprehensive.rs:169:5:
+Compilation failed: [0m[1m[31merror[0m: Code generation failed: Code generation failed for main: LLVM compilation failed: VerificationFailed("Both operands to ICmp instruction are not of the same type!\n  %icmp = icmp slt i64 %load, i32 10\nBoth operands to a binary operator are not of the same type!\n  %add = add i64 %load1, i32 1\n")
+[0m[1m[31merror[0m[E0001]: compilation failed for project test_project
+
+
+
+
+failures:
+    test_binary_tree_program
+    test_calculator_program
+    test_concurrent_block
+    test_deeply_nested_program
+    test_error_type
+    test_from_import
+    test_generic_struct
+    test_if_statement
+    test_linked_list_program
+    test_module_import
+    test_simple_arithmetic
+    test_trait_bounds
+    test_trait_definition
+    test_try_operator
+    test_while_loop
+
+test result: FAILED. 22 passed; 15 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.22s
+
+error: test failed, to rerun pass `-p jet-integration-tests --test test_integration_comprehensive`

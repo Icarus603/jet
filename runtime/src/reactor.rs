@@ -39,6 +39,7 @@ pub struct Reactor {
 /// This handle can be used to register I/O sources and poll for events
 /// from any thread.
 #[derive(Clone)]
+#[allow(dead_code)]
 pub struct ReactorHandle {
     /// Shared reference to the reactor
     inner: Arc<Mutex<jet_rt_sched::Reactor>>,

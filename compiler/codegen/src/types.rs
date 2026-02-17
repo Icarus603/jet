@@ -95,14 +95,18 @@ impl<'ctx> TypeMapping<'ctx> for CodeGen<'ctx> {
                 };
                 Ok(fn_ty.ptr_type(AddressSpace::default()).into())
             }
-            Ty::Named(name) => Err(CodegenError::unsupported_type(format!(
-                "named type: {} (use type definitions)",
-                name
-            ))),
-            Ty::Generic(name, _args) => Err(CodegenError::unsupported_type(format!(
-                "generic type: {} (must be monomorphized)",
-                name
-            ))),
+            // Named and generic types are represented as opaque pointers.
+            // All Jet user-defined types are GC-allocated heap objects.
+            Ty::Named(_name) => Ok(self
+                .context
+                .i8_type()
+                .ptr_type(AddressSpace::default())
+                .into()),
+            Ty::Generic(_name, _args) => Ok(self
+                .context
+                .i8_type()
+                .ptr_type(AddressSpace::default())
+                .into()),
         }
     }
 
@@ -160,11 +164,8 @@ impl<'ctx> TypeMapping<'ctx> for CodeGen<'ctx> {
                 .try_fold(0u64, |acc, f| self.get_type_size(f).map(|s| acc + s))?,
             Ty::Array(elem, count) => self.get_type_size(elem)? * (*count as u64),
             Ty::Function(_, _) => 8,
-            Ty::Named(_) | Ty::Generic(_, _) => {
-                return Err(CodegenError::unsupported_type(
-                    "cannot compute size of unresolved type",
-                ))
-            }
+            // Named and generic types are pointer-sized (GC heap objects)
+            Ty::Named(_) | Ty::Generic(_, _) => 8,
         };
         Ok(size)
     }
@@ -193,11 +194,8 @@ impl<'ctx> TypeMapping<'ctx> for CodeGen<'ctx> {
             }
             Ty::Array(elem, _) => self.get_type_align(elem)?,
             Ty::Function(_, _) => 8,
-            Ty::Named(_) | Ty::Generic(_, _) => {
-                return Err(CodegenError::unsupported_type(
-                    "cannot compute alignment of unresolved type",
-                ))
-            }
+            // Named and generic types are pointer-aligned (GC heap objects)
+            Ty::Named(_) | Ty::Generic(_, _) => 8,
         };
         Ok(align)
     }

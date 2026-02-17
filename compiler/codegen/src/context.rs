@@ -157,14 +157,19 @@ impl<'ctx> CodeGen<'ctx> {
                 };
                 Ok(fn_ty.ptr_type(AddressSpace::default()).into())
             }
-            Ty::Named(name) => Err(CodegenError::unsupported_type(format!(
-                "named type: {} (use type definitions)",
-                name
-            ))),
-            Ty::Generic(name, _args) => Err(CodegenError::unsupported_type(format!(
-                "generic type: {} (must be monomorphized)",
-                name
-            ))),
+            // Named and generic types are represented as opaque pointers.
+            // All Jet user-defined types (structs, enums, generic instantiations)
+            // are GC-allocated heap objects, so a pointer representation is correct.
+            Ty::Named(_name) => Ok(self
+                .context
+                .i8_type()
+                .ptr_type(AddressSpace::default())
+                .into()),
+            Ty::Generic(_name, _args) => Ok(self
+                .context
+                .i8_type()
+                .ptr_type(AddressSpace::default())
+                .into()),
         }
     }
 
@@ -175,10 +180,19 @@ impl<'ctx> CodeGen<'ctx> {
 
     /// Gets a value from the value map.
     pub fn get_value(&self, id: ValueId) -> CodegenResult<BasicValueEnum<'ctx>> {
-        self.values
-            .get(&id)
-            .copied()
-            .ok_or_else(|| CodegenError::value_not_found(id.0))
+        self.values.get(&id).copied().ok_or_else(|| {
+            let func_name = self
+                .current_function()
+                .map(|f| f.get_name().to_str().unwrap_or("?").to_string())
+                .unwrap_or_else(|| "?".to_string());
+            eprintln!(
+                "DEBUG: Value {} not found in function '{}'. Available: {:?}",
+                id.0,
+                func_name,
+                self.values.keys().map(|k| k.0).collect::<Vec<_>>()
+            );
+            CodegenError::value_not_found(id.0)
+        })
     }
 
     /// Stores a basic block in the block map.

@@ -258,8 +258,8 @@ impl<'a> FunctionBuilder<'a> {
 
     /// Load from a pointer.
     pub fn load(&mut self, ptr: ValueId, ty: Ty) -> ValueId {
-        let result = self.module_builder.alloc_value(ty);
-        self.add_instruction(Instruction::Load { result, ptr });
+        let result = self.module_builder.alloc_value(ty.clone());
+        self.add_instruction(Instruction::Load { result, ptr, ty });
         result
     }
 
@@ -269,45 +269,73 @@ impl<'a> FunctionBuilder<'a> {
     }
 
     /// Get pointer to struct field.
-    pub fn get_field_ptr(&mut self, ptr: ValueId, field_index: usize, result_ty: Ty) -> ValueId {
+    pub fn get_field_ptr(
+        &mut self,
+        ptr: ValueId,
+        field_index: usize,
+        result_ty: Ty,
+        struct_ty: Ty,
+    ) -> ValueId {
         let result = self.module_builder.alloc_value(result_ty);
         self.add_instruction(Instruction::GetFieldPtr {
             result,
             ptr,
             field_index,
+            struct_ty,
         });
         result
     }
 
     /// Get pointer to array element.
-    pub fn get_element_ptr(&mut self, ptr: ValueId, index: ValueId, result_ty: Ty) -> ValueId {
+    pub fn get_element_ptr(
+        &mut self,
+        ptr: ValueId,
+        index: ValueId,
+        result_ty: Ty,
+        elem_ty: Ty,
+    ) -> ValueId {
         let result = self.module_builder.alloc_value(result_ty);
-        self.add_instruction(Instruction::GetElementPtr { result, ptr, index });
+        self.add_instruction(Instruction::GetElementPtr {
+            result,
+            ptr,
+            index,
+            elem_ty,
+        });
         result
     }
 
     /// Call a function.
     pub fn call(&mut self, func: impl Into<String>, args: Vec<ValueId>, result_ty: Ty) -> ValueId {
-        let result = self.module_builder.alloc_value(result_ty);
+        let result = self.module_builder.alloc_value(result_ty.clone());
         self.add_instruction(Instruction::Call {
             result,
             func: func.into(),
             args,
+            ty: result_ty,
         });
         result
     }
 
     /// Call a function pointer.
     pub fn call_indirect(&mut self, ptr: ValueId, args: Vec<ValueId>, result_ty: Ty) -> ValueId {
-        let result = self.module_builder.alloc_value(result_ty);
-        self.add_instruction(Instruction::CallIndirect { result, ptr, args });
+        let result = self.module_builder.alloc_value(result_ty.clone());
+        self.add_instruction(Instruction::CallIndirect {
+            result,
+            ptr,
+            args,
+            ty: result_ty,
+        });
         result
     }
 
     /// Phi node.
     pub fn phi(&mut self, incoming: Vec<(BlockId, ValueId)>, ty: Ty) -> ValueId {
-        let result = self.module_builder.alloc_value(ty);
-        self.add_instruction(Instruction::Phi { result, incoming });
+        let result = self.module_builder.alloc_value(ty.clone());
+        self.add_instruction(Instruction::Phi {
+            result,
+            incoming,
+            ty,
+        });
         result
     }
 

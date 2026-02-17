@@ -4,6 +4,7 @@
 //! during the lowering process from the typed AST to Jet IR.
 
 use jet_ir::{BasicBlock, BlockId, Function, Instruction, Module, Terminator, Ty, ValueId};
+use jet_typeck::TypeContext;
 use std::collections::HashMap;
 
 /// A scope in the variable stack.
@@ -84,8 +85,7 @@ impl StructInfo {
 ///
 /// This struct maintains all the state needed during the lowering process,
 /// including the current function, block, value generation, and variable scopes.
-#[derive(Debug)]
-pub struct LoweringContext {
+pub struct LoweringContext<'tcx> {
     /// The module being built.
     pub module: Module,
     /// The ID of the current function being lowered.
@@ -104,6 +104,10 @@ pub struct LoweringContext {
     loop_targets: Vec<LoopTarget>,
     /// Struct type definitions for field access.
     struct_types: HashMap<String, StructInfo>,
+    /// The current Self type for impl blocks (used to resolve Self references).
+    self_type: Option<Ty>,
+    /// Reference to the type context for type lookups.
+    type_context: &'tcx TypeContext,
 }
 
 /// Information about a loop for break/continue targets.
@@ -128,9 +132,9 @@ pub struct HandlerContext {
     pub handlers: HashMap<String, BlockId>,
 }
 
-impl LoweringContext {
+impl<'tcx> LoweringContext<'tcx> {
     /// Creates a new lowering context for the given module name.
-    pub fn new(module_name: impl Into<String>) -> Self {
+    pub fn new(module_name: impl Into<String>, type_context: &'tcx TypeContext) -> Self {
         Self {
             module: Module::new(module_name),
             current_function: None,
@@ -141,6 +145,8 @@ impl LoweringContext {
             handler_context: None,
             loop_targets: Vec::new(),
             struct_types: HashMap::new(),
+            self_type: None,
+            type_context,
         }
     }
 
@@ -173,6 +179,19 @@ impl LoweringContext {
         }
 
         id
+    }
+
+    /// Creates a new basic block ID without adding it to the function.
+    /// Use `add_block` to add it later.
+    pub fn create_block_id(&mut self) -> BlockId {
+        self.new_block_id()
+    }
+
+    /// Adds a basic block to the current function.
+    pub fn add_block(&mut self, block: BasicBlock) {
+        if let Some(func_idx) = self.current_function {
+            self.module.functions[func_idx].add_block(block);
+        }
     }
 
     /// Sets the current block for instruction emission.
@@ -353,11 +372,105 @@ impl LoweringContext {
         self.lookup_struct(struct_name)
             .and_then(|s| s.get_field_index(field_name))
     }
+
+    /// Sets the current function index.
+    pub fn set_current_function_index(&mut self, index: Option<usize>) {
+        self.current_function = index;
+    }
+
+    /// Gets the current function index.
+    pub fn get_current_function_index(&self) -> Option<usize> {
+        self.current_function
+    }
+
+    /// Sets the current block.
+    pub fn set_current_block_opt(&mut self, block: Option<BlockId>) {
+        self.current_block = block;
+    }
+
+    /// Sets the value counter.
+    pub fn set_value_counter(&mut self, counter: u32) {
+        self.value_counter = counter;
+    }
+
+    /// Gets the value counter.
+    pub fn get_value_counter(&self) -> u32 {
+        self.value_counter
+    }
+
+    /// Sets the block counter.
+    pub fn set_block_counter(&mut self, counter: u32) {
+        self.block_counter = counter;
+    }
+
+    /// Gets the block counter.
+    pub fn get_block_counter(&self) -> u32 {
+        self.block_counter
+    }
+
+    /// Clears all loop targets.
+    pub fn clear_loop_targets(&mut self) {
+        self.loop_targets.clear();
+    }
+
+    /// Gets a clone of the scope stack.
+    pub fn clone_scope_stack(&self) -> Vec<Scope> {
+        self.scope_stack.clone()
+    }
+
+    /// Sets the scope stack.
+    pub fn set_scope_stack(&mut self, scopes: Vec<Scope>) {
+        self.scope_stack = scopes;
+    }
+
+    /// Gets a clone of the loop targets.
+    pub fn clone_loop_targets(&self) -> Vec<LoopTarget> {
+        self.loop_targets.clone()
+    }
+
+    /// Sets the loop targets.
+    pub fn set_loop_targets(&mut self, targets: Vec<LoopTarget>) {
+        self.loop_targets = targets;
+    }
+
+    /// Gets the current Self type (for impl blocks).
+    pub fn get_self_type(&self) -> Option<&Ty> {
+        self.self_type.as_ref()
+    }
+
+    /// Sets the current Self type (for impl blocks).
+    pub fn set_self_type(&mut self, ty: Option<Ty>) {
+        self.self_type = ty;
+    }
+
+    /// Gets a reference to the type context.
+    pub fn type_context(&self) -> &'tcx TypeContext {
+        self.type_context
+    }
+}
+
+impl<'tcx> std::fmt::Debug for LoweringContext<'tcx> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LoweringContext")
+            .field("module", &self.module)
+            .field("current_function", &self.current_function)
+            .field("current_block", &self.current_block)
+            .field("value_counter", &self.value_counter)
+            .field("block_counter", &self.block_counter)
+            .field("scope_stack", &self.scope_stack)
+            .field("handler_context", &self.handler_context)
+            .field("loop_targets", &self.loop_targets)
+            .field("struct_types", &self.struct_types)
+            .field("self_type", &self.self_type)
+            .field("type_context", &"<TypeContext>")
+            .finish()
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use jet_typeck::TypeContext;
 
     #[test]
     fn test_scope_operations() {
@@ -372,7 +485,8 @@ mod tests {
 
     #[test]
     fn test_lowering_context_value_generation() {
-        let mut ctx = LoweringContext::new("test");
+        let tcx = TypeContext::new();
+        let mut ctx = LoweringContext::new("test", &tcx);
 
         let v1 = ctx.new_value();
         let v2 = ctx.new_value();
@@ -383,7 +497,8 @@ mod tests {
 
     #[test]
     fn test_lowering_context_block_creation() {
-        let mut ctx = LoweringContext::new("test");
+        let tcx = TypeContext::new();
+        let mut ctx = LoweringContext::new("test", &tcx);
 
         // Add a function first
         let func = Function::new("test_func", vec![], Ty::Void);
@@ -399,7 +514,8 @@ mod tests {
 
     #[test]
     fn test_variable_lookup() {
-        let mut ctx = LoweringContext::new("test");
+        let tcx = TypeContext::new();
+        let mut ctx = LoweringContext::new("test", &tcx);
 
         ctx.enter_scope();
         ctx.bind_variable("x".to_string(), ValueId::new(0), Ty::I32, false);
@@ -424,7 +540,8 @@ mod tests {
 
     #[test]
     fn test_loop_targets() {
-        let mut ctx = LoweringContext::new("test");
+        let tcx = TypeContext::new();
+        let mut ctx = LoweringContext::new("test", &tcx);
 
         let target1 = LoopTarget {
             label: Some("outer".to_string()),

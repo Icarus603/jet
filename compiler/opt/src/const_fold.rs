@@ -107,7 +107,6 @@ impl ConstantFolding {
                 result,
                 op,
                 operand,
-                ..
             } => {
                 let result_id = *result;
                 if let Some(val) = self.constants.get(operand) {
@@ -123,7 +122,9 @@ impl ConstantFolding {
                 false
             }
 
-            Instruction::Phi { result, incoming } => {
+            Instruction::Phi {
+                result, incoming, ..
+            } => {
                 let result_id = *result;
                 // If all incoming values are the same constant, fold to that constant
                 let const_values: Vec<_> = incoming
@@ -473,6 +474,7 @@ mod tests {
         block.add_instruction(Instruction::Phi {
             result: v2,
             incoming: vec![(BlockId::new(1), v0), (BlockId::new(2), v1)],
+            ty: Ty::I32,
         });
 
         block.set_terminator(Terminator::Return(Some(v2)));

@@ -4,18 +4,18 @@
 
 use crate::context::LoweringContext;
 use crate::expr::lower_expr;
-use crate::ty::lower_type;
+use crate::ty::{lower_type, lower_type_with_self};
 use jet_ir::{Effect, Function, Param, Terminator, Ty, ValueId};
 use jet_parser::ast;
 
-/// Lowers a function definition from AST to IR.
-pub fn lower_function(ctx: &mut LoweringContext, func: &ast::Function) -> usize {
+/// Lowers a typed function definition to IR.
+pub fn lower_typed_function(ctx: &mut LoweringContext, func: &jet_typeck::TypedFunction) -> usize {
     // Lower parameter types
     let mut params = Vec::new();
     let mut param_values = Vec::new();
 
     for (i, param) in func.params.iter().enumerate() {
-        let param_ty = lower_type(&param.ty);
+        let param_ty = crate::ty::lower_typeck_type(param.ty, ctx.type_context());
         let param_value = ValueId::new(i as u32);
 
         let param_name = get_pattern_name(&param.pattern);
@@ -28,12 +28,93 @@ pub fn lower_function(ctx: &mut LoweringContext, func: &ast::Function) -> usize 
         ));
     }
 
-    // Lower return type
-    let return_ty = func
-        .return_type
-        .as_ref()
-        .map(lower_type)
-        .unwrap_or(Ty::Void);
+    // Lower return type from the type context
+    let return_ty = crate::ty::lower_typeck_type(func.return_type, ctx.type_context());
+
+    // Create the IR function
+    let mut ir_func = Function::new(&func.name.name, params, return_ty.clone());
+
+    // Add effects - temporarily disabled until effect metadata is available
+    // for effect in &func.effects.effects {
+    //     if let Some(ir_effect) = lower_typed_effect(effect, ctx.type_context()) {
+    //         ir_func.effects.push(ir_effect);
+    //     }
+    // }
+
+    // Mark as exported if public
+    if func.public {
+        ir_func.is_exported = true;
+    }
+
+    // Add function to module
+    let func_index = ctx.module.functions.len();
+    ctx.module.add_function(ir_func);
+
+    // Start lowering the function body
+    ctx.start_function(func_index);
+
+    // Create entry block
+    let entry_block = ctx.create_block("entry");
+    ctx.set_current_block(entry_block);
+
+    // Bind parameters in the entry block
+    for (name, value, ty, is_mut) in param_values {
+        // Allocate space for the parameter
+        let alloc = ctx.new_value();
+        ctx.emit(jet_ir::Instruction::Alloc {
+            result: alloc,
+            ty: ty.clone(),
+        });
+
+        // Store the parameter value
+        ctx.emit(jet_ir::Instruction::Store { ptr: alloc, value });
+
+        // Bind the parameter name to its allocation
+        ctx.bind_variable(name, alloc, ty, is_mut);
+    }
+
+    // Lower the function body using typed expression lowering
+    let _body_value = crate::expr::lower_typed_expr(ctx, &func.body);
+
+    // End function lowering
+    ctx.end_function();
+
+    func_index
+}
+
+/// Lowers a function definition from AST to IR within an impl block.
+///
+/// This function is similar to `lower_function`, but it uses the Self type
+/// from the context when lowering parameter and return types.
+pub fn lower_function_in_impl(ctx: &mut LoweringContext, func: &ast::Function) -> usize {
+    // Get the Self type from the context
+    let self_ty = ctx.get_self_type();
+
+    // Lower parameter types, substituting Self where needed
+    let mut params = Vec::new();
+    let mut param_values = Vec::new();
+
+    for (i, param) in func.params.iter().enumerate() {
+        let param_ty = lower_type_with_self(&param.ty, self_ty);
+        let param_value = ValueId::new(i as u32);
+
+        let param_name = get_pattern_name(&param.pattern);
+        params.push(Param::new(param_name, param_ty.clone(), param_value));
+        param_values.push((
+            param_name.to_string(),
+            param_value,
+            param_ty,
+            is_pattern_mutable(&param.pattern),
+        ));
+    }
+
+    // Lower return type, substituting Self where needed
+    let return_ty = if let Some(ref ty) = func.return_type {
+        lower_type_with_self(ty, self_ty)
+    } else {
+        // No explicit return type - infer from function body
+        crate::expr::infer_expr_type(ctx, &func.body)
+    };
 
     // Create the IR function
     let mut ir_func = Function::new(&func.name.name, params, return_ty.clone());
@@ -155,6 +236,13 @@ fn lower_effect(effect: &ast::Type) -> Option<Effect> {
     }
 }
 
+/// Lowers a typeck effect instance to an IR effect.
+fn lower_typed_effect(effect: &jet_typeck::EffectInstance, _tcx: &jet_typeck::TypeContext) -> Option<Effect> {
+    // For now, we use the DefId to create a named effect
+    // In a full implementation, we'd look up the effect name from the context
+    Some(Effect::Raise(Ty::Named(format!("effect_{}", effect.effect.0))))
+}
+
 /// Gets the name from a pattern.
 fn get_pattern_name(pattern: &ast::Pattern) -> &str {
     match pattern {
@@ -251,12 +339,24 @@ pub fn lower_trait_def(_ctx: &mut LoweringContext, _trait_def: &ast::TraitDef) {
 
 /// Lowers an impl block (generates method implementations).
 pub fn lower_impl_block(ctx: &mut LoweringContext, impl_def: &ast::ImplDef) {
+    // Determine the Self type for this impl block
+    let self_ty = crate::ty::lower_type(&impl_def.ty);
+
+    // Store the previous Self type (if any) to restore later
+    let prev_self_ty = ctx.get_self_type().cloned();
+
+    // Set the Self type for this impl block
+    ctx.set_self_type(Some(self_ty));
+
     // Lower each method in the impl block
     for item in &impl_def.items {
         if let ast::ImplItem::Method(func) = item {
-            lower_function(ctx, func);
+            lower_function_in_impl(ctx, func);
         }
     }
+
+    // Restore the previous Self type
+    ctx.set_self_type(prev_self_ty);
 }
 
 #[cfg(test)]

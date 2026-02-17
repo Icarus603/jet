@@ -72,7 +72,7 @@ fn lower_let(
     });
 
     // Bind the pattern to the allocation
-    bind_pattern(ctx, pattern, alloc, var_ty);
+    bind_pattern_ptr(ctx, pattern, alloc, var_ty);
 }
 
 /// Infers the type of an expression.
@@ -123,8 +123,8 @@ fn infer_expr_type(ctx: &mut LoweringContext, expr: &ast::Expr) -> Ty {
     }
 }
 
-/// Binds a pattern to a value in the current scope.
-fn bind_pattern(ctx: &mut LoweringContext, pattern: &ast::Pattern, value: ValueId, ty: Ty) {
+/// Binds a pattern to a value (pointer) in the current scope.
+pub fn bind_pattern_ptr(ctx: &mut LoweringContext, pattern: &ast::Pattern, value: ValueId, ty: Ty) {
     match pattern {
         ast::Pattern::Wildcard(_) => {
             // Nothing to bind
@@ -138,30 +138,49 @@ fn bind_pattern(ctx: &mut LoweringContext, pattern: &ast::Pattern, value: ValueI
         ast::Pattern::Tuple(patterns) => {
             // Bind each element of the tuple
             for (i, pat) in patterns.iter().enumerate() {
-                let elem_val = ctx.new_value();
-                ctx.emit(Instruction::ExtractField {
-                    result: elem_val,
-                    aggregate: value,
+                let elem_ptr = ctx.new_value();
+                // Tuples are lowered as structs
+                ctx.emit(Instruction::GetFieldPtr {
+                    result: elem_ptr,
+                    ptr: value,
                     field_index: i,
+                    struct_ty: ty.clone(),
                 });
-                // Type would be extracted from the tuple type
-                bind_pattern(ctx, pat, elem_val, Ty::I64);
+
+                // Extract element type from the tuple type
+                let elem_ty = if let Ty::Struct(fields) = &ty {
+                    fields.get(i).cloned().unwrap_or(Ty::I64)
+                } else {
+                    Ty::I64
+                };
+
+                bind_pattern_ptr(ctx, pat, elem_ptr, elem_ty);
             }
         }
         ast::Pattern::Struct { fields, .. } => {
             // Bind each field
+            // Bind each field
             for (i, field) in fields.iter().enumerate() {
-                let field_val = ctx.new_value();
-                ctx.emit(Instruction::ExtractField {
-                    result: field_val,
-                    aggregate: value,
+                let field_ptr = ctx.new_value();
+                ctx.emit(Instruction::GetFieldPtr {
+                    result: field_ptr,
+                    ptr: value,
                     field_index: i,
+                    struct_ty: ty.clone(),
                 });
+
+                // Get field type
+                let field_ty = if let Ty::Struct(field_types) = &ty {
+                    field_types.get(i).cloned().unwrap_or(Ty::I64)
+                } else {
+                    Ty::I64
+                };
+
                 if let Some(ref pat) = field.pattern {
-                    bind_pattern(ctx, pat, field_val, Ty::I64);
+                    bind_pattern_ptr(ctx, pat, field_ptr, field_ty);
                 } else {
                     // Shorthand pattern: bind the field name
-                    ctx.bind_variable(field.name.name.clone(), field_val, Ty::I64, false);
+                    ctx.bind_variable(field.name.name.clone(), field_ptr, field_ty, false);
                 }
             }
         }
@@ -170,6 +189,7 @@ fn bind_pattern(ctx: &mut LoweringContext, pattern: &ast::Pattern, value: ValueI
         }
         ast::Pattern::Array(patterns) => {
             // Bind each element of the array
+            // Bind each element of the array
             for (i, pat) in patterns.iter().enumerate() {
                 let elem_ptr = ctx.new_value();
                 let index_val = ctx.new_value();
@@ -177,17 +197,21 @@ fn bind_pattern(ctx: &mut LoweringContext, pattern: &ast::Pattern, value: ValueI
                     result: index_val,
                     value: jet_ir::ConstantValue::Int(i as i64, Ty::I64),
                 });
+
+                // Extract element type from array type
+                let elem_ty = if let Ty::Array(inner, _) = &ty {
+                    *inner.clone()
+                } else {
+                    Ty::I64 // Fallback
+                };
+
                 ctx.emit(Instruction::GetElementPtr {
                     result: elem_ptr,
                     ptr: value,
                     index: index_val,
+                    elem_ty: elem_ty.clone(),
                 });
-                let elem_val = ctx.new_value();
-                ctx.emit(Instruction::Load {
-                    result: elem_val,
-                    ptr: elem_ptr,
-                });
-                bind_pattern(ctx, pat, elem_val, Ty::I64);
+                bind_pattern_ptr(ctx, pat, elem_ptr, elem_ty);
             }
         }
         ast::Pattern::Rest(_) => {
@@ -195,30 +219,31 @@ fn bind_pattern(ctx: &mut LoweringContext, pattern: &ast::Pattern, value: ValueI
         }
         ast::Pattern::Or(left, right) => {
             // Or pattern - bind both sides
-            bind_pattern(ctx, left, value, ty.clone());
-            bind_pattern(ctx, right, value, ty);
+            bind_pattern_ptr(ctx, left, value, ty.clone());
+            bind_pattern_ptr(ctx, right, value, ty);
         }
         ast::Pattern::Bind { name, pattern } => {
             // Bind the name to the value, then bind the inner pattern
             ctx.bind_variable(name.name.clone(), value, ty.clone(), false);
-            bind_pattern(ctx, pattern, value, ty);
+            bind_pattern_ptr(ctx, pattern, value, ty);
         }
         ast::Pattern::Mut(inner) => {
             // Mutable pattern wrapper - mark as mutable
             if let ast::Pattern::Ident { name, .. } = inner.as_ref() {
                 ctx.bind_variable(name.name.clone(), value, ty, true);
             } else {
-                bind_pattern(ctx, inner, value, ty);
+                bind_pattern_ptr(ctx, inner, value, ty);
             }
         }
         ast::Pattern::Ref { pattern, .. } => {
             // Reference pattern - the value is already a pointer
-            bind_pattern(ctx, pattern, value, Ty::Ptr(Box::new(ty)));
+            bind_pattern_ptr(ctx, pattern, value, Ty::Ptr(Box::new(ty)));
         }
     }
 }
 
 /// Gets the name from a simple identifier pattern.
+#[allow(dead_code)]
 fn get_pattern_name(pattern: &ast::Pattern) -> &str {
     match pattern {
         ast::Pattern::Ident { name, .. } => &name.name,
@@ -254,10 +279,15 @@ fn lower_assign_stmt(
             let field_ptr = ctx.new_value();
             // Field index would be looked up from the struct definition
             let field_index = 0; // Simplified
+
+            // Infer struct type
+            let struct_ty = infer_expr_type(ctx, object);
+
             ctx.emit(Instruction::GetFieldPtr {
                 result: field_ptr,
                 ptr: obj,
                 field_index,
+                struct_ty,
             });
             field_ptr
         }
@@ -265,10 +295,20 @@ fn lower_assign_stmt(
             let obj = lower_expr(ctx, object);
             let idx = lower_expr(ctx, index);
             let ptr = ctx.new_value();
+
+            // Infer array type
+            let array_ty = infer_expr_type(ctx, object);
+            let elem_ty = if let Ty::Array(inner, _) = array_ty {
+                *inner
+            } else {
+                Ty::I64
+            };
+
             ctx.emit(Instruction::GetElementPtr {
                 result: ptr,
                 ptr: obj,
                 index: idx,
+                elem_ty,
             });
             ptr
         }
@@ -287,9 +327,13 @@ fn lower_assign_stmt(
     // Handle compound assignment operators
     let final_val = if op != ast::AssignOp::Assign {
         let loaded = ctx.new_value();
+        // Infer target type
+        let target_ty = infer_expr_type(ctx, target);
+
         ctx.emit(Instruction::Load {
             result: loaded,
             ptr,
+            ty: target_ty,
         });
 
         let computed = ctx.new_value();
@@ -358,6 +402,18 @@ fn lower_continue_stmt(ctx: &mut LoweringContext, label: Option<&ast::Ident>) {
     ctx.terminate(Terminator::Branch(target.continue_block));
 }
 
+/// Lowers a typed statement to IR.
+///
+/// This is a stub implementation that will be expanded to properly handle
+/// typed statements. For now, it returns None.
+pub fn lower_typed_stmt(
+    _ctx: &mut LoweringContext,
+    _stmt: &jet_typeck::TypedStmt,
+) -> Option<jet_ir::ValueId> {
+    // TODO: Implement full typed statement lowering
+    None
+}
+
 /// Lowers a block expression/statement.
 pub fn lower_block(ctx: &mut LoweringContext, block: &ast::Block) -> ValueId {
     ctx.enter_scope();
@@ -399,6 +455,7 @@ mod tests {
     use jet_ir::Ty;
     use jet_lexer::Span;
     use jet_parser::ast::{Ident, Literal, Pattern};
+    use jet_typeck::TypeContext;
 
     fn make_ident(name: &str) -> Ident {
         Ident::new(name, Span::new(0, 0))
@@ -406,7 +463,8 @@ mod tests {
 
     #[test]
     fn test_lower_let_simple() {
-        let mut ctx = LoweringContext::new("test");
+        let tcx = TypeContext::new();
+        let mut ctx = LoweringContext::new("test", &tcx);
 
         // Add a function first
         let func = jet_ir::Function::new("test_func", vec![], Ty::Void);
@@ -435,7 +493,8 @@ mod tests {
 
     #[test]
     fn test_lower_return() {
-        let mut ctx = LoweringContext::new("test");
+        let tcx = TypeContext::new();
+        let mut ctx = LoweringContext::new("test", &tcx);
 
         let func = jet_ir::Function::new("test_func", vec![], Ty::I32);
         ctx.module.add_function(func);

@@ -4,6 +4,8 @@
 //! to Jet IR instructions.
 
 use crate::context::{HandlerContext, LoweringContext};
+use crate::expr::infer_expr_type;
+
 use crate::expr::lower_expr;
 use jet_ir::{BlockId, Instruction, Terminator, Ty, ValueId};
 use jet_parser::ast;
@@ -126,12 +128,14 @@ pub fn lower_handle(
     ctx.set_current_block(resume_block);
     let resume_result = ctx.new_value();
     // The resume result comes from the handler that resumed
+    let resume_ty = infer_expr_type(ctx, body);
     ctx.emit(Instruction::Phi {
         result: resume_result,
         incoming: handler_cases
             .iter()
             .map(|case| (case.handler_block, body_value))
             .collect(),
+        ty: resume_ty,
     });
 
     // Exit block
@@ -162,6 +166,7 @@ pub fn lower_perform(ctx: &mut LoweringContext, operation: &str, args: &[ast::Ex
                 result,
                 func: format!("perform_{}", operation),
                 args: arg_values.clone(),
+                ty: Ty::I64, // Placeholder for handled effect result
             });
 
             // Branch to the handler block
@@ -212,6 +217,7 @@ pub fn lower_raise(ctx: &mut LoweringContext, error: &ast::Expr) -> ValueId {
         result,
         func: "raise".to_string(),
         args: vec![error_val],
+        ty: Ty::Void,
     });
 
     // Branch to error handling
@@ -317,7 +323,12 @@ pub fn lower_try_catch(
     let mut incoming = vec![(try_block, try_result)];
     incoming.extend(catch_results);
 
-    ctx.emit(Instruction::Phi { result, incoming });
+    let phi_ty = infer_expr_type(ctx, try_body);
+    ctx.emit(Instruction::Phi {
+        result,
+        incoming,
+        ty: phi_ty,
+    });
 
     result
 }

@@ -3,7 +3,7 @@
 //! This module provides a growable array type with amortized O(1) push/pop
 //! operations. It integrates with the Immix GC for memory management.
 
-use std::alloc::{alloc, dealloc, realloc, Layout};
+use crate::alloc::{gc_alloc, gc_free, gc_realloc};
 use std::marker::PhantomData;
 use std::ptr::{self, NonNull};
 
@@ -61,8 +61,11 @@ impl<T> Vec<T> {
             return Vec::new();
         }
 
-        let layout = Layout::array::<T>(capacity).expect("Layout computation failed");
-        let ptr = unsafe { alloc(layout) };
+        let size = std::mem::size_of::<T>()
+            .checked_mul(capacity)
+            .expect("Size computation overflow");
+        let align = std::mem::align_of::<T>();
+        let ptr = unsafe { gc_alloc(size, align) };
 
         if ptr.is_null() {
             panic!("Allocation failed");
@@ -476,13 +479,17 @@ impl<T> Vec<T> {
             return;
         }
 
-        let new_layout = Layout::array::<T>(new_cap).expect("Layout computation failed");
+        let elem_size = std::mem::size_of::<T>();
+        let align = std::mem::align_of::<T>();
+        let new_size = elem_size
+            .checked_mul(new_cap)
+            .expect("Size computation overflow");
+        let old_size = elem_size * self.capacity;
 
         let new_ptr = if self.capacity == 0 {
-            unsafe { alloc(new_layout) }
+            unsafe { gc_alloc(new_size, align) }
         } else {
-            let old_layout = Layout::array::<T>(self.capacity).expect("Layout computation failed");
-            unsafe { realloc(self.ptr.as_ptr() as *mut u8, old_layout, new_layout.size()) }
+            unsafe { gc_realloc(self.ptr.as_ptr() as *mut u8, old_size, new_size, align) }
         };
 
         if new_ptr.is_null() {
@@ -546,9 +553,11 @@ impl<T> Drop for Vec<T> {
     fn drop(&mut self) {
         if self.capacity > 0 {
             self.clear();
-            let layout = Layout::array::<T>(self.capacity).expect("Layout computation failed");
+            let elem_size = std::mem::size_of::<T>();
+            let align = std::mem::align_of::<T>();
+            let size = elem_size * self.capacity;
             unsafe {
-                dealloc(self.ptr.as_ptr() as *mut u8, layout);
+                gc_free(self.ptr.as_ptr() as *mut u8, size, align);
             }
         }
     }

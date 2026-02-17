@@ -10,6 +10,7 @@ repository = "https://github.com/jet-lang/jet"
 [dependencies]
 # Runtime support for GC integration
 jet-rt-gc = { path = "../runtime/gc" }
+jet-rt-sync = { path = "../runtime/sync" }
 
 [lib]
 name = "jet_stdlib"

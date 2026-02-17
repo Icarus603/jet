@@ -11,6 +11,7 @@ jet-ir = { path = "../ir" }
 jet-parser = { path = "../parser" }
 jet-lexer = { path = "../lexer" }
 jet-diagnostics = { path = "../diagnostics" }
+jet-typeck = { path = "../typeck" }
 
 [dev-dependencies]
 pretty_assertions.workspace = true

@@ -3,7 +3,7 @@
 //! This module provides a hash map with Robin Hood hashing for efficient
 //! lookups, insertion, and deletion.
 
-use std::alloc::{alloc, dealloc, Layout};
+use crate::alloc::{gc_alloc, gc_free};
 use std::marker::PhantomData;
 use std::ptr;
 
@@ -68,10 +68,13 @@ where
     /// Creates an empty map with the specified initial capacity.
     pub fn with_capacity(capacity: usize) -> Self {
         let capacity = capacity.max(4);
-        let layout =
-            Layout::array::<Option<Bucket<K, V>>>(capacity).expect("Layout computation failed");
+        let elem_size = std::mem::size_of::<Option<Bucket<K, V>>>();
+        let align = std::mem::align_of::<Option<Bucket<K, V>>>();
+        let size = elem_size
+            .checked_mul(capacity)
+            .expect("Size computation overflow");
 
-        let buckets = unsafe { alloc(layout) as *mut Option<Bucket<K, V>> };
+        let buckets = unsafe { gc_alloc(size, align) as *mut Option<Bucket<K, V>> };
         if buckets.is_null() {
             panic!("Allocation failed");
         }
@@ -497,13 +500,14 @@ where
         let new_capacity = old_capacity * 2;
 
         let old_buckets = self.buckets;
-        let old_layout =
-            Layout::array::<Option<Bucket<K, V>>>(old_capacity).expect("Layout computation failed");
+        let elem_size = std::mem::size_of::<Option<Bucket<K, V>>>();
+        let align = std::mem::align_of::<Option<Bucket<K, V>>>();
+        let old_size = elem_size * old_capacity;
+        let new_size = elem_size
+            .checked_mul(new_capacity)
+            .expect("Size computation overflow");
 
-        let new_layout =
-            Layout::array::<Option<Bucket<K, V>>>(new_capacity).expect("Layout computation failed");
-
-        let new_buckets = unsafe { alloc(new_layout) as *mut Option<Bucket<K, V>> };
+        let new_buckets = unsafe { gc_alloc(new_size, align) as *mut Option<Bucket<K, V>> };
         if new_buckets.is_null() {
             panic!("Allocation failed");
         }
@@ -534,7 +538,7 @@ where
 
         // Free old bucket array
         unsafe {
-            dealloc(old_buckets as *mut u8, old_layout);
+            gc_free(old_buckets as *mut u8, old_size, align);
         }
     }
 }
@@ -558,10 +562,11 @@ impl<K, V> Drop for Map<K, V> {
                 }
             }
             self.len = 0;
-            let layout = Layout::array::<Option<Bucket<K, V>>>(self.capacity)
-                .expect("Layout computation failed");
+            let elem_size = std::mem::size_of::<Option<Bucket<K, V>>>();
+            let align = std::mem::align_of::<Option<Bucket<K, V>>>();
+            let size = elem_size * self.capacity;
             unsafe {
-                dealloc(self.buckets as *mut u8, layout);
+                gc_free(self.buckets as *mut u8, size, align);
             }
         }
     }

@@ -107,7 +107,11 @@ pub enum Instruction {
     Alloc { result: ValueId, ty: Ty },
 
     /// Load a value from a pointer.
-    Load { result: ValueId, ptr: ValueId },
+    Load {
+        result: ValueId,
+        ptr: ValueId,
+        ty: Ty,
+    },
 
     /// Store a value to a pointer.
     Store { ptr: ValueId, value: ValueId },
@@ -117,6 +121,7 @@ pub enum Instruction {
         result: ValueId,
         ptr: ValueId,
         field_index: usize,
+        struct_ty: Ty,
     },
 
     /// Get a pointer to an array element.
@@ -124,6 +129,7 @@ pub enum Instruction {
         result: ValueId,
         ptr: ValueId,
         index: ValueId,
+        elem_ty: Ty,
     },
 
     /// Cast a pointer to another pointer type.
@@ -167,6 +173,7 @@ pub enum Instruction {
         result: ValueId,
         func: String,
         args: Vec<ValueId>,
+        ty: Ty,
     },
 
     /// Call a function pointer.
@@ -174,12 +181,14 @@ pub enum Instruction {
         result: ValueId,
         ptr: ValueId,
         args: Vec<ValueId>,
+        ty: Ty,
     },
 
     /// Phi node for SSA merge points.
     Phi {
         result: ValueId,
         incoming: Vec<(BlockId, ValueId)>,
+        ty: Ty,
     },
 
     // Aggregate operations
@@ -360,8 +369,8 @@ impl fmt::Display for Instruction {
             Instruction::Alloc { result, ty } => {
                 write!(f, "{} = alloc {}", result, ty)
             }
-            Instruction::Load { result, ptr } => {
-                write!(f, "{} = load {}", result, ptr)
+            Instruction::Load { result, ptr, ty } => {
+                write!(f, "{} = load {} ({})", result, ptr, ty)
             }
             Instruction::Store { ptr, value } => {
                 write!(f, "store {}, {}", value, ptr)
@@ -370,11 +379,25 @@ impl fmt::Display for Instruction {
                 result,
                 ptr,
                 field_index,
+                struct_ty,
             } => {
-                write!(f, "{} = getfieldptr {}, {}", result, ptr, field_index)
+                write!(
+                    f,
+                    "{} = getfieldptr {}, {}, {}",
+                    result, ptr, field_index, struct_ty
+                )
             }
-            Instruction::GetElementPtr { result, ptr, index } => {
-                write!(f, "{} = getelementptr {}, {}", result, ptr, index)
+            Instruction::GetElementPtr {
+                result,
+                ptr,
+                index,
+                elem_ty,
+            } => {
+                write!(
+                    f,
+                    "{} = getelementptr {}, {}, {}",
+                    result, ptr, index, elem_ty
+                )
             }
             Instruction::BitCast { result, value, ty } => {
                 write!(f, "{} = bitcast {} to {}", result, value, ty)
@@ -391,8 +414,13 @@ impl fmt::Display for Instruction {
             Instruction::FloatToInt { result, value, ty } => {
                 write!(f, "{} = floattoint {} to {}", result, value, ty)
             }
-            Instruction::Call { result, func, args } => {
-                write!(f, "{} = call {}(", result, func)?;
+            Instruction::Call {
+                result,
+                func,
+                args,
+                ty,
+            } => {
+                write!(f, "{} = call {} {} (", result, ty, func)?;
                 for (i, arg) in args.iter().enumerate() {
                     if i > 0 {
                         write!(f, ", ")?;
@@ -401,8 +429,13 @@ impl fmt::Display for Instruction {
                 }
                 write!(f, ")")
             }
-            Instruction::CallIndirect { result, ptr, args } => {
-                write!(f, "{} = callind {}(", result, ptr)?;
+            Instruction::CallIndirect {
+                result,
+                ptr,
+                args,
+                ty,
+            } => {
+                write!(f, "{} = callind {} {} (", result, ty, ptr)?;
                 for (i, arg) in args.iter().enumerate() {
                     if i > 0 {
                         write!(f, ", ")?;
@@ -411,8 +444,12 @@ impl fmt::Display for Instruction {
                 }
                 write!(f, ")")
             }
-            Instruction::Phi { result, incoming } => {
-                write!(f, "{} = phi ", result)?;
+            Instruction::Phi {
+                result,
+                incoming,
+                ty,
+            } => {
+                write!(f, "{} = phi {} ", result, ty)?;
                 for (i, (block, val)) in incoming.iter().enumerate() {
                     if i > 0 {
                         write!(f, ", ")?;
@@ -551,6 +588,7 @@ mod tests {
         let phi = Instruction::Phi {
             result,
             incoming: vec![(bb1, v1), (bb2, v2)],
+            ty: Ty::I32,
         };
 
         assert_eq!(phi.operands(), vec![v1, v2]);

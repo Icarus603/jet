@@ -299,12 +299,11 @@ impl Runtime {
         // Get roots from all tasks via the scheduler
         let task_roots = self.scheduler.scan_task_roots();
         let global_roots = self.scheduler.global_roots();
-        
+
         // Convert Root pointers to ObjectHeader pointers
-        let mut roots: Vec<*mut gc::ObjectHeader> = Vec::with_capacity(
-            task_roots.len() + global_roots.len()
-        );
-        
+        let mut roots: Vec<*mut gc::ObjectHeader> =
+            Vec::with_capacity(task_roots.len() + global_roots.len());
+
         for root in task_roots {
             roots.push(root.header);
         }

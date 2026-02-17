@@ -5,7 +5,7 @@
 use crate::closure::convert_lambda;
 use crate::context::{LoopTarget, LoweringContext};
 use crate::pattern::compile_match;
-use crate::stmt::lower_block;
+use crate::stmt::{bind_pattern_ptr, lower_block};
 use crate::ty::{
     bool_literal_type, char_literal_type, float_literal_type, int_literal_type, lower_type,
     string_literal_type, unit_type,
@@ -17,7 +17,191 @@ use jet_ir::{
 use jet_parser::ast;
 use jet_parser::ast::{BinaryOp, Literal, UnaryOp};
 
-/// Lowers an AST expression to IR, returning the value ID of the result.
+/// Infers the type of an expression.
+pub fn infer_expr_type(ctx: &mut LoweringContext, expr: &ast::Expr) -> Ty {
+    match expr {
+        ast::Expr::Literal(lit) => match lit {
+            ast::Literal::Integer(_) => int_literal_type(),
+            ast::Literal::Float(_) => float_literal_type(),
+            ast::Literal::Bool(_) => bool_literal_type(),
+            ast::Literal::String(_) => string_literal_type(),
+            ast::Literal::Char(_) => char_literal_type(),
+            ast::Literal::Unit => unit_type(),
+        },
+        ast::Expr::StructLiteral { path, fields } => {
+            let struct_name = if path.segments.is_empty() {
+                "Unknown".to_string()
+            } else {
+                path.segments[0].name.clone()
+            };
+            if let Some(info) = ctx.lookup_struct(&struct_name) {
+                Ty::Struct(info.field_types.clone())
+            } else {
+                Ty::Struct(vec![Ty::I64; fields.len()])
+            }
+        }
+        ast::Expr::Variable(ident) => ctx
+            .lookup_variable_type(&ident.name)
+            .cloned()
+            .unwrap_or(Ty::I64),
+        ast::Expr::Path(path) if path.segments.len() == 1 => {
+            let name = &path.segments[0].name;
+            ctx.lookup_variable_type(name).cloned().unwrap_or(Ty::I64)
+        }
+        ast::Expr::Call { func, .. } => {
+            // Helper to check function name
+            let check_name = |name: &str| -> Option<Ty> {
+                if name.starts_with("print") || name == "assert" || name == "panic" {
+                    Some(Ty::Void)
+                } else {
+                    ctx.module
+                        .get_function(name)
+                        .map(|func| func.return_ty.clone())
+                }
+            };
+
+            // Function call - look up return type
+            if let ast::Expr::Variable(ident) = func.as_ref() {
+                check_name(&ident.name).unwrap_or(Ty::I64)
+            } else if let ast::Expr::Path(path) = func.as_ref() {
+                if let Some(segment) = path.segments.last() {
+                    check_name(&segment.name).unwrap_or(Ty::I64)
+                } else {
+                    Ty::I64
+                }
+            } else {
+                Ty::I64
+            }
+        }
+        ast::Expr::FieldAccess { object, field: _ } => {
+            // Recurse to find struct type, then look up field
+            // Use a simplified approach: just assume I64 if we can't easily resolve
+            if let ast::Expr::Variable(ident) = object.as_ref() {
+                if let Some(_struct_name) =
+                    ctx.lookup_variable_type(&ident.name).and_then(|t| match t {
+                        Ty::Struct(_) => Option::<String>::None,
+                        _ => Option::<String>::None,
+                    })
+                {
+                    Ty::I64
+                } else {
+                    Ty::I64
+                }
+            } else {
+                Ty::I64
+            }
+        }
+        ast::Expr::Block(block) => {
+            if let Some(last) = block.stmts.last() {
+                match last {
+                    ast::Stmt::Expr(expr) => infer_expr_type(ctx, expr),
+                    _ => Ty::Void,
+                }
+            } else {
+                Ty::Void
+            }
+        }
+        ast::Expr::If { then_branch, .. } => infer_expr_type(ctx, then_branch),
+        ast::Expr::Assign { .. } => Ty::Void,
+        ast::Expr::While { .. } | ast::Expr::For { .. } | ast::Expr::Loop { .. } => Ty::Void,
+        ast::Expr::Break { .. } | ast::Expr::Continue { .. } | ast::Expr::Return(_) => Ty::Void,
+        _ => Ty::I64,
+    }
+}
+
+/// Loads a value from a pointer if the type suggests it should be loaded (primitives).
+/// Structs are kept as pointers (l-values) for optimization, unless explicitly loaded.
+fn maybe_load(ctx: &mut LoweringContext, ptr: ValueId, ty: Ty) -> ValueId {
+    if matches!(ty, Ty::Struct(_) | Ty::Array(_, _)) {
+        ptr
+    } else {
+        let loaded = ctx.new_value();
+        ctx.emit(Instruction::Load {
+            result: loaded,
+            ptr,
+            ty: ty.clone(),
+        });
+        loaded
+    }
+}
+
+/// Lowers an expression to an l-value (pointer).
+fn lower_lvalue(ctx: &mut LoweringContext, expr: &ast::Expr) -> ValueId {
+    match expr {
+        ast::Expr::Variable(ident) => {
+            if let Some(ptr) = ctx.lookup_variable(&ident.name) {
+                ptr
+            } else {
+                // External or missing variable - create placeholder
+                let result = ctx.new_value();
+                let value = ConstantValue::Zero(Ty::Ptr(Box::new(Ty::Void)));
+                ctx.emit(Instruction::Const { result, value });
+                result
+            }
+        }
+        ast::Expr::Path(path) if path.segments.len() == 1 => {
+            let name = &path.segments[0].name;
+            if let Some(ptr) = ctx.lookup_variable(name) {
+                ptr
+            } else {
+                let result = ctx.new_value();
+                let value = ConstantValue::Zero(Ty::Ptr(Box::new(Ty::Void)));
+                ctx.emit(Instruction::Const { result, value });
+                result
+            }
+        }
+        ast::Expr::FieldAccess { object, field } => {
+            let obj_ptr = lower_lvalue(ctx, object);
+            let field_ptr = ctx.new_value();
+
+            // Try to resolve field index
+            let field_index = if let ast::Expr::Variable(ident) = object.as_ref() {
+                ctx.get_field_index(&ident.name, &field.name)
+            } else {
+                None
+            }
+            .unwrap_or(0);
+
+            let struct_ty = infer_expr_type(ctx, object);
+            ctx.emit(Instruction::GetFieldPtr {
+                result: field_ptr,
+                ptr: obj_ptr,
+                field_index,
+                struct_ty,
+            });
+            field_ptr
+        }
+        ast::Expr::Index { object, index } => {
+            let obj_ptr = lower_lvalue(ctx, object);
+            let idx = lower_expr(ctx, index);
+            let elem_ptr = ctx.new_value();
+            let array_ty = infer_expr_type(ctx, object);
+            let elem_ty = if let Ty::Array(elem, _) = array_ty {
+                *elem
+            } else {
+                Ty::I64 // Fallback
+            };
+
+            ctx.emit(Instruction::GetElementPtr {
+                result: elem_ptr,
+                ptr: obj_ptr,
+                index: idx,
+                elem_ty,
+            });
+            elem_ptr
+        }
+        _ => {
+            // R-value spill: allocate temp slot and store value
+            let val = lower_expr(ctx, expr);
+            let ty = infer_expr_type(ctx, expr);
+            let ptr = ctx.new_value();
+            ctx.emit(Instruction::Alloc { result: ptr, ty });
+            ctx.emit(Instruction::Store { ptr, value: val });
+            ptr
+        }
+    }
+}
+
 pub fn lower_expr(ctx: &mut LoweringContext, expr: &ast::Expr) -> ValueId {
     match expr {
         ast::Expr::Literal(lit) => lower_literal(ctx, lit),
@@ -42,7 +226,8 @@ pub fn lower_expr(ctx: &mut LoweringContext, expr: &ast::Expr) -> ValueId {
         ast::Expr::Match { expr, arms } => {
             // Use the new pattern matching compilation
             let scrutinee = lower_expr(ctx, expr);
-            compile_match(ctx, scrutinee, Ty::I64, arms) // Type would be determined from type checking
+            let scrutinee_ty = infer_expr_type(ctx, expr);
+            compile_match(ctx, scrutinee, scrutinee_ty, arms)
         }
         ast::Expr::While { label, cond, body } => lower_while(ctx, label.as_ref(), cond, body),
         ast::Expr::For {
@@ -133,42 +318,23 @@ fn lower_unit(ctx: &mut LoweringContext) -> ValueId {
 }
 
 /// Lowers a variable reference.
-/// Returns the pointer to the variable (alloca). The caller must load if needed.
+/// Returns the value of the variable (loaded if necessary).
 fn lower_variable(ctx: &mut LoweringContext, ident: &ast::Ident) -> ValueId {
-    if let Some(ptr) = ctx.lookup_variable(&ident.name) {
-        ptr
+    let ptr = if let Some(p) = ctx.lookup_variable(&ident.name) {
+        p
     } else {
-        // For external variables, create a placeholder pointer
+        // Fallback for missing/extern
         let result = ctx.new_value();
         let value = ConstantValue::Zero(Ty::Ptr(Box::new(Ty::Void)));
         ctx.emit(Instruction::Const { result, value });
         result
-    }
-}
+    };
 
-/// Loads a value from a variable pointer if it's not a struct.
-fn maybe_load_variable(ctx: &mut LoweringContext, ident: &ast::Ident, ptr: ValueId) -> ValueId {
-    if let Some(ty) = ctx.lookup_variable_type(&ident.name) {
-        if matches!(ty, Ty::Struct(_)) {
-            // Return pointer for structs
-            return ptr;
-        }
-    }
-    // Load value for primitive types
-    let loaded = ctx.new_value();
-    ctx.emit(Instruction::Load {
-        result: loaded,
-        ptr,
-    });
-    loaded
-}
-    } else {
-        // For external variables, create a placeholder
-        let result = ctx.new_value();
-        let value = ConstantValue::Zero(Ty::I64);
-        ctx.emit(Instruction::Const { result, value });
-        result
-    }
+    let ty = ctx
+        .lookup_variable_type(&ident.name)
+        .cloned()
+        .unwrap_or(Ty::I64);
+    maybe_load(ctx, ptr, ty)
 }
 
 /// Lowers a path expression.
@@ -179,10 +345,12 @@ fn lower_path(ctx: &mut LoweringContext, path: &ast::Path) -> ValueId {
 
     let name = &path.segments[0].name;
     if let Some(ptr) = ctx.lookup_variable(name) {
+        let ty = ctx.lookup_variable_type(name).cloned().unwrap_or(Ty::I64);
         let loaded = ctx.new_value();
         ctx.emit(Instruction::Load {
             result: loaded,
             ptr,
+            ty,
         });
         loaded
     } else {
@@ -296,6 +464,7 @@ fn lower_logical_op(
     ctx.emit(Instruction::Phi {
         result,
         incoming: vec![(eval_right_block, rhs), (cond_block, short_circuit_const)],
+        ty: Ty::Bool,
     });
 
     result
@@ -322,9 +491,18 @@ fn lower_unary(ctx: &mut LoweringContext, op: UnaryOp, expr: &ast::Expr) -> Valu
             });
         }
         UnaryOp::Deref => {
+            // Infer type of pointee
+            let ptr_ty = infer_expr_type(ctx, expr);
+            let val_ty = if let Ty::Ptr(inner) = ptr_ty {
+                *inner
+            } else {
+                Ty::I64 // Fallback
+            };
+
             ctx.emit(Instruction::Load {
                 result,
                 ptr: operand,
+                ty: val_ty,
             });
         }
         UnaryOp::Ref | UnaryOp::RefMut => {
@@ -343,6 +521,17 @@ fn lower_call(ctx: &mut LoweringContext, func: &ast::Expr, args: &[ast::Expr]) -
 
     let result = ctx.new_value();
 
+    // Determine return type
+    let check_name = |name: &str| -> Option<Ty> {
+        if name.starts_with("print") || name == "assert" || name == "panic" {
+            Some(Ty::Void)
+        } else {
+            ctx.module
+                .get_function(name)
+                .map(|func| func.return_ty.clone())
+        }
+    };
+
     // Get function name if it's a direct call
     let func_name = match func {
         ast::Expr::Variable(ident) => ident.name.clone(),
@@ -356,6 +545,17 @@ fn lower_call(ctx: &mut LoweringContext, func: &ast::Expr, args: &[ast::Expr]) -
         _ => "indirect".to_string(),
     };
 
+    let call_ty = if func_name == "indirect" {
+        // Try to infer from function pointer type
+        let ptr_ty = infer_expr_type(ctx, func);
+        match ptr_ty {
+            Ty::Function(_, ret) => *ret,
+            _ => Ty::I64,
+        }
+    } else {
+        check_name(&func_name).unwrap_or(Ty::I64)
+    };
+
     if func_name == "indirect" {
         // Indirect call through function pointer
         let func_ptr = lower_expr(ctx, func);
@@ -363,6 +563,7 @@ fn lower_call(ctx: &mut LoweringContext, func: &ast::Expr, args: &[ast::Expr]) -
             result,
             ptr: func_ptr,
             args: arg_values,
+            ty: call_ty,
         });
     } else {
         // Direct function call
@@ -370,6 +571,7 @@ fn lower_call(ctx: &mut LoweringContext, func: &ast::Expr, args: &[ast::Expr]) -
             result,
             func: func_name,
             args: arg_values,
+            ty: call_ty,
         });
     }
 
@@ -390,24 +592,33 @@ fn lower_method_call(
     let result = ctx.new_value();
     let func_name = method.name.to_string();
 
+    // Simplistic return type for methods
+    let ret_ty = Ty::I64;
+
     ctx.emit(Instruction::Call {
         result,
         func: func_name,
         args: arg_values,
+        ty: ret_ty,
     });
 
     result
 }
 
 /// Lowers a field access.
+/// Lowers a field access.
+/// Lowers a field access.
 fn lower_field_access(
     ctx: &mut LoweringContext,
     object: &ast::Expr,
     field: &ast::Ident,
 ) -> ValueId {
-    let obj = lower_expr(ctx, object);
+    // Get pointer to the field via l-value lowering handling
+    let field_ptr = ctx.new_value();
 
-    // Get field index from struct type info if available
+    // Helper to get l-value of object (handling recursion)
+    let obj_ptr = lower_lvalue(ctx, object);
+
     let field_index = if let ast::Expr::Variable(ident) = object {
         ctx.get_field_index(&ident.name, &field.name)
     } else {
@@ -415,46 +626,50 @@ fn lower_field_access(
     }
     .unwrap_or(0);
 
-    // Get pointer to the field
-    let field_ptr = ctx.new_value();
+    // Infer struct type
+    let struct_ty = infer_expr_type(ctx, object);
+
     ctx.emit(Instruction::GetFieldPtr {
         result: field_ptr,
-        ptr: obj,
+        ptr: obj_ptr,
         field_index,
+        struct_ty: struct_ty.clone(),
     });
 
-    // Load from the field pointer
-    let result = ctx.new_value();
-    ctx.emit(Instruction::Load {
-        result,
-        ptr: field_ptr,
-    });
+    // Infer field type
+    let ty = if let Ty::Struct(fields) = &struct_ty {
+        fields.get(field_index).cloned().unwrap_or(Ty::I64)
+    } else {
+        Ty::I64
+    };
 
-    result
+    maybe_load(ctx, field_ptr, ty)
 }
 
 /// Lowers an index operation.
+/// Lowers an index operation.
+/// Lowers an index operation.
 fn lower_index(ctx: &mut LoweringContext, object: &ast::Expr, index: &ast::Expr) -> ValueId {
-    let obj = lower_expr(ctx, object);
+    let obj_ptr = lower_lvalue(ctx, object);
     let idx = lower_expr(ctx, index);
 
-    let result = ctx.new_value();
+    // Infer array type
+    let array_ty = infer_expr_type(ctx, object);
+    let elem_ty = if let Ty::Array(elem, _) = array_ty {
+        *elem
+    } else {
+        Ty::I64 // Fallback
+    };
 
-    // Get element pointer
     let elem_ptr = ctx.new_value();
     ctx.emit(Instruction::GetElementPtr {
         result: elem_ptr,
-        ptr: obj,
+        ptr: obj_ptr,
         index: idx,
+        elem_ty: elem_ty.clone(),
     });
 
-    // Load from the element
-    ctx.emit(Instruction::Load {
-        result,
-        ptr: elem_ptr,
-    });
-
-    result
+    maybe_load(ctx, elem_ptr, elem_ty)
 }
 
 /// Lowers a block expression.
@@ -463,6 +678,7 @@ fn lower_block_expr(ctx: &mut LoweringContext, block: &ast::Block) -> ValueId {
 }
 
 /// Lowers an if expression.
+#[allow(unused_variables)]
 fn lower_if(
     ctx: &mut LoweringContext,
     cond: &ast::Expr,
@@ -473,7 +689,8 @@ fn lower_if(
 
     let then_block = ctx.create_block("then");
     let else_block = ctx.create_block("else");
-    let merge_block = ctx.create_block("merge");
+    // Reserve a block ID for merge block but don't create it yet
+    let merge_block_id = ctx.create_block_id();
 
     ctx.terminate(Terminator::CondBranch {
         cond: cond_val,
@@ -486,9 +703,11 @@ fn lower_if(
     ctx.enter_scope();
     let then_val = lower_expr(ctx, then_branch);
     ctx.exit_scope();
-    if !ctx.get_current_block().unwrap().is_terminated() {
-        ctx.terminate(Terminator::Branch(merge_block));
-    }
+    let then_end_block = ctx.current_block();
+    let then_terminated = ctx
+        .get_current_block()
+        .map(|b| b.is_terminated())
+        .unwrap_or(true);
 
     // Else branch
     ctx.set_current_block(else_block);
@@ -500,65 +719,89 @@ fn lower_if(
     } else {
         lower_unit(ctx)
     };
-    if !ctx.get_current_block().unwrap().is_terminated() {
-        ctx.terminate(Terminator::Branch(merge_block));
+    let else_end_block = ctx.current_block();
+    let else_terminated = ctx
+        .get_current_block()
+        .map(|b| b.is_terminated())
+        .unwrap_or(true);
+
+    // Now create the merge block after all nested blocks have been created
+    let merge_block = jet_ir::BasicBlock::with_name(merge_block_id, "merge");
+    ctx.add_block(merge_block);
+
+    // Add branch terminators to the end of each branch that didn't terminate
+    // This must be done BEFORE we set_current_block to merge_block_id
+    // because we need to add the terminator to the end of the branch blocks
+    if !then_terminated {
+        if let Some(end_block) = then_end_block {
+            ctx.set_current_block(end_block);
+            ctx.terminate(Terminator::Branch(merge_block_id));
+        }
+    }
+    if !else_terminated {
+        if let Some(end_block) = else_end_block {
+            ctx.set_current_block(end_block);
+            ctx.terminate(Terminator::Branch(merge_block_id));
+        }
     }
 
-    // Merge block with phi
-    ctx.set_current_block(merge_block);
-    let result = ctx.new_value();
+    // Handle cases where one or both branches have terminated
+    match (then_terminated, else_terminated) {
+        (true, true) => {
+            // Both branches terminated - merge block is unreachable
+            ctx.set_current_block(merge_block_id);
 
-    ctx.emit(Instruction::Phi {
-        result,
-        incoming: vec![(then_block, then_val), (else_block, else_val)],
-    });
+            // Find current function return type
+            let ret_ty = ctx
+                .current_function()
+                .map(|f| f.return_ty.clone())
+                .unwrap_or(Ty::Void);
 
-    result
-}
+            if ret_ty == Ty::Void {
+                ctx.terminate(Terminator::Return(None));
+            } else {
+                let dummy = ctx.new_value();
+                ctx.emit(Instruction::Const {
+                    result: dummy,
+                    value: ConstantValue::Zero(ret_ty),
+                });
+                ctx.terminate(Terminator::Return(Some(dummy)));
+            }
 
-/// Lowers a match expression.
-#[allow(dead_code)]
-fn lower_match(ctx: &mut LoweringContext, expr: &ast::Expr, arms: &[ast::MatchArm]) -> ValueId {
-    let _match_val = lower_expr(ctx, expr);
-    let merge_block = ctx.create_block("match_merge");
+            // Return dummy value for expression
+            lower_unit(ctx)
+        }
+        (true, false) => {
+            // Then branch terminated, else branch continues
+            // No phi needed - value comes only from else branch
+            ctx.set_current_block(merge_block_id);
+            else_val
+        }
+        (false, true) => {
+            // Else branch terminated, then branch continues
+            // No phi needed - value comes only from then branch
+            ctx.set_current_block(merge_block_id);
+            then_val
+        }
+        (false, false) => {
+            // Both branches continue - need phi
+            ctx.set_current_block(merge_block_id);
+            let result = ctx.new_value();
 
-    let mut arm_blocks = Vec::new();
-    let mut arm_results = Vec::new();
+            let phi_ty = infer_expr_type(ctx, then_branch);
+            // The phi predecessors are the blocks that branch to merge_block_id
+            // which are then_end_block and else_end_block (after we added terminators above)
+            let then_pred = then_end_block.unwrap_or(then_block);
+            let else_pred = else_end_block.unwrap_or(else_block);
+            ctx.emit(Instruction::Phi {
+                result,
+                incoming: vec![(then_pred, then_val), (else_pred, else_val)],
+                ty: phi_ty,
+            });
 
-    // Create blocks for each arm
-    for (i, _) in arms.iter().enumerate() {
-        arm_blocks.push(ctx.create_block(format!("arm_{}", i)));
+            result
+        }
     }
-
-    // For simplicity, lower to a series of if-else chains
-    // In a real implementation, this would use switch/jump tables
-    for (i, arm) in arms.iter().enumerate() {
-        let arm_block = arm_blocks[i];
-        ctx.set_current_block(arm_block);
-        ctx.enter_scope();
-
-        // Bind pattern variables (simplified)
-        let arm_val = lower_expr(ctx, &arm.body);
-        arm_results.push((arm_block, arm_val));
-
-        ctx.exit_scope();
-        ctx.terminate(Terminator::Branch(merge_block));
-    }
-
-    // Jump to first arm (simplified - should check patterns)
-    ctx.set_current_block(ctx.current_block().unwrap_or(merge_block));
-    ctx.terminate(Terminator::Branch(arm_blocks[0]));
-
-    // Merge block
-    ctx.set_current_block(merge_block);
-    let result = ctx.new_value();
-
-    ctx.emit(Instruction::Phi {
-        result,
-        incoming: arm_results,
-    });
-
-    result
 }
 
 /// Lowers a while loop.
@@ -654,15 +897,44 @@ fn lower_for(
     ctx.set_current_block(body_block);
     ctx.enter_scope();
 
-    // Bind pattern variable (simplified)
-    if let ast::Pattern::Ident { name, .. } = pattern {
-        let loop_var = ctx.new_value();
-        ctx.bind_variable(name.name.clone(), loop_var, Ty::I64, false);
-    }
+    // Bind pattern variable — allocate and initialize to 0
+    // Allocate space for loop variable
+    let loop_var_ptr = ctx.new_value();
+
+    // Determine loop variable type (simplified - assume I64 for now)
+    // In a real implementation, we'd infer from iterable
+    let loop_var_ty = Ty::I64;
+
+    ctx.emit(Instruction::Alloc {
+        result: loop_var_ptr,
+        ty: loop_var_ty.clone(),
+    });
+
+    // Initialize with 0 (or some default)
+    let init_val = ctx.new_value();
+    ctx.emit(Instruction::Const {
+        result: init_val,
+        value: ConstantValue::Int(0, Ty::I64),
+    });
+
+    // Store
+    ctx.emit(Instruction::Store {
+        ptr: loop_var_ptr,
+        value: init_val,
+    });
+
+    // Bind pattern
+    bind_pattern_ptr(ctx, pattern, loop_var_ptr, loop_var_ty);
 
     lower_expr(ctx, body);
     ctx.exit_scope();
-    ctx.terminate(Terminator::Branch(cond_block));
+    if !ctx
+        .get_current_block()
+        .map(|b| b.is_terminated())
+        .unwrap_or(true)
+    {
+        ctx.terminate(Terminator::Branch(cond_block));
+    }
 
     // Pop loop target
     ctx.pop_loop_target();
@@ -776,46 +1048,17 @@ fn lower_assign(
 ) -> ValueId {
     let val = lower_expr(ctx, value);
 
-    // Get the pointer to store to
-    let ptr = match target {
-        ast::Expr::Variable(ident) => {
-            // Look up the variable's allocation
-            ctx.lookup_variable(&ident.name)
-                .expect("Variable not found")
-        }
-        ast::Expr::Path(path) if path.segments.len() == 1 => ctx
-            .lookup_variable(&path.segments[0].name)
-            .expect("Variable not found"),
-        ast::Expr::FieldAccess { object, .. } => lower_expr(ctx, object),
-        ast::Expr::Index { object, index } => {
-            let obj = lower_expr(ctx, object);
-            let idx = lower_expr(ctx, index);
-            let ptr = ctx.new_value();
-            ctx.emit(Instruction::GetElementPtr {
-                result: ptr,
-                ptr: obj,
-                index: idx,
-            });
-            ptr
-        }
-        _ => {
-            // Keep lowering resilient: produce a no-op assignment target.
-            // Semantic validation should reject invalid targets earlier.
-            let tmp = ctx.new_value();
-            ctx.emit(Instruction::Alloc {
-                result: tmp,
-                ty: Ty::I64,
-            });
-            tmp
-        }
-    };
+    let ptr = lower_lvalue(ctx, target);
 
     // Handle compound assignment operators
     let final_val = if op != ast::AssignOp::Assign {
         let loaded = ctx.new_value();
+        // Infer target type for load
+        let target_ty = infer_expr_type(ctx, target);
         ctx.emit(Instruction::Load {
             result: loaded,
             ptr,
+            ty: target_ty,
         });
 
         let computed = ctx.new_value();
@@ -943,30 +1186,20 @@ fn lower_struct_literal(
     ctx.emit(Instruction::StructAgg {
         result: struct_val,
         fields: field_values,
-        ty: struct_ty.clone(),
-    });
-
-    // Allocate space on stack for the struct
-    let result = ctx.new_value();
-    ctx.emit(Instruction::Alloc {
-        result,
         ty: struct_ty,
     });
 
-    // Store the struct value to the allocated space
-    ctx.emit(Instruction::Store {
-        ptr: result,
-        value: struct_val,
-    });
-
-    result
+    // Return value directly (StructAgg result)
+    struct_val
 }
 
 /// Lowers a self expression.
 fn lower_self(ctx: &mut LoweringContext) -> ValueId {
     // Look up 'self' in scope
-    if let Some(value) = ctx.lookup_variable("self") {
-        value
+    if let Some(ptr) = ctx.lookup_variable("self") {
+        // Load the value like we do for regular variables
+        let ty = ctx.lookup_variable_type("self").cloned().unwrap_or(Ty::I64);
+        maybe_load(ctx, ptr, ty)
     } else {
         // Create placeholder
         let result = ctx.new_value();
@@ -974,22 +1207,6 @@ fn lower_self(ctx: &mut LoweringContext) -> ValueId {
         ctx.emit(Instruction::Const { result, value });
         result
     }
-}
-
-/// Lowers a spawn expression.
-fn lower_spawn(ctx: &mut LoweringContext, expr: &ast::Expr) -> ValueId {
-    let spawned = lower_expr(ctx, expr);
-    let result = ctx.new_value();
-
-    // Create spawn instruction
-    // In a real implementation, this would create a new task
-    ctx.emit(Instruction::Call {
-        result,
-        func: "spawn".to_string(),
-        args: vec![spawned],
-    });
-
-    result
 }
 
 /// Lowers an async block.
@@ -1010,4 +1227,42 @@ fn lower_concurrent_block(ctx: &mut LoweringContext, block: &ast::Block) -> Valu
 fn lower_pass(ctx: &mut LoweringContext) -> ValueId {
     // Pass is a no-op, returns unit
     lower_unit(ctx)
+}
+
+/// Lowers a spawn expression.
+fn lower_spawn(ctx: &mut LoweringContext, expr: &ast::Expr) -> ValueId {
+    let spawned = lower_expr(ctx, expr);
+    let result = ctx.new_value();
+
+    // Spawn instruction
+    ctx.emit(Instruction::Call {
+        result,
+        func: "spawn".to_string(), // Placeholder for runtime spawn
+        args: vec![spawned],
+        ty: Ty::I64, // Placeholder handle type
+    });
+
+    result
+}
+
+/// Lowers a typed expression to IR.
+///
+/// This is a stub implementation that will be expanded to properly handle
+/// typed expressions. For now, it creates a placeholder value.
+pub fn lower_typed_expr(
+    _ctx: &mut LoweringContext,
+    expr: &jet_typeck::TypedExpr,
+) -> ValueId {
+    // TODO: Implement full typed expression lowering
+    // For now, just create a placeholder based on the expression type
+    let result = _ctx.new_value();
+    let ty = crate::ty::lower_typeck_type(expr.ty, _ctx.type_context());
+
+    // Emit a placeholder constant
+    _ctx.emit(Instruction::Const {
+        result,
+        value: ConstantValue::Zero(ty),
+    });
+
+    result
 }

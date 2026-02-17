@@ -9,6 +9,11 @@
 //! - Diagnostic publishing
 //! - Incremental text synchronization
 
+#![allow(clippy::collapsible_match)]
+#![allow(clippy::single_match)]
+#![allow(clippy::match_like_matches_macro)]
+#![allow(clippy::explicit_auto_deref)]
+
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -22,17 +27,25 @@ mod completion;
 mod document;
 mod format;
 mod handlers;
+mod inlay_hints;
+mod selection_range;
 mod semantic_tokens;
+mod signature_help;
+mod workspace_symbol;
 
 use code_actions::{get_code_actions, get_refactoring_actions, get_source_actions};
 use completion::{get_completions, get_trigger_completions};
 use document::Document;
 use format::{format_document, format_on_type, format_range};
 use handlers::{find_definition, find_references, get_document_symbols, get_hover_info};
+use inlay_hints::get_inlay_hints;
+use selection_range::get_selection_ranges;
 use semantic_tokens::{
     compute_semantic_tokens, compute_semantic_tokens_range, get_semantic_token_modifiers,
     get_semantic_token_types,
 };
+use signature_help::get_signature_help;
+use workspace_symbol::search_workspace_symbols;
 
 /// The backend state for the LSP server
 #[derive(Debug)]
@@ -464,11 +477,20 @@ impl LanguageServer for Backend {
 
     /// Inlay hints
     async fn inlay_hint(&self, params: InlayHintParams) -> Result<Option<Vec<InlayHint>>> {
-        let _uri = params.text_document.uri;
-        let _range = params.range;
+        let uri = params.text_document.uri;
+        let range = params.range;
 
-        // TODO: Implement inlay hints (type annotations, parameter names)
-        Ok(None)
+        let docs = self.documents.read().await;
+        let Some(doc) = docs.get(&uri) else {
+            return Ok(None);
+        };
+
+        let Some(ref ast) = doc.ast else {
+            return Ok(None);
+        };
+
+        let hints = get_inlay_hints(doc, ast, range);
+        Ok(Some(hints))
     }
 
     /// Semantic tokens
@@ -538,11 +560,20 @@ impl LanguageServer for Backend {
 
     /// Signature help
     async fn signature_help(&self, params: SignatureHelpParams) -> Result<Option<SignatureHelp>> {
-        let _uri = params.text_document_position_params.text_document.uri;
-        let _position = params.text_document_position_params.position;
+        let uri = params.text_document_position_params.text_document.uri;
+        let position = params.text_document_position_params.position;
 
-        // TODO: Implement signature help (function parameter hints)
-        Ok(None)
+        let docs = self.documents.read().await;
+        let Some(doc) = docs.get(&uri) else {
+            return Ok(None);
+        };
+
+        let Some(ref ast) = doc.ast else {
+            return Ok(None);
+        };
+
+        let signature_help = get_signature_help(doc, ast, position);
+        Ok(signature_help)
     }
 
     /// Selection ranges
@@ -550,11 +581,19 @@ impl LanguageServer for Backend {
         &self,
         params: SelectionRangeParams,
     ) -> Result<Option<Vec<SelectionRange>>> {
-        let _uri = params.text_document.uri;
-        let _positions = params.positions;
+        let uri = params.text_document.uri;
 
-        // TODO: Implement selection ranges
-        Ok(None)
+        let docs = self.documents.read().await;
+        let Some(doc) = docs.get(&uri) else {
+            return Ok(None);
+        };
+
+        let Some(ref ast) = doc.ast else {
+            return Ok(None);
+        };
+
+        let selection_ranges = get_selection_ranges(doc, ast, params.positions);
+        Ok(Some(selection_ranges))
     }
 
     /// Workspace symbols
@@ -562,10 +601,8 @@ impl LanguageServer for Backend {
         &self,
         params: WorkspaceSymbolParams,
     ) -> Result<Option<Vec<SymbolInformation>>> {
-        let _query = params.query;
-
-        // TODO: Implement workspace-wide symbol search
-        Ok(None)
+        let symbols = search_workspace_symbols(&self.documents, params).await;
+        Ok(Some(symbols))
     }
 }
 

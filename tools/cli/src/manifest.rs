@@ -135,7 +135,7 @@ pub struct Package {
 }
 
 /// Build configuration
-#[derive(Deserialize, Serialize, Debug, Clone, Default)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct BuildConfig {
     /// Target directory
     #[serde(rename = "target-dir")]
@@ -163,6 +163,19 @@ pub struct BuildConfig {
     /// Build profiles
     #[serde(default)]
     pub profiles: HashMap<String, Profile>,
+}
+
+impl Default for BuildConfig {
+    fn default() -> Self {
+        Self {
+            target_dir: default_target_dir(),
+            profile: None,
+            rustc_wrapper: None,
+            linker: None,
+            linker_flags: vec![],
+            profiles: HashMap::new(),
+        }
+    }
 }
 
 /// Build profile configuration

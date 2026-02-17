@@ -107,9 +107,17 @@ impl Document {
         }
     }
 
+    /// Convert a jet-lexer Span to an LSP Range
+    pub fn span_to_range(&self, span: jet_lexer::Span) -> Range {
+        Range {
+            start: self.offset_to_position(span.start),
+            end: self.offset_to_position(span.end),
+        }
+    }
+
     /// Convert a jet-diagnostics Span to an LSP Range
     #[allow(dead_code)]
-    pub fn span_to_range(&self, span: Span) -> Range {
+    pub fn diag_span_to_range(&self, span: Span) -> Range {
         Range {
             start: self.offset_to_position(span.start),
             end: self.offset_to_position(span.end),
@@ -143,7 +151,7 @@ impl Document {
         }
 
         Diagnostic {
-            range: self.span_to_range(diag.span),
+            range: self.diag_span_to_range(diag.span),
             severity,
             code: diag
                 .error_code
