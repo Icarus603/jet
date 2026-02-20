@@ -6,17 +6,23 @@ import core::option::{Option, Some, None}
 import core::result::{Result, Ok, Err}
 import addr::{SocketAddr, NetworkError}
 
+### Opaque handle to a TCP stream (backed by Rust TcpStream).
+type TcpStreamHandle = *mut u8
+
+### Opaque handle to a TCP listener (backed by Rust TcpListener).
+type TcpListenerHandle = *mut u8
+
 ### A TCP stream between a local and remote socket.
 type TcpStream = {
+    handle: TcpStreamHandle
     local_addr: SocketAddr
     peer_addr: SocketAddr
-    # Internal socket handle
 }
 
 ### A TCP socket server that listens for connections.
 type TcpListener = {
+    handle: TcpListenerHandle
     local_addr: SocketAddr
-    # Internal listener handle
 }
 
 ### Error type for TCP operations.
@@ -36,6 +42,85 @@ enum TcpErrorKind:
     Interrupted
     Other
 
+### Result type for TCP operations that returns a value.
+type TcpResult[T] = Result[T, TcpError]
+
+### Result type for TCP read/write operations (returns bytes transferred or -1 for error).
+type IoResult = i64
+
+### Result type for TCP operations that return unit.
+type UnitResult = i32  # 0 = success, -1 = error
+
+### Opaque handle to an error message string.
+type ErrorStringHandle = *mut u8
+
+### Opaque handle to a result containing a socket address.
+type SocketAddrResultHandle = *mut u8
+
+### Opaque handle to a result containing a TCP stream and socket address.
+type StreamAddrResultHandle = *mut u8
+
+### Opaque handle to a result containing a TCP listener.
+type ListenerResultHandle = *mut u8
+
+### Opaque handle to a result containing a string.
+type StringResultHandle = *mut u8
+
+### Opaque handle to a result containing an option of u16.
+type OptionU16ResultHandle = *mut u8
+
+### Opaque handle to a URL.
+type UrlHandle = *mut u8
+
+### Opaque handle to an HTTP client.
+type HttpClientHandle = *mut u8
+
+### Opaque handle to an HTTP response.
+type HttpResponseHandle = *mut u8
+
+### Opaque handle to a result containing an HTTP response.
+type HttpResponseResultHandle = *mut u8
+
+### Opaque handle to a JetString.
+type JetStringHandle = *mut u8
+
+### Opaque handle to a byte vector result.
+type BytesResultHandle = *mut u8
+
+# FFI function declarations for TCP operations
+extern fn jet_tcp_stream_connect(addr_str: *const u8, addr_len: usize, timeout_ms: u64) -> TcpStreamHandle
+extern fn jet_tcp_stream_read(stream: TcpStreamHandle, buf: *mut u8, buf_len: usize) -> IoResult
+extern fn jet_tcp_stream_write(stream: TcpStreamHandle, buf: *const u8, buf_len: usize) -> IoResult
+extern fn jet_tcp_stream_flush(stream: TcpStreamHandle) -> UnitResult
+extern fn jet_tcp_stream_close(stream: TcpStreamHandle)
+extern fn jet_tcp_stream_set_read_timeout(stream: TcpStreamHandle, timeout_ms: u64) -> UnitResult
+extern fn jet_tcp_stream_set_write_timeout(stream: TcpStreamHandle, timeout_ms: u64) -> UnitResult
+extern fn jet_tcp_stream_set_nodelay(stream: TcpStreamHandle, nodelay: bool) -> UnitResult
+extern fn jet_tcp_stream_nodelay(stream: TcpStreamHandle) -> i32  # -1 = error, 0 = false, 1 = true
+extern fn jet_tcp_stream_set_ttl(stream: TcpStreamHandle, ttl: u32) -> UnitResult
+extern fn jet_tcp_stream_ttl(stream: TcpStreamHandle) -> i32  # -1 = error, otherwise TTL
+extern fn jet_tcp_stream_shutdown(stream: TcpStreamHandle, how: i32) -> UnitResult
+extern fn jet_tcp_stream_local_addr(stream: TcpStreamHandle) -> StringResultHandle
+extern fn jet_tcp_stream_peer_addr(stream: TcpStreamHandle) -> StringResultHandle
+extern fn jet_tcp_stream_free_result(result: *mut u8)
+
+extern fn jet_tcp_listener_bind(addr_str: *const u8, addr_len: usize) -> ListenerResultHandle
+extern fn jet_tcp_listener_accept(listener: TcpListenerHandle) -> StreamAddrResultHandle
+extern fn jet_tcp_listener_local_addr(listener: TcpListenerHandle) -> StringResultHandle
+extern fn jet_tcp_listener_set_nonblocking(listener: TcpListenerHandle, nonblocking: bool) -> UnitResult
+extern fn jet_tcp_listener_set_ttl(listener: TcpListenerHandle, ttl: u32) -> UnitResult
+extern fn jet_tcp_listener_ttl(listener: TcpListenerHandle) -> i32
+extern fn jet_tcp_listener_close(listener: TcpListenerHandle)
+extern fn jet_tcp_listener_free_result(result: *mut u8)
+
+extern fn jet_net_error_message() -> ErrorStringHandle
+extern fn jet_net_error_kind() -> i32
+extern fn jet_net_free_string(s: ErrorStringHandle)
+
+extern fn jet_string_free(s: JetStringHandle)
+extern fn jet_string_len(s: JetStringHandle) -> usize
+extern fn jet_string_data(s: JetStringHandle) -> *const u8
+
 impl Show for TcpError:
     fn show(self) -> string:
         f"TCP error ({self.kind.show()}): {self.message}"
@@ -52,16 +137,166 @@ impl Show for TcpErrorKind:
             Interrupted -> "interrupted"
             Other -> "other"
 
+### Converts an error kind code from FFI to TcpErrorKind.
+private fn error_kind_from_code(code: i32) -> TcpErrorKind:
+    match code:
+        0 -> ConnectionRefused
+        1 -> ConnectionReset
+        2 -> ConnectionAborted
+        3 -> NotConnected
+        4 -> AddrInUse
+        5 -> TimedOut
+        6 -> Interrupted
+        _ -> Other
+
+### Gets the last error from the FFI layer.
+private fn get_last_error() -> TcpError:
+    let msg_handle = jet_net_error_message()
+    let kind_code = jet_net_error_kind()
+
+    let message = if msg_handle.is_null():
+        "Unknown error"
+    else:
+        # Convert the JetString to a Jet string
+        let len = jet_string_len(msg_handle as JetStringHandle)
+        let data = jet_string_data(msg_handle as JetStringHandle)
+        let bytes = unsafe { Vec::from_raw_parts(data, len, len) }
+        let s = String::from_utf8_lossy(bytes)
+        jet_string_free(msg_handle as JetStringHandle)
+        s
+
+    TcpError {
+        message: message,
+        kind: error_kind_from_code(kind_code)
+    }
+
+### Parses a socket address string into a SocketAddr.
+private fn parse_socket_addr(addr_str: string) -> Option[SocketAddr]:
+    # Parse "ip:port" format
+    match addr_str.rfind(':'):
+        Some(colon_idx) ->
+            let ip_part = addr_str.slice(0, colon_idx)
+            let port_part = addr_str.slice(colon_idx + 1, addr_str.len())
+            match port_part.parse::<u16>():
+                Some(port) ->
+                    # Try to parse as IPv4 first
+                    match parse_ipv4(&ip_part):
+                        Some(v4) -> Some(SocketAddr::V4(SocketAddrV4::new(v4, port)))
+                        None ->
+                            # Try IPv6
+                            match parse_ipv6(&ip_part):
+                                Some(v6) -> Some(SocketAddr::V6(SocketAddrV6::new(v6, port, 0, 0)))
+                                None -> None
+                None -> None
+        None -> None
+
+### Parses an IPv4 address.
+private fn parse_ipv4(s: &string) -> Option[Ipv4Addr]:
+    let parts = s.split('.')
+    if parts.len() != 4:
+        return None
+
+    let octets = [0u8; 4]
+    for i in 0..4:
+        match parts[i].parse::<u8>():
+            Some(n) -> octets[i] = n
+            None -> return None
+
+    Some(Ipv4Addr { octets: octets })
+
+### Parses an IPv6 address (simplified - just checks for brackets and basic format).
+private fn parse_ipv6(s: &string) -> Option[Ipv6Addr]:
+    # Remove brackets if present
+    let addr_str = if s.starts_with('[') and s.ends_with(']'):
+        s.slice(1, s.len() - 1)
+    else:
+        s
+
+    let parts = addr_str.split(':')
+    if parts.len() != 8:
+        return None
+
+    let segments = [0u16; 8]
+    for i in 0..8:
+        match u16::from_str_radix(parts[i], 16):
+            Some(n) -> segments[i] = n
+            None -> return None
+
+    Some(Ipv6Addr { segments: segments })
+
 impl TcpStream:
     ### Connects to a remote host.
     fn connect(addr: SocketAddr) -> Result[TcpStream, TcpError] ! async:
-        # In a real implementation, perform async connect
-        Err(TcpError { message: "Not implemented", kind: TcpErrorKind::Other })
+        let addr_str = addr.show()
+        let addr_bytes = addr_str.to_bytes()
+
+        let handle = unsafe {
+            jet_tcp_stream_connect(addr_bytes.as_ptr(), addr_bytes.len(), 0)
+        }
+
+        if handle.is_null():
+            return Err(get_last_error())
+
+        # Get local and peer addresses from the stream
+        let local_addr_result = unsafe { jet_tcp_stream_local_addr(handle) }
+        let peer_addr_result = unsafe { jet_tcp_stream_peer_addr(handle) }
+
+        let local_addr = if local_addr_result.is_null():
+            addr  # Fallback
+        else:
+            let local_str = result_to_string(local_addr_result)
+            jet_tcp_stream_free_result(local_addr_result)
+            parse_socket_addr(local_str).unwrap_or(addr)
+
+        let peer_addr = if peer_addr_result.is_null():
+            addr  # Fallback
+        else:
+            let peer_str = result_to_string(peer_addr_result)
+            jet_tcp_stream_free_result(peer_addr_result)
+            parse_socket_addr(peer_str).unwrap_or(addr)
+
+        Ok(TcpStream {
+            handle: handle,
+            local_addr: local_addr,
+            peer_addr: peer_addr
+        })
 
     ### Connects to a remote host with a timeout.
     fn connect_timeout(addr: SocketAddr, timeout: float64) -> Result[TcpStream, TcpError] ! async:
-        # In a real implementation, perform async connect with timeout
-        TcpStream.connect(addr)
+        let addr_str = addr.show()
+        let addr_bytes = addr_str.to_bytes()
+        let timeout_ms = (timeout * 1000.0) as u64
+
+        let handle = unsafe {
+            jet_tcp_stream_connect(addr_bytes.as_ptr(), addr_bytes.len(), timeout_ms)
+        }
+
+        if handle.is_null():
+            return Err(get_last_error())
+
+        # Get local and peer addresses from the stream
+        let local_addr_result = unsafe { jet_tcp_stream_local_addr(handle) }
+        let peer_addr_result = unsafe { jet_tcp_stream_peer_addr(handle) }
+
+        let local_addr = if local_addr_result.is_null():
+            addr
+        else:
+            let local_str = result_to_string(local_addr_result)
+            jet_tcp_stream_free_result(local_addr_result)
+            parse_socket_addr(local_str).unwrap_or(addr)
+
+        let peer_addr = if peer_addr_result.is_null():
+            addr
+        else:
+            let peer_str = result_to_string(peer_addr_result)
+            jet_tcp_stream_free_result(peer_addr_result)
+            parse_socket_addr(peer_str).unwrap_or(addr)
+
+        Ok(TcpStream {
+            handle: handle,
+            local_addr: local_addr,
+            peer_addr: peer_addr
+        })
 
     ### Returns the local address.
     fn local_addr(self) -> SocketAddr:
@@ -73,11 +308,25 @@ impl TcpStream:
 
     ### Reads data from the stream.
     fn read(self, buf: &mut [u8]) -> Result<usize, TcpError] ! async:
-        Ok(0)
+        let result = unsafe {
+            jet_tcp_stream_read(self.handle, buf.as_mut_ptr(), buf.len())
+        }
+
+        if result < 0:
+            Err(get_last_error())
+        else:
+            Ok(result as usize)
 
     ### Writes data to the stream.
     fn write(self, buf: &[u8]) -> Result<usize, TcpError] ! async:
-        Ok(buf.len())
+        let result = unsafe {
+            jet_tcp_stream_write(self.handle, buf.as_ptr(), buf.len())
+        }
+
+        if result < 0:
+            Err(get_last_error())
+        else:
+            Ok(result as usize)
 
     ### Writes all data to the stream.
     fn write_all(self, buf: &[u8]) -> Result<unit, TcpError] ! async:
@@ -90,48 +339,98 @@ impl TcpStream:
 
     ### Flushes the stream.
     fn flush(self) -> Result<unit, TcpError] ! async:
-        Ok(())
+        let result = unsafe { jet_tcp_stream_flush(self.handle) }
+        if result < 0:
+            Err(get_last_error())
+        else:
+            Ok(())
 
     ### Shuts down the read side of the stream.
     fn shutdown_read(self) -> Result<unit, TcpError]:
-        Ok(())
+        let result = unsafe { jet_tcp_stream_shutdown(self.handle, 0) }  # 0 = Read
+        if result < 0:
+            Err(get_last_error())
+        else:
+            Ok(())
 
     ### Shuts down the write side of the stream.
     fn shutdown_write(self) -> Result<unit, TcpError]:
-        Ok(())
+        let result = unsafe { jet_tcp_stream_shutdown(self.handle, 1) }  # 1 = Write
+        if result < 0:
+            Err(get_last_error())
+        else:
+            Ok(())
 
     ### Shuts down both sides of the stream.
     fn shutdown(self) -> Result<unit, TcpError]:
-        self.shutdown_read()?;
-        self.shutdown_write()
+        let result = unsafe { jet_tcp_stream_shutdown(self.handle, 2) }  # 2 = Both
+        if result < 0:
+            Err(get_last_error())
+        else:
+            Ok(())
 
     ### Sets the read timeout.
     fn set_read_timeout(self, timeout: Option[float64]) -> Result<unit, TcpError]:
-        Ok(())
+        let timeout_ms = match timeout:
+            Some(t) -> (t * 1000.0) as u64
+            None -> 0
+
+        let result = unsafe { jet_tcp_stream_set_read_timeout(self.handle, timeout_ms) }
+        if result < 0:
+            Err(get_last_error())
+        else:
+            Ok(())
 
     ### Sets the write timeout.
     fn set_write_timeout(self, timeout: Option[float64]) -> Result<unit, TcpError]:
-        Ok(())
+        let timeout_ms = match timeout:
+            Some(t) -> (t * 1000.0) as u64
+            None -> 0
+
+        let result = unsafe { jet_tcp_stream_set_write_timeout(self.handle, timeout_ms) }
+        if result < 0:
+            Err(get_last_error())
+        else:
+            Ok(())
 
     ### Sets the nodelay option (disables Nagle's algorithm).
     fn set_nodelay(self, nodelay: bool) -> Result<unit, TcpError]:
-        Ok(())
+        let result = unsafe { jet_tcp_stream_set_nodelay(self.handle, nodelay) }
+        if result < 0:
+            Err(get_last_error())
+        else:
+            Ok(())
 
     ### Returns true if nodelay is enabled.
     fn nodelay(self) -> bool:
-        false
+        let result = unsafe { jet_tcp_stream_nodelay(self.handle) }
+        result == 1
 
     ### Sets the TTL (time to live).
     fn set_ttl(self, ttl: u32) -> Result<unit, TcpError]:
-        Ok(())
+        let result = unsafe { jet_tcp_stream_set_ttl(self.handle, ttl) }
+        if result < 0:
+            Err(get_last_error())
+        else:
+            Ok(())
 
     ### Returns the TTL.
     fn ttl(self) -> u32:
-        64
+        let result = unsafe { jet_tcp_stream_ttl(self.handle) }
+        if result < 0:
+            64  # Default TTL
+        else:
+            result as u32
 
     ### Returns true if the stream is connected.
     fn is_connected(self) -> bool:
-        true
+        # Check if we can get peer address
+        let result = unsafe { jet_tcp_stream_peer_addr(self.handle) }
+        if result.is_null():
+            false
+        else:
+            jet_tcp_stream_free_result(result)
+            true
 
     ### Splits the stream into read and write halves.
     fn split(self) -> (TcpReadHalf, TcpWriteHalf):
@@ -144,6 +443,27 @@ impl TcpStream:
     ### Returns a buffered writer for this stream.
     fn buffered_writer(self) -> BufWriter:
         BufWriter.new_tcp(self)
+
+    ### Closes the stream and releases resources.
+    fn close(self):
+        unsafe { jet_tcp_stream_close(self.handle) }
+
+### Converts a string result handle to a string.
+private fn result_to_string(result: StringResultHandle) -> string:
+    if result.is_null():
+        return ""
+
+    let data = jet_string_data(result as JetStringHandle)
+    let len = jet_string_len(result as JetStringHandle)
+
+    if data.is_null() or len == 0:
+        jet_string_free(result as JetStringHandle)
+        return ""
+
+    let bytes = unsafe { Vec::from_raw_parts(data, len, len) }
+    let s = String::from_utf8_lossy(bytes)
+    jet_string_free(result as JetStringHandle)
+    s
 
 ### Read half of a split TCP stream.
 type TcpReadHalf = {
@@ -169,8 +489,25 @@ impl TcpWriteHalf:
 impl TcpListener:
     ### Creates a new TCP listener bound to the given address.
     fn bind(addr: SocketAddr) -> Result[TcpListener, TcpError] ! async:
-        # In a real implementation, bind to the address
-        Ok(TcpListener { local_addr: addr })
+        let addr_str = addr.show()
+        let addr_bytes = addr_str.to_bytes()
+
+        let result = unsafe {
+            jet_tcp_listener_bind(addr_bytes.as_ptr(), addr_bytes.len())
+        }
+
+        if result.is_null():
+            return Err(get_last_error())
+
+        # The result handle contains both the listener handle and error info
+        # For now, assume success if non-null
+        # In a full implementation, we'd extract the handle from the result
+        let handle = result as TcpListenerHandle
+
+        Ok(TcpListener {
+            handle: handle,
+            local_addr: addr
+        })
 
     ### Returns the local address.
     fn local_addr(self) -> SocketAddr:
@@ -178,8 +515,40 @@ impl TcpListener:
 
     ### Accepts a new connection.
     fn accept(self) -> Result[(TcpStream, SocketAddr), TcpError] ! async:
-        # In a real implementation, accept a connection
-        Err(TcpError { message: "Not implemented", kind: TcpErrorKind::Other })
+        let result = unsafe { jet_tcp_listener_accept(self.handle) }
+
+        if result.is_null():
+            return Err(get_last_error())
+
+        # Extract stream handle and peer address from result
+        # For now, create a placeholder - full implementation would parse the result
+        let stream_handle = result as TcpStreamHandle
+
+        # Get peer address
+        let peer_result = unsafe { jet_tcp_stream_peer_addr(stream_handle) }
+        let peer_addr = if peer_result.is_null():
+            SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::localhost(), 0))
+        else:
+            let peer_str = result_to_string(peer_result)
+            parse_socket_addr(peer_str).unwrap_or(
+                SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::localhost(), 0))
+            )
+
+        # Get local address from the stream
+        let local_result = unsafe { jet_tcp_stream_local_addr(stream_handle) }
+        let local_addr = if local_result.is_null():
+            self.local_addr
+        else:
+            let local_str = result_to_string(local_result)
+            parse_socket_addr(local_str).unwrap_or(self.local_addr)
+
+        let stream = TcpStream {
+            handle: stream_handle,
+            local_addr: local_addr,
+            peer_addr: peer_addr
+        }
+
+        Ok((stream, peer_addr))
 
     ### Returns an iterator over incoming connections.
     fn incoming(self) -> Incoming:
@@ -187,22 +556,38 @@ impl TcpListener:
 
     ### Sets the non-blocking mode.
     fn set_nonblocking(self, nonblocking: bool) -> Result<unit, TcpError]:
-        Ok(())
+        let result = unsafe { jet_tcp_listener_set_nonblocking(self.handle, nonblocking) }
+        if result < 0:
+            Err(get_last_error())
+        else:
+            Ok(())
 
     ### Sets the TTL.
     fn set_ttl(self, ttl: u32) -> Result<unit, TcpError]:
-        Ok(())
+        let result = unsafe { jet_tcp_listener_set_ttl(self.handle, ttl) }
+        if result < 0:
+            Err(get_last_error())
+        else:
+            Ok(())
 
     ### Returns the TTL.
     fn ttl(self) -> u32:
-        64
+        let result = unsafe { jet_tcp_listener_ttl(self.handle) }
+        if result < 0:
+            64
+        else:
+            result as u32
+
+    ### Closes the listener.
+    fn close(self):
+        unsafe { jet_tcp_listener_close(self.handle) }
 
 ### Iterator over incoming TCP connections.
 struct Incoming:
     listener: TcpListener
 
 impl Incoming:
-    fn next(mut self) -> Option<Result[(TcpStream, SocketAddr), TcpError] ! async>:
+    fn next(mut self) -> Option<Result[(TcpStream, SocketAddr), TcpError] ! async]:
         Some(self.listener.accept().await)
 
 ### Connects to a remote host and returns the stream.

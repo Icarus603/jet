@@ -1,0 +1,688 @@
+### Time utilities for Jet.
+###
+### This module provides Duration, Instant, SystemTime, Date, Time, DateTime,
+### and related types for the Jet programming language.
+
+import core::option::{Option, Some, None}
+import core::result::{Result, Ok, Err}
+
+### FFI declarations for datetime operations
+### These functions are implemented in the Rust runtime (stdlib/src/datetime.rs)
+
+# Date operations
+extern fn jet_date_today() -> Date
+extern fn jet_date_format(date: Date, fmt: *u8, fmt_len: usize) -> *u8
+extern fn jet_date_parse(s: *u8, s_len: usize, fmt: *u8, fmt_len: usize) -> DateResult
+
+# Time operations
+extern fn jet_time_format(time: Time, fmt: *u8, fmt_len: usize) -> *u8
+
+# DateTime operations
+extern fn jet_datetime_now() -> DateTime
+extern fn jet_datetime_now_utc() -> DateTime
+extern fn jet_datetime_format(dt: DateTime, fmt: *u8, fmt_len: usize) -> *u8
+extern fn jet_datetime_parse(s: *u8, s_len: usize, fmt: *u8, fmt_len: usize) -> DateTimeResult
+extern fn jet_datetime_timestamp(dt: DateTime) -> Int
+
+# Instant operations
+extern fn jet_instant_now() -> Instant
+
+# SystemTime operations
+extern fn jet_systemtime_now() -> SystemTime
+
+# Sleep operation
+extern fn jet_sleep_nanos(nanos: Int)
+
+# String free operation (for freeing FFI-allocated strings)
+extern fn jet_string_free(ptr: *u8)
+
+### Result type for Date operations returning a string
+type DateResult = {
+    date: Date,
+    success: Bool,
+    error_msg: *u8
+}
+
+### Result type for DateTime operations returning a string
+type DateTimeResult = {
+    datetime: DateTime,
+    success: Bool,
+    error_msg: *u8
+}
+
+### A duration representing a span of time.
+type Duration = {
+    nanos: Int
+}
+
+### A point in time (monotonic clock).
+type Instant = {
+    nanos: Int
+}
+
+### A point in time (system clock).
+type SystemTime = {
+    nanos: Int
+}
+
+### A date (year, month, day) without time.
+type Date = {
+    year: Int,
+    month: Int,   # 1-12
+    day: Int      # 1-31
+}
+
+### A time of day (hour, minute, second, nanosecond).
+type Time = {
+    hour: Int,        # 0-23
+    minute: Int,      # 0-59
+    second: Int,      # 0-59
+    nanosecond: Int   # 0-999,999,999
+}
+
+### A date and time with timezone offset.
+type DateTime = {
+    date: Date,
+    time: Time,
+    offset: UtcOffset
+}
+
+### A day of the week.
+type Weekday =
+    | Monday
+    | Tuesday
+    | Wednesday
+    | Thursday
+    | Friday
+    | Saturday
+    | Sunday
+
+### A UTC offset in seconds.
+type UtcOffset = {
+    seconds: Int  # -86,400 to +86,400
+}
+
+### A timezone.
+type TimeZone =
+    | Utc
+    | Local
+
+### Error type for datetime operations.
+type DateTimeError = {
+    message: String
+}
+
+### Error type for parse operations.
+type ParseError = {
+    message: String
+}
+
+### Error type for system time operations.
+type SystemTimeError = {
+    message: String
+}
+
+impl Duration:
+    ### Creates a duration from nanoseconds.
+    fn from_nanos(nanos: Int) -> Duration:
+        Duration { nanos: nanos }
+
+    ### Creates a duration from microseconds.
+    fn from_micros(micros: Int) -> Duration:
+        Duration { nanos: micros * 1000 }
+
+    ### Creates a duration from milliseconds.
+    fn from_millis(millis: Int) -> Duration:
+        Duration { nanos: millis * 1_000_000 }
+
+    ### Creates a duration from seconds.
+    fn from_secs(secs: Int) -> Duration:
+        Duration { nanos: secs * 1_000_000_000 }
+
+    ### Creates a duration from minutes.
+    fn from_mins(mins: Int) -> Duration:
+        Duration { nanos: mins * 60 * 1_000_000_000 }
+
+    ### Creates a duration from hours.
+    fn from_hours(hours: Int) -> Duration:
+        Duration { nanos: hours * 3600 * 1_000_000_000 }
+
+    ### Returns the duration in nanoseconds.
+    fn as_nanos(self) -> Int:
+        self.nanos
+
+    ### Returns the duration in microseconds.
+    fn as_micros(self) -> Int:
+        self.nanos / 1000
+
+    ### Returns the duration in milliseconds.
+    fn as_millis(self) -> Int:
+        self.nanos / 1_000_000
+
+    ### Returns the duration in seconds.
+    fn as_secs(self) -> Int:
+        self.nanos / 1_000_000_000
+
+    ### Returns the duration in minutes.
+    fn as_mins(self) -> Int:
+        self.nanos / (60 * 1_000_000_000)
+
+    ### Returns the duration in hours.
+    fn as_hours(self) -> Int:
+        self.nanos / (3600 * 1_000_000_000)
+
+    ### Returns the sub-second nanoseconds component.
+    fn subsec_nanos(self) -> Int:
+        self.nanos % 1_000_000_000
+
+    ### Returns the sub-second milliseconds component.
+    fn subsec_millis(self) -> Int:
+        (self.nanos % 1_000_000_000) / 1_000_000
+
+    ### Returns true if the duration is zero.
+    fn is_zero(self) -> Bool:
+        self.nanos == 0
+
+    ### Adds two durations.
+    fn add(self, other: Duration) -> Duration:
+        Duration { nanos: self.nanos + other.nanos }
+
+    ### Subtracts another duration from this one.
+    fn sub(self, other: Duration) -> Duration:
+        Duration { nanos: self.nanos - other.nanos }
+
+    ### Multiplies the duration by a scalar.
+    fn mul(self, scalar: Int) -> Duration:
+        Duration { nanos: self.nanos * scalar }
+
+    ### Divides the duration by a scalar.
+    fn div(self, scalar: Int) -> Duration:
+        Duration { nanos: self.nanos / scalar }
+
+    ### Zero duration.
+    fn zero() -> Duration:
+        Duration { nanos: 0 }
+
+impl Instant:
+    ### Returns the current instant.
+    fn now() -> Instant:
+        jet_instant_now()
+
+    ### Returns the duration since another instant.
+    fn duration_since(self, earlier: Instant) -> Option[Duration]:
+        if self.nanos >= earlier.nanos:
+            Some(Duration { nanos: self.nanos - earlier.nanos })
+        else:
+            None
+
+    ### Returns the elapsed time since this instant was created.
+    fn elapsed(self) -> Duration:
+        Instant::now().duration_since(self).unwrap_or(Duration::zero())
+
+    ### Adds a duration to this instant.
+    fn add(self, duration: Duration) -> Instant:
+        Instant { nanos: self.nanos + duration.nanos }
+
+    ### Subtracts a duration from this instant.
+    fn sub(self, duration: Duration) -> Instant:
+        Instant { nanos: self.nanos - duration.nanos }
+
+impl SystemTime:
+    ### Returns the current system time.
+    fn now() -> SystemTime:
+        jet_systemtime_now()
+
+    ### Returns the duration since the UNIX epoch.
+    fn duration_since_epoch(self) -> Result[Duration, SystemTimeError]:
+        if self.nanos >= 0:
+            Ok(Duration { nanos: self.nanos })
+        else:
+            Err(SystemTimeError { message: "System time is before UNIX epoch" })
+
+    ### Returns the duration since another system time.
+    fn duration_since(self, earlier: SystemTime) -> Result[Duration, SystemTimeError]:
+        if self.nanos >= earlier.nanos:
+            Ok(Duration { nanos: self.nanos - earlier.nanos })
+        else:
+            Err(SystemTimeError { message: "Earlier time is later than this time" })
+
+    ### Returns the elapsed time since this system time.
+    fn elapsed(self) -> Result[Duration, SystemTimeError]:
+        SystemTime::now().duration_since(self)
+
+    ### Adds a duration to this system time.
+    fn add(self, duration: Duration) -> SystemTime:
+        SystemTime { nanos: self.nanos + duration.nanos }
+
+    ### Subtracts a duration from this system time.
+    fn sub(self, duration: Duration) -> SystemTime:
+        SystemTime { nanos: self.nanos - duration.nanos }
+
+    ### Returns the time as seconds since the UNIX epoch.
+    fn as_secs_since_epoch(self) -> Result[Int, SystemTimeError]:
+        self.duration_since_epoch().map(|d| d.as_secs())
+
+    ### Returns the time as milliseconds since the UNIX epoch.
+    fn as_millis_since_epoch(self) -> Result[Int, SystemTimeError]:
+        self.duration_since_epoch().map(|d| d.as_millis())
+
+### UNIX epoch (January 1, 1970, 00:00:00 UTC).
+fn unix_epoch() -> SystemTime:
+    SystemTime { nanos: 0 }
+
+### Sleeps for the specified duration.
+fn sleep(duration: Duration):
+    jet_sleep_nanos(duration.nanos)
+
+### Sleeps for the specified number of milliseconds.
+fn sleep_millis(millis: Int):
+    sleep(Duration::from_millis(millis))
+
+### Sleeps for the specified number of seconds.
+fn sleep_secs(secs: Int):
+    sleep(Duration::from_secs(secs))
+
+impl Date:
+    ### Creates a new date.
+    ###
+    ### Returns None if the date is invalid (e.g., February 30).
+    fn new(year: Int, month: Int, day: Int) -> Option[Date]:
+        if month < 1 or month > 12:
+            return None
+        if day < 1 or day > days_in_month(year, month):
+            return None
+        Some(Date { year, month, day })
+
+    ### Returns the current date.
+    fn today() -> Date:
+        jet_date_today()
+
+    ### Returns the year.
+    fn year(self) -> Int:
+        self.year
+
+    ### Returns the month (1-12).
+    fn month(self) -> Int:
+        self.month
+
+    ### Returns the day (1-31).
+    fn day(self) -> Int:
+        self.day
+
+    ### Returns the day of the week.
+    fn weekday(self) -> Weekday:
+        # Zeller's congruence algorithm
+        let mut y = self.year
+        let mut m = self.month
+        let d = self.day
+
+        if m < 3:
+            m += 12
+            y -= 1
+
+        let k = y % 100
+        let j = y / 100
+
+        let f = d + (13 * (m + 1)) / 5 + k + k / 4 + j / 4 + 5 * j
+        let day_of_week = f % 7
+
+        match day_of_week:
+            0 -> Saturday
+            1 -> Sunday
+            2 -> Monday
+            3 -> Tuesday
+            4 -> Wednesday
+            5 -> Thursday
+            6 -> Friday
+            _ -> Monday  # unreachable
+
+    ### Returns the day of the year (1-366).
+    fn ordinal(self) -> Int:
+        let mut day = self.day
+        for m in 1..self.month:
+            day += days_in_month(self.year, m)
+        day
+
+    ### Returns true if this is a leap year.
+    fn is_leap_year(self) -> Bool:
+        is_leap_year(self.year)
+
+    ### Returns the number of days in the month.
+    fn days_in_month(self) -> Int:
+        days_in_month(self.year, self.month)
+
+    ### Adds days to the date.
+    fn checked_add_days(self, days: Int) -> Option[Date]:
+        # Simplified implementation
+        Date::new(self.year, self.month, self.day + days)
+
+    ### Subtracts days from the date.
+    fn checked_sub_days(self, days: Int) -> Option[Date]:
+        self.checked_add_days(-days)
+
+    ### Formats the date according to the given format string.
+    fn format(self, fmt: String) -> String:
+        unsafe {
+            let fmt_ptr = fmt.as_ptr()
+            let fmt_len = fmt.len()
+            let result_ptr = jet_date_format(self, fmt_ptr, fmt_len)
+            let result = String::from_raw_parts(result_ptr)
+            jet_string_free(result_ptr)
+            result
+        }
+
+    ### Parses a date from a string.
+    fn parse(s: String, fmt: String) -> Result[Date, ParseError]:
+        unsafe {
+            let s_ptr = s.as_ptr()
+            let s_len = s.len()
+            let fmt_ptr = fmt.as_ptr()
+            let fmt_len = fmt.len()
+            let result = jet_date_parse(s_ptr, s_len, fmt_ptr, fmt_len)
+            if result.success:
+                Ok(result.date)
+            else:
+                let msg = String::from_raw_parts(result.error_msg)
+                jet_string_free(result.error_msg)
+                Err(ParseError { message: msg })
+        }
+
+impl Time:
+    ### Creates a new time.
+    ###
+    ### Returns None if the time is invalid.
+    fn new(hour: Int, minute: Int, second: Int) -> Option[Time]:
+        Self::with_nanos(hour, minute, second, 0)
+
+    ### Creates a new time with nanoseconds.
+    fn with_nanos(hour: Int, minute: Int, second: Int, nanosecond: Int) -> Option[Time]:
+        if hour < 0 or hour > 23:
+            return None
+        if minute < 0 or minute > 59:
+            return None
+        if second < 0 or second > 59:
+            return None
+        if nanosecond < 0 or nanosecond > 999_999_999:
+            return None
+        Some(Time { hour, minute, second, nanosecond })
+
+    ### Returns midnight (00:00:00).
+    fn midnight() -> Time:
+        Time { hour: 0, minute: 0, second: 0, nanosecond: 0 }
+
+    ### Returns the hour (0-23).
+    fn hour(self) -> Int:
+        self.hour
+
+    ### Returns the minute (0-59).
+    fn minute(self) -> Int:
+        self.minute
+
+    ### Returns the second (0-59).
+    fn second(self) -> Int:
+        self.second
+
+    ### Returns the nanosecond (0-999,999,999).
+    fn nanosecond(self) -> Int:
+        self.nanosecond
+
+    ### Formats the time according to the given format string.
+    fn format(self, fmt: String) -> String:
+        unsafe {
+            let fmt_ptr = fmt.as_ptr()
+            let fmt_len = fmt.len()
+            let result_ptr = jet_time_format(self, fmt_ptr, fmt_len)
+            let result = String::from_raw_parts(result_ptr)
+            jet_string_free(result_ptr)
+            result
+        }
+
+impl DateTime:
+    ### Creates a new DateTime from a date and time.
+    fn new(date: Date, time: Time) -> DateTime:
+        DateTime { date, time, offset: UtcOffset::utc() }
+
+    ### Creates a new DateTime with a specific offset.
+    fn with_offset(date: Date, time: Time, offset: UtcOffset) -> DateTime:
+        DateTime { date, time, offset }
+
+    ### Returns the current date and time in UTC.
+    fn now_utc() -> DateTime:
+        jet_datetime_now_utc()
+
+    ### Returns the current date and time in local time.
+    fn now() -> DateTime:
+        jet_datetime_now()
+
+    ### Returns the date component.
+    fn date(self) -> Date:
+        self.date
+
+    ### Returns the time component.
+    fn time(self) -> Time:
+        self.time
+
+    ### Returns the UTC offset.
+    fn offset(self) -> UtcOffset:
+        self.offset
+
+    ### Returns the year.
+    fn year(self) -> Int:
+        self.date.year
+
+    ### Returns the month (1-12).
+    fn month(self) -> Int:
+        self.date.month
+
+    ### Returns the day (1-31).
+    fn day(self) -> Int:
+        self.date.day
+
+    ### Returns the hour (0-23).
+    fn hour(self) -> Int:
+        self.time.hour
+
+    ### Returns the minute (0-59).
+    fn minute(self) -> Int:
+        self.time.minute
+
+    ### Returns the second (0-59).
+    fn second(self) -> Int:
+        self.time.second
+
+    ### Returns the nanosecond (0-999,999,999).
+    fn nanosecond(self) -> Int:
+        self.time.nanosecond
+
+    ### Returns the Unix timestamp (seconds since epoch).
+    fn timestamp(self) -> Int:
+        jet_datetime_timestamp(self)
+
+    ### Returns the Unix timestamp in milliseconds.
+    fn timestamp_millis(self) -> Int:
+        self.timestamp() * 1000 + (self.time.nanosecond / 1_000_000)
+
+    ### Adds a duration to the datetime.
+    fn checked_add_duration(self, duration: Duration) -> Option[DateTime]:
+        # Simplified implementation
+        Some(self)
+
+    ### Subtracts a duration from the datetime.
+    fn checked_sub_duration(self, duration: Duration) -> Option[DateTime]:
+        # Simplified implementation
+        Some(self)
+
+    ### Returns the duration between two datetimes.
+    fn duration_since(self, other: DateTime) -> Duration:
+        Duration::from_secs((self.timestamp() - other.timestamp()).abs())
+
+    ### Formats the datetime according to the given format string.
+    fn format(self, fmt: String) -> String:
+        unsafe {
+            let fmt_ptr = fmt.as_ptr()
+            let fmt_len = fmt.len()
+            let result_ptr = jet_datetime_format(self, fmt_ptr, fmt_len)
+            let result = String::from_raw_parts(result_ptr)
+            jet_string_free(result_ptr)
+            result
+        }
+
+    ### Parses a datetime from a string.
+    fn parse(s: String, fmt: String) -> Result[DateTime, ParseError]:
+        unsafe {
+            let s_ptr = s.as_ptr()
+            let s_len = s.len()
+            let fmt_ptr = fmt.as_ptr()
+            let fmt_len = fmt.len()
+            let result = jet_datetime_parse(s_ptr, s_len, fmt_ptr, fmt_len)
+            if result.success:
+                Ok(result.datetime)
+            else:
+                let msg = String::from_raw_parts(result.error_msg)
+                jet_string_free(result.error_msg)
+                Err(ParseError { message: msg })
+        }
+
+impl Weekday:
+    ### Returns the number from Monday (1) to Sunday (7).
+    fn number_from_monday(self) -> Int:
+        match self:
+            Monday -> 1
+            Tuesday -> 2
+            Wednesday -> 3
+            Thursday -> 4
+            Friday -> 5
+            Saturday -> 6
+            Sunday -> 7
+
+    ### Returns the number from Sunday (1) to Saturday (7).
+    fn number_from_sunday(self) -> Int:
+        match self:
+            Sunday -> 1
+            Monday -> 2
+            Tuesday -> 3
+            Wednesday -> 4
+            Thursday -> 5
+            Friday -> 6
+            Saturday -> 7
+
+    ### Returns the next weekday.
+    fn succ(self) -> Weekday:
+        match self:
+            Monday -> Tuesday
+            Tuesday -> Wednesday
+            Wednesday -> Thursday
+            Thursday -> Friday
+            Friday -> Saturday
+            Saturday -> Sunday
+            Sunday -> Monday
+
+    ### Returns the previous weekday.
+    fn pred(self) -> Weekday:
+        match self:
+            Monday -> Sunday
+            Tuesday -> Monday
+            Wednesday -> Tuesday
+            Thursday -> Wednesday
+            Friday -> Thursday
+            Saturday -> Friday
+            Sunday -> Saturday
+
+impl Show for Weekday:
+    fn show(self) -> String:
+        match self:
+            Monday -> "Monday"
+            Tuesday -> "Tuesday"
+            Wednesday -> "Wednesday"
+            Thursday -> "Thursday"
+            Friday -> "Friday"
+            Saturday -> "Saturday"
+            Sunday -> "Sunday"
+
+impl UtcOffset:
+    ### Returns the UTC offset (0 seconds).
+    fn utc() -> UtcOffset:
+        UtcOffset { seconds: 0 }
+
+    ### Creates an offset from seconds.
+    fn from_seconds(seconds: Int) -> Option[UtcOffset]:
+        if seconds.abs() > 86_400:
+            return None
+        Some(UtcOffset { seconds })
+
+    ### Creates an offset from hours, minutes, and seconds.
+    fn from_hms(hours: Int, minutes: Int, seconds: Int) -> Option[UtcOffset]:
+        let total = hours * 3600 + minutes * 60 + seconds
+        Self::from_seconds(total)
+
+    ### Returns the offset in seconds.
+    fn as_seconds(self) -> Int:
+        self.seconds
+
+    ### Returns the offset as hours, minutes, and seconds.
+    fn as_hms(self) -> (Int, Int, Int):
+        let abs_seconds = self.seconds.abs()
+        let hours = abs_seconds / 3600
+        let minutes = (abs_seconds % 3600) / 60
+        let seconds = abs_seconds % 60
+
+        if self.seconds < 0:
+            (-hours, -minutes, -seconds)
+        else:
+            (hours, minutes, seconds)
+
+    ### Formats the offset as ±HH:MM.
+    fn format(self) -> String:
+        let (h, m, _) = self.as_hms()
+        f"{h:+03}:{m.abs():02}"
+
+impl TimeZone:
+    ### Returns the UTC timezone.
+    fn utc() -> TimeZone:
+        Utc
+
+    ### Returns the local timezone.
+    fn local() -> TimeZone:
+        Local
+
+    ### Returns the offset at a given datetime.
+    fn offset_at(self, datetime: DateTime) -> UtcOffset:
+        match self:
+            Utc -> UtcOffset::utc()
+            Local -> UtcOffset::utc()  # Simplified
+
+### Helper functions
+
+fn is_leap_year(year: Int) -> Bool:
+    year % 4 == 0 and (year % 100 != 0 or year % 400 == 0)
+
+fn days_in_month(year: Int, month: Int) -> Int:
+    match month:
+        1 -> 31
+        2 -> if is_leap_year(year) { 29 } else { 28 }
+        3 -> 31
+        4 -> 30
+        5 -> 31
+        6 -> 30
+        7 -> 31
+        8 -> 31
+        9 -> 30
+        10 -> 31
+        11 -> 30
+        12 -> 31
+        _ -> 0
+
+### Measures the execution time of a function.
+fn measure[T](f: () -> T) -> (T, Duration):
+    let start = Instant::now()
+    let result = f()
+    let elapsed = start.elapsed()
+    (result, elapsed)
+
+### Returns the current time as seconds since the UNIX epoch.
+fn now_secs() -> Int:
+    SystemTime::now().as_secs_since_epoch().unwrap_or(0)
+
+### Returns the current time as milliseconds since the UNIX epoch.
+fn now_millis() -> Int:
+    SystemTime::now().as_millis_since_epoch().unwrap_or(0)

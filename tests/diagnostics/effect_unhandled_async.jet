@@ -1,0 +1,8 @@
+# Test: Unhandled async effect
+# Expected: Error about async effect not being handled or declared
+
+fn main():
+    await fetch_data()
+
+async fn fetch_data() -> string:
+    return "data"

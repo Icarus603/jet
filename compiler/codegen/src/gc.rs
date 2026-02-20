@@ -328,6 +328,8 @@ pub fn calculate_type_size(ty: &Ty) -> CodegenResult<u64> {
         Ty::Named(_) => Err(CodegenError::unsupported_type(
             "cannot calculate size of unresolved named type",
         )),
+        // Ghost types are erased at runtime - zero size
+        Ty::Ghost(_) => Ok(0),
     }
 }
 
@@ -362,6 +364,8 @@ pub fn calculate_type_align(ty: &Ty) -> CodegenResult<u64> {
         Ty::Named(_) => Err(CodegenError::unsupported_type(
             "cannot calculate alignment of unresolved named type",
         )),
+        // Ghost types are erased at runtime - zero alignment
+        Ty::Ghost(_) => Ok(0),
     }
 }
 

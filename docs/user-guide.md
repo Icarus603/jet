@@ -26,8 +26,9 @@ Welcome to Jet! This guide will help you learn the Jet programming language from
 | `jet build`, `jet run`, `jet check`, `jet fmt` | Supported | Primary workflows |
 | Workspace builds | Supported | All members are compiled |
 | `jet test` | Supported | Discovers and executes Jet test functions via compile/run |
-| Registry publish/install/search/show | Experimental | Remote registry operations are not fully enabled in 1.0 |
-| Advanced LSP features (inlay hints/signature help/selection ranges/workspace symbols) | Experimental | Planned for post-1.0 iterations |
+| Registry publish/install/search/show | Supported | Requires reachable registry endpoint and credentials for publish |
+| Advanced LSP features (inlay hints/signature help/selection ranges/workspace symbols) | Supported | Available via `jet lsp`/`jet-lsp` |
+| Full language-spec grammar surface | Scope-limited | Some advanced forms in `docs/language-spec.md` are reserved for post-1.0 |
 
 ---
 

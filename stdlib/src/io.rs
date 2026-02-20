@@ -9,6 +9,7 @@ use std::io::{self, BufRead, BufReader, BufWriter, Read, Seek, SeekFrom, Write};
 use std::path::Path;
 
 /// A file handle for reading and writing files.
+#[derive(Debug)]
 pub struct File {
     /// The underlying std file handle
     inner: StdFile,

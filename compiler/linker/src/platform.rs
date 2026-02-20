@@ -130,13 +130,22 @@ impl Platform {
                 "-dynamic-linker".to_string(),
                 "/lib64/ld-linux-x86-64.so.2".to_string(),
             ],
-            Platform::MacOS => vec![
-                "-arch".to_string(),
-                Self::macos_arch_name(),
-                "-macos_version_min".to_string(),
-                "11.0".to_string(),
-                "-lSystem".to_string(),
-            ],
+            Platform::MacOS => {
+                let macos_version = std::process::Command::new("sw_vers")
+                    .arg("-productVersion")
+                    .output()
+                    .ok()
+                    .and_then(|out| String::from_utf8(out.stdout).ok())
+                    .map(|s| s.trim().to_string())
+                    .unwrap_or_else(|| "12.0".to_string());
+                vec![
+                    "-arch".to_string(),
+                    Self::macos_arch_name(),
+                    "-macos_version_min".to_string(),
+                    macos_version,
+                    "-lSystem".to_string(),
+                ]
+            }
             Platform::Windows => vec![
                 "/SUBSYSTEM:CONSOLE".to_string(),
                 "/ENTRY:mainCRTStartup".to_string(),

@@ -13,7 +13,9 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
+use std::io::Cursor;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use crate::manifest::Manifest;
 use crate::project::Project;
@@ -92,6 +94,35 @@ pub struct PackageArchive {
     pub data: Vec<u8>,
     /// Files included
     pub files: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RegistrySearchResponse {
+    #[serde(default)]
+    crates: Vec<RegistrySearchEntry>,
+    #[serde(default)]
+    packages: Vec<RegistrySearchEntry>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RegistrySearchEntry {
+    name: String,
+    #[serde(default)]
+    description: Option<String>,
+    #[serde(default)]
+    max_version: Option<String>,
+    #[serde(default)]
+    version: Option<String>,
+    #[serde(default)]
+    downloads: u64,
+}
+
+fn registry_client() -> Result<reqwest::Client> {
+    reqwest::Client::builder()
+        .timeout(Duration::from_secs(20))
+        .user_agent(format!("jet-cli/{}", env!("CARGO_PKG_VERSION")))
+        .build()
+        .context("failed to create registry HTTP client")
 }
 
 impl Publisher {
@@ -492,12 +523,9 @@ impl Publisher {
     async fn upload_package(
         &self,
         registry: &str,
-        _token: &str,
+        token: &str,
         archive: &PackageArchive,
     ) -> Result<()> {
-        // In a real implementation, this would make an HTTP request to the registry
-        // For now, simulate a successful upload
-
         let upload_url = format!("{}/api/v1/crates/new", registry);
 
         if self.config.verbose {
@@ -505,22 +533,20 @@ impl Publisher {
             println!("  Package size: {} bytes", archive.data.len());
         }
 
-        // Simulate network delay
-        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-
-        // In a real implementation:
-        // let client = reqwest::Client::new();
-        // let response = client
-        //     .put(&upload_url)
-        //     .header("Authorization", format!("Bearer {}", token))
-        //     .header("Content-Type", "application/gzip")
-        //     .body(archive.data.clone())
-        //     .send()
-        //     .await?;
-        //
-        // if !response.status().is_success() {
-        //     anyhow::bail!("Upload failed: {}", response.status());
-        // }
+        let client = registry_client()?;
+        let response = client
+            .put(&upload_url)
+            .header("Authorization", format!("Bearer {}", token))
+            .header("Content-Type", "application/gzip")
+            .body(archive.data.clone())
+            .send()
+            .await
+            .context("failed to upload package to registry")?;
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            anyhow::bail!("upload failed: {} {}", status, body);
+        }
 
         Ok(())
     }
@@ -553,7 +579,7 @@ fn is_valid_semver(version: &str) -> bool {
 /// Yank a package version
 pub async fn yank_package(
     registry: &str,
-    _token: &str,
+    token: &str,
     name: &str,
     version: &str,
     undo: bool,
@@ -561,16 +587,19 @@ pub async fn yank_package(
     let action = if undo { "unyank" } else { "yank" };
 
     println!("{} {} v{} from {}", action, name, version, registry);
-
-    // In a real implementation, this would make an HTTP request
-    // let client = reqwest::Client::new();
-    // let url = format!("{}/api/v1/crates/{}/{}/{}", registry, name, version, action);
-    //
-    // let response = client
-    //     .put(&url)
-    //     .header("Authorization", format!("Bearer {}", token))
-    //     .send()
-    //     .await?;
+    let client = registry_client()?;
+    let url = format!("{}/api/v1/crates/{}/{}/{}", registry, name, version, action);
+    let response = client
+        .put(&url)
+        .header("Authorization", format!("Bearer {}", token))
+        .send()
+        .await
+        .with_context(|| format!("failed to send {} request", action))?;
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        anyhow::bail!("{} failed: {} {}", action, status, body);
+    }
 
     Ok(())
 }
@@ -579,19 +608,46 @@ pub async fn yank_package(
 pub async fn search_packages(
     registry: &str,
     query: &str,
-    _limit: usize,
+    limit: usize,
 ) -> Result<Vec<SearchResult>> {
     println!("Searching for '{}' in {}...", query, registry);
-
-    // In a real implementation, this would query the registry API
-    // For now, return placeholder results
-
-    Ok(vec![SearchResult {
-        name: format!("{}-example", query),
-        version: "1.0.0".to_string(),
-        description: Some(format!("An example package matching '{}'", query)),
-        downloads: 1000,
-    }])
+    let client = registry_client()?;
+    let url = format!("{}/api/v1/crates", registry.trim_end_matches('/'));
+    let response = client
+        .get(&url)
+        .query(&[
+            ("q", query.to_string()),
+            ("per_page", limit.max(1).to_string()),
+        ])
+        .send()
+        .await
+        .context("failed to query registry search endpoint")?;
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        anyhow::bail!("search failed: {} {}", status, body);
+    }
+    let parsed: RegistrySearchResponse = response
+        .json()
+        .await
+        .context("failed to decode search response")?;
+    let entries = if parsed.crates.is_empty() {
+        parsed.packages
+    } else {
+        parsed.crates
+    };
+    Ok(entries
+        .into_iter()
+        .map(|entry| SearchResult {
+            name: entry.name,
+            version: entry
+                .version
+                .or(entry.max_version)
+                .unwrap_or_else(|| "unknown".to_string()),
+            description: entry.description,
+            downloads: entry.downloads,
+        })
+        .collect())
 }
 
 /// Search result
@@ -610,18 +666,45 @@ pub async fn install_package(
     version: Option<&str>,
     install_dir: &Path,
 ) -> Result<()> {
-    let version_str = version.unwrap_or("latest");
-    println!("Installing {} {} from {}...", name, version_str, registry);
+    let metadata = get_package_metadata(registry, name).await?;
+    let selected_version = version
+        .map(ToOwned::to_owned)
+        .or_else(|| metadata.versions.first().cloned())
+        .ok_or_else(|| anyhow::anyhow!("No versions available for package '{}'", name))?;
+    println!(
+        "Installing {} {} from {}...",
+        name, selected_version, registry
+    );
 
-    // In a real implementation:
-    // 1. Query registry for package metadata
-    // 2. Download the package archive
-    // 3. Extract to install_dir
-    // 4. Run any build scripts
+    let client = registry_client()?;
+    let download_url = format!(
+        "{}/api/v1/crates/{}/{}/download",
+        registry.trim_end_matches('/'),
+        name,
+        selected_version
+    );
+    let response = client
+        .get(&download_url)
+        .send()
+        .await
+        .with_context(|| format!("failed to download package from {}", download_url))?;
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        anyhow::bail!("download failed: {} {}", status, body);
+    }
+    let bytes = response
+        .bytes()
+        .await
+        .context("failed to read downloaded package bytes")?;
 
-    // Create install directory
     let package_dir = install_dir.join(name);
     fs::create_dir_all(&package_dir)?;
+    let tar = flate2::read::GzDecoder::new(Cursor::new(bytes));
+    let mut archive = tar::Archive::new(tar);
+    archive
+        .unpack(&package_dir)
+        .with_context(|| format!("failed to extract package into {}", package_dir.display()))?;
 
     println!("  Installed to: {}", package_dir.display());
 
@@ -629,18 +712,75 @@ pub async fn install_package(
 }
 
 /// Get package metadata from registry
-pub async fn get_package_metadata(_registry: &str, name: &str) -> Result<PackageMetadata> {
-    // In a real implementation, this would query the registry API
-
+pub async fn get_package_metadata(registry: &str, name: &str) -> Result<PackageMetadata> {
+    let client = registry_client()?;
+    let url = format!("{}/api/v1/crates/{}", registry.trim_end_matches('/'), name);
+    let response = client
+        .get(&url)
+        .send()
+        .await
+        .with_context(|| format!("failed to query package metadata at {}", url))?;
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        anyhow::bail!("metadata query failed: {} {}", status, body);
+    }
+    let body: serde_json::Value = response
+        .json()
+        .await
+        .context("failed to decode package metadata response")?;
+    let crate_obj = body.get("crate").unwrap_or(&body);
+    let versions = body
+        .get("versions")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|entry| {
+                    entry
+                        .get("num")
+                        .and_then(|n| n.as_str())
+                        .or_else(|| entry.get("version").and_then(|n| n.as_str()))
+                        .map(ToOwned::to_owned)
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
     Ok(PackageMetadata {
-        name: name.to_string(),
-        versions: vec!["1.0.0".to_string(), "0.9.0".to_string()],
-        description: Some(format!("The {} package", name)),
-        repository: None,
-        documentation: None,
-        downloads: 5000,
-        authors: vec!["Unknown".to_string()],
-        license: Some("MIT".to_string()),
+        name: crate_obj
+            .get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or(name)
+            .to_string(),
+        versions,
+        description: crate_obj
+            .get("description")
+            .and_then(|v| v.as_str())
+            .map(ToOwned::to_owned),
+        repository: crate_obj
+            .get("repository")
+            .and_then(|v| v.as_str())
+            .map(ToOwned::to_owned),
+        documentation: crate_obj
+            .get("documentation")
+            .and_then(|v| v.as_str())
+            .map(ToOwned::to_owned),
+        downloads: crate_obj
+            .get("downloads")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0),
+        authors: crate_obj
+            .get("authors")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|a| a.as_str().map(ToOwned::to_owned))
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default(),
+        license: crate_obj
+            .get("license")
+            .and_then(|v| v.as_str())
+            .map(ToOwned::to_owned),
     })
 }
 

@@ -2,6 +2,54 @@
 
 use jet_lexer::Span;
 
+/// AI annotation attribute
+#[derive(Debug, Clone, PartialEq)]
+pub struct Attribute {
+    pub name: Ident,
+    pub arguments: Vec<AttributeArg>,
+    pub span: Span,
+}
+
+/// Attribute argument - can be positional or named
+#[derive(Debug, Clone, PartialEq)]
+pub enum AttributeArg {
+    /// Positional argument (e.g., "high" in @confidence("high"))
+    Positional(AttributeValue),
+    /// Named argument (e.g., confidence=0.92 in @generated_by("model", confidence=0.92))
+    Named { name: Ident, value: AttributeValue },
+}
+
+/// Value types for attribute arguments
+#[derive(Debug, Clone, PartialEq)]
+pub enum AttributeValue {
+    String(String),
+    Integer(i64),
+    Float(f64),
+    Bool(bool),
+    Ident(Ident),
+}
+
+/// Contract specification for functions (requires/ensures)
+#[derive(Debug, Clone, PartialEq)]
+pub struct Contract {
+    /// Preconditions that must hold before function execution
+    pub requires: Vec<Expr>,
+    /// Postconditions that must hold after function execution
+    pub ensures: Vec<Expr>,
+    /// Span covering the entire contract
+    pub span: Span,
+}
+
+/// Ghost type declaration for specifications
+#[derive(Debug, Clone, PartialEq)]
+pub struct GhostType {
+    pub public: bool,
+    pub name: Ident,
+    pub generics: Vec<GenericParam>,
+    pub ty: Type,
+    pub span: Span,
+}
+
 /// Identifier
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Ident {
@@ -281,6 +329,7 @@ pub enum Expr {
     While {
         label: Option<Ident>,
         cond: Box<Expr>,
+        invariant: Option<Box<Expr>>,
         body: Box<Expr>,
     },
     /// For loop
@@ -288,6 +337,7 @@ pub enum Expr {
         label: Option<Ident>,
         pattern: Pattern,
         iterable: Box<Expr>,
+        invariant: Option<Box<Expr>>,
         body: Box<Expr>,
     },
     /// Loop (infinite)
@@ -343,6 +393,8 @@ pub enum Expr {
     Handle(HandleExpr),
     /// Resume expression (continue from effect handler)
     Resume(ResumeExpr),
+    /// Hole expression for hole-driven development (`_`)
+    Hole(Span),
 }
 
 /// Block of statements
@@ -418,12 +470,14 @@ pub struct WhereBound {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Function {
     pub public: bool,
+    pub attributes: Vec<Attribute>,
     pub name: Ident,
     pub generics: Vec<GenericParam>,
     pub params: Vec<Param>,
     pub return_type: Option<Type>,
     pub effects: Vec<Type>,
     pub where_clause: Vec<WhereBound>,
+    pub contract: Option<Contract>,
     pub body: Expr,
     pub span: Span,
 }
@@ -440,6 +494,7 @@ pub struct FieldDef {
 #[derive(Debug, Clone, PartialEq)]
 pub struct StructDef {
     pub public: bool,
+    pub attributes: Vec<Attribute>,
     pub name: Ident,
     pub generics: Vec<GenericParam>,
     pub fields: Vec<FieldDef>,
@@ -572,6 +627,7 @@ pub enum Import {
 
 /// Module-level item
 #[derive(Debug, Clone, PartialEq)]
+#[allow(clippy::large_enum_variant)]
 pub enum ModuleItem {
     Import(Import),
     Function(Function),
@@ -582,6 +638,26 @@ pub enum ModuleItem {
     TypeAlias(TypeAlias),
     Const(ConstDef),
     Effect(EffectDef),
+    Spec(Spec),
+    Example(Example),
+    GhostType(GhostType),
+}
+
+/// Literate programming specification
+#[derive(Debug, Clone, PartialEq)]
+pub struct Spec {
+    pub description: String,
+    pub test_for: Option<String>,
+    pub span: Span,
+}
+
+/// Literate programming example
+#[derive(Debug, Clone, PartialEq)]
+pub struct Example {
+    pub caption: Option<String>,
+    pub code: Box<Expr>,
+    pub test_for: Option<String>,
+    pub span: Span,
 }
 
 /// Handler arm for effect handlers
@@ -640,6 +716,7 @@ pub struct ResumeExpr {
 /// A complete module
 #[derive(Debug, Clone, PartialEq)]
 pub struct Module {
+    pub attributes: Vec<Attribute>,
     pub items: Vec<ModuleItem>,
     pub span: Span,
 }
@@ -647,6 +724,7 @@ pub struct Module {
 impl Module {
     pub fn new(span: Span) -> Self {
         Self {
+            attributes: Vec::new(),
             items: Vec::new(),
             span,
         }

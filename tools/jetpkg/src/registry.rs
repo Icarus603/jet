@@ -590,62 +590,32 @@ impl RegistryClient {
     }
 }
 
-/// Simple SHA256 implementation for checksums
+/// SHA256 implementation using sha2 crate
 mod sha256 {
+    use sha2::{Digest, Sha256};
+
     /// Compute SHA256 digest of bytes
     pub fn digest(data: &[u8]) -> String {
-        use std::collections::hash_map::DefaultHasher;
-        use std::hash::{Hash, Hasher};
-
-        // Note: This is a placeholder. In production, use a proper SHA256 implementation
-        // like the `sha2` crate. For now, we use a simple hash for demonstration.
-        let mut hasher = DefaultHasher::new();
-        data.hash(&mut hasher);
-        format!("{:016x}", hasher.finish())
+        let mut hasher = Sha256::new();
+        hasher.update(data);
+        let result = hasher.finalize();
+        hex::encode(result)
     }
 }
 
-/// Simple base64 encoding
+/// Base64 encoding using base64 crate
 mod base64 {
     /// Encode bytes to base64 string
     pub fn encode(data: &[u8]) -> String {
-        // Note: This is a placeholder. In production, use a proper base64 implementation
-        // like the `base64` crate. For now, we use a simple encoding for demonstration.
+        use base64::{engine::general_purpose::STANDARD, Engine as _};
+        STANDARD.encode(data)
+    }
 
-        const CHARSET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-
-        let mut result = String::new();
-        let mut i = 0;
-
-        while i < data.len() {
-            let b1 = data[i];
-            let b2 = data.get(i + 1).copied().unwrap_or(0);
-            let b3 = data.get(i + 2).copied().unwrap_or(0);
-
-            let idx1 = (b1 >> 2) as usize;
-            let idx2 = (((b1 & 0b11) << 4) | (b2 >> 4)) as usize;
-            let idx3 = (((b2 & 0b1111) << 2) | (b3 >> 6)) as usize;
-            let idx4 = (b3 & 0b111111) as usize;
-
-            result.push(CHARSET[idx1] as char);
-            result.push(CHARSET[idx2] as char);
-
-            if i + 1 < data.len() {
-                result.push(CHARSET[idx3] as char);
-            } else {
-                result.push('=');
-            }
-
-            if i + 2 < data.len() {
-                result.push(CHARSET[idx4] as char);
-            } else {
-                result.push('=');
-            }
-
-            i += 3;
-        }
-
-        result
+    /// Decode base64 string to bytes
+    #[allow(dead_code)]
+    pub fn decode(s: &str) -> Result<Vec<u8>, base64::DecodeError> {
+        use base64::{engine::general_purpose::STANDARD, Engine as _};
+        STANDARD.decode(s)
     }
 }
 

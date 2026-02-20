@@ -508,7 +508,7 @@ impl CompilationPipeline {
                 let obj_path = out_dir.join(&obj_name);
 
                 // Compile the IR module to an object file
-                match compile_ir_module(ir, &obj_path).await {
+                match compile_ir_module(ir, &obj_path, self.config.target_triple.as_deref()).await {
                     Ok(_) => {
                         object_files.push(obj_path);
                     }
@@ -552,7 +552,12 @@ impl CompilationPipeline {
         std::fs::create_dir_all(&out_dir)?;
 
         // Create linker configuration
-        let target = jet_linker::TargetConfig::native();
+        let target = if let Some(triple) = self.config.target_triple.as_deref() {
+            jet_linker::TargetConfig::from_triple(triple)
+                .map_err(|e| anyhow::anyhow!("Unsupported target '{}': {}", triple, e))?
+        } else {
+            jet_linker::TargetConfig::native()
+        };
         let linker_config =
             jet_linker::LinkerConfig::new(target.clone(), self.project.name().to_string())
                 .with_output_dir(&out_dir);
@@ -678,10 +683,25 @@ pub async fn check_project(project: &Project, verbose: bool) -> Result<Vec<Diagn
 }
 
 /// Compile an IR module to an object file
-async fn compile_ir_module(ir: &jet_ir::Module, output_path: &Path) -> Result<()> {
-    // Use jet_codegen to compile the module
-    jet_codegen::compile_to_object_file(ir, output_path)
-        .map_err(|e| anyhow::anyhow!("LLVM compilation failed: {:?}", e))?;
+async fn compile_ir_module(
+    ir: &jet_ir::Module,
+    output_path: &Path,
+    target_triple: Option<&str>,
+) -> Result<()> {
+    let context = inkwell::context::Context::create();
+    let mut codegen = jet_codegen::CodeGen::new(&context, &ir.name);
+    jet_codegen::compile_module(&mut codegen, ir)
+        .map_err(|e| anyhow::anyhow!("LLVM module compilation failed: {:?}", e))?;
+
+    let mut obj_config = jet_codegen::ObjectConfig::default();
+    if let Some(triple) = target_triple {
+        // ObjectConfig requires a 'static str; leak one process-lifetime string per compile target.
+        let leaked: &'static str = Box::leak(triple.to_string().into_boxed_str());
+        obj_config = obj_config.with_target_triple(leaked);
+    }
+
+    jet_codegen::generate_object_file(&codegen, obj_config, output_path)
+        .map_err(|e| anyhow::anyhow!("LLVM object generation failed: {:?}", e))?;
     Ok(())
 }
 

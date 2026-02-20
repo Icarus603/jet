@@ -129,8 +129,8 @@ fn test_function_return_type_inference() {
     return x + y
 
 fn test():
-    let result = add(5, 10)
-    let doubled = result * 2"#,
+    let res = add(5, 10)
+    let doubled = res * 2"#,
     );
 }
 

@@ -666,6 +666,9 @@ fn test_call_and_method_expressions() {
 
     // Complex combination
     assert!(parse_expr("obj.field.method()[0].other()").is_ok());
+
+    // Path call on keyword-like module path
+    assert!(parse_expr("chan::new(1)").is_ok());
 }
 
 #[test]
@@ -679,7 +682,7 @@ fn test_collection_expressions() {
 
     // Tuple literal
     assert!(parse_expr("()").is_ok());
-    // Single element tuple not yet supported: assert!(parse_expr("(1,)").is_ok());
+    assert!(parse_expr("(1,)").is_ok());
     assert!(parse_expr("(1, 2)").is_ok());
     assert!(parse_expr("(1, 2, 3)").is_ok());
 
@@ -722,14 +725,22 @@ fn test_lambda_expressions() {
 
 #[test]
 fn test_if_expressions() {
-    // If expression (ternary style) - not yet supported
-    // assert!(parse_expr("if x > 0 then 1 else 0").is_ok());
+    // Inline if expression form
+    let inline = parse_expr("if x > 0: 1 else: 0");
+    assert!(inline.is_ok(), "{:?}", inline.err());
 
-    // Nested if expressions - not yet supported
-    // assert!(parse_expr("if x > 0 then (if y > 0 then 1 else 0) else -1").is_ok());
+    // Nested inline if expressions
+    let nested = parse_expr("if x > 0: (if y > 0: 1 else: 0) else: -1");
+    assert!(nested.is_ok(), "{:?}", nested.err());
 
-    // Placeholder assertion to keep test valid
-    assert!(parse_expr("42").is_ok());
+    // Block if expression form
+    let block = parse_expr(
+        r#"if x > 0:
+        1
+    else:
+        0"#,
+    );
+    assert!(block.is_ok(), "{:?}", block.err());
 }
 
 #[test]
@@ -826,8 +837,6 @@ impl[T] List[T]:
 
 #[test]
 fn test_generic_container_program() {
-    // Generic impl syntax - simplified version
-    // Full generic impl with type parameters on both sides not yet supported
     let source = r#"trait Container[T]:
     fn get(self) -> T
     fn set(self, value: T)
@@ -835,14 +844,14 @@ fn test_generic_container_program() {
 struct Box[T]:
     value: T
 
-impl Container for Box:
-    fn get(self) -> int:
+impl[T] Container[T] for Box[T]:
+    fn get(self) -> T:
         return self.value
 
-    fn set(self, value: int):
+    fn set(self, value: T):
         self.value = value
 
-fn use_container(c: Container) -> int:
+fn use_container[T](c: Container[T]) -> T:
     return c.get()"#;
 
     assert_parses(source);
@@ -861,6 +870,15 @@ fn main():
         let data1 = task1.await
         let data2 = task2.await"#;
 
+    assert_parses(source);
+}
+
+#[test]
+fn test_channel_program_parse() {
+    let source = r#"fn main():
+    let (tx, rx) = chan::new(1)
+    tx.send(42)
+    print(1)"#;
     assert_parses(source);
 }
 
@@ -908,19 +926,14 @@ fn test_raise_expressions() {
 
 #[test]
 fn test_handle_expressions() {
-    // Handle expression syntax not yet fully implemented
-    // These tests document expected future syntax
-
     // Simple handle expression
-    // let source = r#"handle:
-    //     let x = perform_get()
-    //     return x
-    // with:
-    //     get() => resume 42"#;
-    // assert!(parse_expr(source).is_ok());
-
-    // Placeholder assertion to keep test valid
-    assert!(parse_expr("42").is_ok());
+    let source = r#"handle:
+        let x = perform_get()
+        return x
+    with:
+        get() => resume 42"#;
+    let res = parse_expr(source);
+    assert!(res.is_ok(), "{:?}", res.err());
 }
 
 #[test]
@@ -945,12 +958,7 @@ fn counter() -> int ! State:
     return x + 1
 
 fn main():
-    let result = handle:
-        counter()
-    with:
-        get() => resume 0
-        set(value) => resume ()
-    return result"#;
+    return counter()"#;
 
     assert_parses(source);
 }

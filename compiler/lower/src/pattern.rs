@@ -9,7 +9,7 @@
 
 use crate::context::LoweringContext;
 use crate::expr::{infer_expr_type, lower_expr};
-use jet_ir::{BlockId, ConstantValue, Instruction, Terminator, Ty, ValueId};
+use jet_ir::{BasicBlock, BlockId, ConstantValue, Instruction, Terminator, Ty, ValueId};
 use jet_parser::ast;
 
 /// A decision tree node for pattern matching.
@@ -101,7 +101,9 @@ pub fn compile_match(
     let tree = compile_matrix(&matrix, 0);
 
     // Generate code from decision tree
-    let merge_block = ctx.create_block("match_merge");
+    // Create merge block ID first, but don't add to function yet
+    // This ensures arm blocks are added before the merge block
+    let merge_block_id = ctx.new_block_id();
     let result = ctx.new_value();
     let mut arm_results: Vec<(BlockId, ValueId)> = Vec::new();
 
@@ -116,13 +118,15 @@ pub fn compile_match(
         &tree,
         scrutinee,
         &scrutinee_ty,
-        merge_block,
+        merge_block_id,
         &mut arm_results,
         arms,
     );
 
-    // Merge block with phi
-    ctx.set_current_block(merge_block);
+    // Now create and add the merge block (after arm blocks are generated)
+    let merge_block = BasicBlock::with_name(merge_block_id, "match_merge");
+    ctx.add_block(merge_block);
+    ctx.set_current_block(merge_block_id);
 
     if arm_results.is_empty() {
         // No arms - return unit (should be unreachable)
@@ -317,7 +321,9 @@ fn generate_decision_tree_code(
 
             if should_execute_body {
                 let body_val = lower_expr(ctx, &arm.body);
-                arm_results.push((arm_block, body_val));
+                // Use current block (which may have changed due to guards)
+                let actual_arm_block = ctx.current_block().unwrap();
+                arm_results.push((actual_arm_block, body_val));
 
                 if !ctx.get_current_block().unwrap().is_terminated() {
                     ctx.terminate(Terminator::Branch(merge_block));
@@ -487,7 +493,12 @@ fn lower_literal_const(ctx: &mut LoweringContext, lit: &ast::Literal) -> ValueId
 }
 
 /// Binds a pattern to a value during match.
-pub fn bind_match_pattern(ctx: &mut LoweringContext, pattern: &ast::Pattern, value: ValueId, ty: &Ty) {
+pub fn bind_match_pattern(
+    ctx: &mut LoweringContext,
+    pattern: &ast::Pattern,
+    value: ValueId,
+    ty: &Ty,
+) {
     match pattern {
         ast::Pattern::Wildcard(_) => {
             // Nothing to bind

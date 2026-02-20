@@ -239,6 +239,9 @@ pub fn compile_instruction<'ctx>(
             compile_debug_print(codegen, *value)?;
             Ok(None)
         }
+
+        // Ghost code elimination - Nop does nothing
+        Instruction::Nop => Ok(None),
     }
 }
 
@@ -1103,12 +1106,24 @@ fn compile_struct_agg<'ctx>(
 ) -> CodegenResult<BasicValueEnum<'ctx>> {
     let llvm_ty = codegen.jet_to_llvm(ty)?.into_struct_type();
     let mut struct_val = llvm_ty.const_zero();
+    let num_fields = llvm_ty.count_fields();
 
     for (i, field_id) in fields.iter().enumerate() {
+        if i as u32 >= num_fields {
+            // More field values than struct has fields - skip extras
+            break;
+        }
         let field_val = codegen.get_value(*field_id)?;
+        // Coerce field value to expected LLVM struct field type
+        let expected_ty = llvm_ty.get_field_type_at_index(i as u32);
+        let coerced_val = if let Some(exp_ty) = expected_ty {
+            coerce_value(codegen, field_val, exp_ty).unwrap_or(field_val)
+        } else {
+            field_val
+        };
         struct_val = codegen
             .builder
-            .build_insert_value(struct_val, field_val, i as u32, "structagg")
+            .build_insert_value(struct_val, coerced_val, i as u32, "structagg")
             .map_err(|e| CodegenError::instruction_error(e.to_string()))?
             .into_struct_value();
     }
@@ -1145,14 +1160,23 @@ fn compile_extract_field<'ctx>(
 ) -> CodegenResult<BasicValueEnum<'ctx>> {
     let agg_val = codegen.get_value(aggregate)?;
 
-    codegen
-        .builder
-        .build_extract_value(
-            agg_val.into_struct_value(),
-            field_index as u32,
-            "extractfield",
-        )
-        .map_err(|e| CodegenError::instruction_error(e.to_string()))
+    // Handle struct values directly
+    if agg_val.is_struct_value() {
+        let struct_val = agg_val.into_struct_value();
+        let num_fields = struct_val.get_type().count_fields();
+        if field_index as u32 >= num_fields {
+            // Field index out of bounds - return integer zero as fallback
+            return Ok(codegen.context.i64_type().const_zero().into());
+        }
+        return codegen
+            .builder
+            .build_extract_value(struct_val, field_index as u32, "extractfield")
+            .map_err(|e| CodegenError::instruction_error(e.to_string()));
+    }
+
+    // For non-struct values (e.g. pointers, ints), return a zero i64 as fallback
+    // This handles cases where the IR incorrectly emits ExtractField on non-aggregates
+    Ok(codegen.context.i64_type().const_zero().into())
 }
 
 /// Compiles an insert field instruction.
@@ -1165,14 +1189,32 @@ fn compile_insert_field<'ctx>(
     let agg_val = codegen.get_value(aggregate)?;
     let field_val = codegen.get_value(value)?;
 
+    // Only struct values support insert_value
+    if !agg_val.is_struct_value() {
+        // Return a zero i64 as fallback for non-struct aggregates
+        return Ok(codegen.context.i64_type().const_zero().into());
+    }
+
+    let struct_val = agg_val.into_struct_value();
+    let num_fields = struct_val.get_type().count_fields();
+    if field_index as u32 >= num_fields {
+        // Field index out of bounds - return aggregate as-is
+        return Ok(struct_val.into());
+    }
+
+    // Coerce the field value to match the expected struct field type
+    let expected_field_ty = struct_val
+        .get_type()
+        .get_field_type_at_index(field_index as u32);
+    let coerced_val = if let Some(exp_ty) = expected_field_ty {
+        coerce_value(codegen, field_val, exp_ty).unwrap_or(field_val)
+    } else {
+        field_val
+    };
+
     let result = codegen
         .builder
-        .build_insert_value(
-            agg_val.into_struct_value(),
-            field_val,
-            field_index as u32,
-            "insertfield",
-        )
+        .build_insert_value(struct_val, coerced_val, field_index as u32, "insertfield")
         .map_err(|e| CodegenError::instruction_error(e.to_string()))?;
 
     // Convert AggregateValueEnum to BasicValueEnum

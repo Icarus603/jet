@@ -21,7 +21,10 @@ jet-linker = { path = "../../compiler/linker" }
 jet-diagnostics = { path = "../../compiler/diagnostics" }
 jet-codegen = { path = "../../compiler/codegen" }
 jet-fmt = { path = "../fmt" }
+jet-lint = { path = "../lint" }
+jet-repl = { path = "../repl" }
 clap = { workspace = true, features = ["derive", "cargo"] }
+colored = "2.1"
 anyhow = { workspace = true }
 tokio = { version = "1", features = ["full"] }
 toml = { workspace = true }
@@ -37,6 +40,9 @@ hex = "0.4"
 dirs = "5"
 num_cpus = "1"
 tempfile = "3"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+semver = "1.0"
+inkwell = { workspace = true }
 
 [dev-dependencies]
 assert_cmd = "2"

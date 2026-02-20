@@ -1,0 +1,18 @@
+# Test: Effect escaping handler scope
+# Expected: Error about effect escaping its handling scope
+
+effect Suspend:
+    fn yield_() -> ()
+
+fn generator() ! Suspend:
+    perform Suspend.yield_()
+    return 42
+
+fn main():
+    let gen = with handler:
+        | Suspend.yield_() => resume(())
+    in:
+        generator  # Returns a closure that may perform Suspend
+
+    # This would escape the handler scope
+    gen()

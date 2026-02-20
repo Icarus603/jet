@@ -351,16 +351,12 @@ fn format_function_snippet(func: &Function) -> String {
     let mut result = func.name.name.clone();
     result.push('(');
 
-    // Add placeholders for parameters
-    for (i, _param) in func.params.iter().enumerate() {
+    for (i, param) in func.params.iter().enumerate() {
         if i > 0 {
             result.push_str(", ");
         }
-        result.push_str(&format!(
-            "${{{}:{}}}",
-            i + 1,
-            "arg".to_string() + &i.to_string()
-        ));
+        let placeholder_name = snippet_placeholder_name(&param.pattern, i + 1);
+        result.push_str(&format!("${{{}:{}}}", i + 1, placeholder_name));
     }
 
     result.push(')');
@@ -656,16 +652,12 @@ fn format_method_signature(func: &Function) -> String {
 fn format_method_snippet(func: &Function) -> String {
     let mut result = func.name.name.clone();
     result.push('(');
-    for (i, _param) in func.params.iter().enumerate().skip(1) {
-        // Skip self parameter
-        if i > 1 {
+    for (i, param) in func.params.iter().skip(1).enumerate() {
+        if i > 0 {
             result.push_str(", ");
         }
-        result.push_str(&format!(
-            "${{{}:{}}}",
-            i,
-            "arg".to_string() + &i.to_string()
-        ));
+        let placeholder_name = snippet_placeholder_name(&param.pattern, i + 1);
+        result.push_str(&format!("${{{}:{}}}", i + 1, placeholder_name));
     }
     result.push(')');
     result
@@ -711,19 +703,51 @@ fn format_trait_method_snippet(name: &str, params: &[jet_parser::ast::Param]) ->
     } else {
         0
     };
-    for (i, _param) in params.iter().enumerate().skip(start_idx) {
-        if i > start_idx {
+    for (i, param) in params.iter().skip(start_idx).enumerate() {
+        if i > 0 {
             result.push_str(", ");
         }
-        let idx = i - start_idx + 1;
-        result.push_str(&format!(
-            "${{{}:{}}}",
-            idx,
-            "arg".to_string() + &idx.to_string()
-        ));
+        let idx = i + 1;
+        let placeholder_name = snippet_placeholder_name(&param.pattern, idx);
+        result.push_str(&format!("${{{}:{}}}", idx, placeholder_name));
     }
     result.push(')');
     result
+}
+
+fn snippet_placeholder_name(pattern: &Pattern, idx: usize) -> String {
+    let fallback = format!("arg{}", idx);
+    let raw = first_pattern_name(pattern).unwrap_or(fallback.clone());
+    let sanitized: String = raw
+        .chars()
+        .filter(|c: &char| c.is_ascii_alphanumeric() || *c == '_')
+        .collect();
+    if sanitized.is_empty() {
+        return fallback;
+    }
+    if sanitized
+        .chars()
+        .next()
+        .map(|c: char| c.is_ascii_digit())
+        .unwrap_or(false)
+    {
+        return format!("arg_{}", sanitized);
+    }
+    sanitized
+}
+
+fn first_pattern_name(pattern: &Pattern) -> Option<String> {
+    match pattern {
+        Pattern::Ident { name, .. } => Some(name.name.clone()),
+        Pattern::Bind { name, .. } => Some(name.name.clone()),
+        Pattern::Mut(inner) => first_pattern_name(inner),
+        Pattern::Ref { pattern, .. } => first_pattern_name(pattern),
+        Pattern::Rest(Some(name)) => Some(name.name.clone()),
+        Pattern::Tuple(patterns) | Pattern::Array(patterns) => {
+            patterns.iter().find_map(first_pattern_name)
+        }
+        _ => None,
+    }
 }
 
 /// Get completions after a colon (type annotations, paths)
@@ -950,7 +974,7 @@ fn get_user_defined_types(ast: &Module) -> Vec<CompletionItem> {
 mod tests {
     use super::*;
     use jet_lexer::Span;
-    use jet_parser::ast::Module;
+    use jet_parser::ast::{Expr, Function as AstFunction, Ident, Module, Param, Type};
 
     #[test]
     fn test_keyword_completions() {
@@ -999,6 +1023,7 @@ mod tests {
         let mut ast = Module::new(Span::new(0, 0));
         let struct_def = StructDef {
             public: true,
+            attributes: Vec::new(),
             name: Ident::new("Person", Span::new(0, 0)),
             generics: vec![],
             fields: vec![
@@ -1046,6 +1071,7 @@ mod tests {
         let mut ast = Module::new(Span::new(0, 0));
         let struct_def = StructDef {
             public: true,
+            attributes: Vec::new(),
             name: Ident::new("Point", Span::new(0, 0)),
             generics: vec![],
             fields: vec![
@@ -1085,6 +1111,75 @@ mod tests {
         assert_eq!(
             constructor.unwrap().kind,
             Some(CompletionItemKind::CONSTRUCTOR)
+        );
+    }
+
+    #[test]
+    fn test_function_snippet_uses_param_names() {
+        let func = AstFunction {
+            public: false,
+            attributes: vec![],
+            name: Ident::new("sum", Span::new(0, 0)),
+            generics: vec![],
+            params: vec![
+                Param {
+                    pattern: Pattern::Ident {
+                        mutable: false,
+                        name: Ident::new("left", Span::new(0, 0)),
+                    },
+                    ty: Type::Path(jet_parser::ast::Path::single(Ident::new(
+                        "int",
+                        Span::new(0, 0),
+                    ))),
+                },
+                Param {
+                    pattern: Pattern::Ident {
+                        mutable: false,
+                        name: Ident::new("right", Span::new(0, 0)),
+                    },
+                    ty: Type::Path(jet_parser::ast::Path::single(Ident::new(
+                        "int",
+                        Span::new(0, 0),
+                    ))),
+                },
+            ],
+            return_type: None,
+            effects: vec![],
+            where_clause: vec![],
+            contract: None,
+            body: Expr::Pass,
+            span: Span::new(0, 0),
+        };
+        assert_eq!(format_function_snippet(&func), "sum(${1:left}, ${2:right})");
+    }
+
+    #[test]
+    fn test_method_snippet_skips_self_and_uses_name() {
+        let params = vec![
+            Param {
+                pattern: Pattern::Ident {
+                    mutable: false,
+                    name: Ident::new("self", Span::new(0, 0)),
+                },
+                ty: Type::Path(jet_parser::ast::Path::single(Ident::new(
+                    "Self",
+                    Span::new(0, 0),
+                ))),
+            },
+            Param {
+                pattern: Pattern::Ident {
+                    mutable: false,
+                    name: Ident::new("value", Span::new(0, 0)),
+                },
+                ty: Type::Path(jet_parser::ast::Path::single(Ident::new(
+                    "int",
+                    Span::new(0, 0),
+                ))),
+            },
+        ];
+        assert_eq!(
+            format_trait_method_snippet("set", &params),
+            "set(${1:value})"
         );
     }
 }

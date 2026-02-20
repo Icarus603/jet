@@ -61,8 +61,8 @@ enum Result[T, E]:
     | Ok(T)
     | Err(E)
 
-fn map_result[T, E, U](result: Result[T, E], f: fn(T) -> U) -> Result[U, E]:
-    match result:
+fn map_result[T, E, U](res: Result[T, E], f: fn(T) -> U) -> Result[U, E]:
+    match res:
         | Ok(value) -> Ok(f(value))
         | Err(error) -> Err(error)
 "#,

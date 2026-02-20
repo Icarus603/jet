@@ -4,6 +4,17 @@
 
 import basic::{pi, tau}
 
+### FFI declarations for math operations.
+### These functions are provided by the runtime (stdlib/src/math.rs).
+
+extern fn jet_math_sin(x: float64) -> float64
+extern fn jet_math_cos(x: float64) -> float64
+extern fn jet_math_tan(x: float64) -> float64
+extern fn jet_math_asin(x: float64) -> float64
+extern fn jet_math_acos(x: float64) -> float64
+extern fn jet_math_atan(x: float64) -> float64
+extern fn jet_math_atan2(y: float64, x: float64) -> float64
+
 ### Converts degrees to radians.
 fn to_radians(degrees: float64) -> float64:
     degrees * pi / 180.0
@@ -14,58 +25,38 @@ fn to_degrees(radians: float64) -> float64:
 
 ### Returns the sine of an angle (in radians).
 fn sin(x: float64) -> float64:
-    # In a real implementation, use CORDIC or Taylor series
-    # sin(x) = x - x^3/3! + x^5/5! - x^7/7! + ...
-    0.0  # Placeholder
+    jet_math_sin(x)
 
 ### Returns the cosine of an angle (in radians).
 fn cos(x: float64) -> float64:
-    # In a real implementation, use CORDIC or Taylor series
-    # cos(x) = 1 - x^2/2! + x^4/4! - x^6/6! + ...
-    0.0  # Placeholder
+    jet_math_cos(x)
 
 ### Returns the tangent of an angle (in radians).
 fn tan(x: float64) -> float64:
-    sin(x) / cos(x)
+    jet_math_tan(x)
 
 ### Returns the arcsine of x (result in radians).
 fn asin(x: float64) -> float64 ! InvalidArgumentError:
     if x < -1.0 or x > 1.0:
         raise InvalidArgumentError("asin argument must be in [-1, 1]")
-    # In a real implementation, use numerical approximation
-    0.0  # Placeholder
+    jet_math_asin(x)
 
 ### Returns the arccosine of x (result in radians).
 fn acos(x: float64) -> float64 ! InvalidArgumentError:
     if x < -1.0 or x > 1.0:
         raise InvalidArgumentError("acos argument must be in [-1, 1]")
-    # In a real implementation, use numerical approximation
-    0.0  # Placeholder
+    jet_math_acos(x)
 
 ### Returns the arctangent of x (result in radians).
 fn atan(x: float64) -> float64:
-    # In a real implementation, use numerical approximation
-    0.0  # Placeholder
+    jet_math_atan(x)
 
 ### Returns the arctangent of y/x (result in radians).
 ###
 ### This function uses the signs of both arguments to determine
 ### the correct quadrant of the result.
 fn atan2(y: float64, x: float64) -> float64:
-    if x > 0.0:
-        atan(y / x)
-    else if x < 0.0:
-        if y >= 0.0:
-            atan(y / x) + pi
-        else:
-            atan(y / x) - pi
-    else:  # x == 0
-        if y > 0.0:
-            pi / 2.0
-        else if y < 0.0:
-            -pi / 2.0
-        else:
-            0.0  # Undefined, but return 0
+    jet_math_atan2(y, x)
 
 ### Returns the hyperbolic sine of x.
 fn sinh(x: float64) -> float64:

@@ -293,8 +293,52 @@ impl<'a> Lexer<'a> {
                     Token::Question
                 }
                 '@' => {
-                    self.advance();
-                    Token::At
+                    // Check if followed by an identifier (annotation)
+                    // We need to look ahead to see if it's a known annotation
+                    if let Some(ch) = self.peek() {
+                        if is_ident_start(ch) {
+                            // Look ahead to read the full identifier without consuming
+                            let mut lookahead = self.chars.clone();
+                            let mut ident = String::new();
+                            ident.push(ch);
+                            lookahead.next(); // consume the first char we already peeked
+                            for c in lookahead {
+                                if is_ident_continue(c) {
+                                    ident.push(c);
+                                } else {
+                                    break;
+                                }
+                            }
+
+                            // Check if it's a known annotation keyword
+                            let is_annotation = matches!(
+                                ident.as_str(),
+                                "confidence"
+                                    | "generated_by"
+                                    | "prompt"
+                                    | "human_edit_count"
+                                    | "spec"
+                                    | "example"
+                                    | "test_for"
+                            );
+
+                            if is_annotation {
+                                // Consume the '@' and lex the annotation
+                                self.advance();
+                                self.lex_annotation()
+                            } else {
+                                // Not a known annotation, just return At
+                                self.advance();
+                                Token::At
+                            }
+                        } else {
+                            self.advance();
+                            Token::At
+                        }
+                    } else {
+                        self.advance();
+                        Token::At
+                    }
                 }
                 '_' => {
                     // Check if this is a standalone _ (wildcard) or start of identifier
@@ -918,6 +962,11 @@ impl<'a> Lexer<'a> {
             "use" => Token::Use,
             "where" => Token::Where,
             "while" => Token::While,
+            "requires" => Token::Requires,
+            "ensures" => Token::Ensures,
+            "invariant" => Token::Invariant,
+            "ghost" => Token::Ghost,
+            "result" => Token::Result,
             _ => Token::Ident(ident),
         }
     }
@@ -935,6 +984,31 @@ impl<'a> Lexer<'a> {
 
         // Check for keywords (identifiers starting with _ can't be keywords)
         Token::Ident(ident)
+    }
+
+    /// Lex an annotation token (after @)
+    fn lex_annotation(&mut self) -> Token {
+        let mut ident = String::new();
+        while let Some(ch) = self.current {
+            if is_ident_continue(ch) {
+                ident.push(ch);
+                self.advance();
+            } else {
+                break;
+            }
+        }
+
+        // Check for AI annotation keywords and literate programming annotations
+        match ident.as_str() {
+            "confidence" => Token::Confidence,
+            "generated_by" => Token::GeneratedBy,
+            "prompt" => Token::Prompt,
+            "human_edit_count" => Token::HumanEditCount,
+            "spec" => Token::AtSpec,
+            "example" => Token::AtExample,
+            "test_for" => Token::AtTestFor,
+            _ => Token::Ident(ident),
+        }
     }
 
     /// Advance to the next character

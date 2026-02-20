@@ -244,6 +244,10 @@ fn lower_typeck_type_cached(
             // Async types wrap the inner type
             lower_typeck_type_cached(inner, tcx, cache)
         }
+        TypeKind::Ghost(_) => {
+            // Ghost types are erased during lowering - they don't exist at runtime
+            Ty::Void
+        }
     }
 }
 
@@ -428,6 +432,10 @@ fn lower_typeck_type_with_subs_recursive(
         }
         TypeKind::Async(inner) => {
             lower_typeck_type_with_subs_cached(inner, tcx, param_substitutions, cache)
+        }
+        TypeKind::Ghost(_) => {
+            // Ghost types are erased during lowering - they don't exist at runtime
+            Ty::Void
         }
     }
 }

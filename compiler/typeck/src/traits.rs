@@ -6,6 +6,7 @@
 //! - Coherence checking: orphan rules and overlapping impl detection
 //! - Associated type resolution
 
+use crate::const_eval::ConstValue;
 use crate::types::{DefId, EffectSet, TypeContext, TypeId, TypeKind};
 use jet_diagnostics::{Diagnostic, ErrorCode, Label, Span};
 use std::collections::HashMap;
@@ -80,7 +81,7 @@ pub enum ImplItem {
         name: String,
         def_id: DefId,
         ty: TypeId,
-        value: (), // TODO: Store constant value
+        value: ConstValue,
     },
     Type {
         name: String,

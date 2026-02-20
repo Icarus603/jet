@@ -170,11 +170,14 @@ impl<'ctx> CodeGen<'ctx> {
                 .i8_type()
                 .ptr_type(AddressSpace::default())
                 .into()),
+            // Ghost types are erased at runtime, represented as void
+            Ty::Ghost(_) => Ok(self.context.struct_type(&[], false).into()),
         }
     }
 
     /// Stores a value in the value map.
     pub fn set_value(&mut self, id: ValueId, value: BasicValueEnum<'ctx>) {
+        eprintln!("DEBUG: set_value({}, {:?})", id.0, value);
         self.values.insert(id, value);
     }
 

@@ -1,0 +1,9 @@
+error[E0308]: type mismatch in effect handler
+ --> effect_handler_type_mismatch.jet:12:9
+   |
+12 |         | Compute.get_value() => resume("wrong type")
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: expected type `int`
+            found type `string`
+   = help: the handler for `Compute.get_value` must resume with the correct type

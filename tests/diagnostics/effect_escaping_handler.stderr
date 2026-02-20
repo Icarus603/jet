@@ -1,0 +1,8 @@
+error[E0604]: effect `Suspend` may escape its handling scope
+ --> effect_escaping_handler.jet:15:5
+   |
+15 |     gen()
+   |     ^^^^^
+   |
+   = note: the closure returned from the `with handler` block may perform effects
+   = help: handle the effect within the `with handler` block or declare it in the outer function

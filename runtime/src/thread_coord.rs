@@ -242,6 +242,9 @@ impl GcCoordinator {
 mod tests {
     use super::*;
     use crate::config::RuntimeConfig;
+    use std::sync::Mutex;
+
+    static TEST_LOCK: Mutex<()> = Mutex::new(());
 
     fn reset_state() {
         COORD_STATE.gc_requested.store(false, Ordering::SeqCst);
@@ -252,6 +255,9 @@ mod tests {
 
     #[test]
     fn test_initial_state() {
+        let _guard = TEST_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         reset_state();
         assert!(!is_gc_requested());
         assert!(!is_gc_in_progress());
@@ -261,6 +267,9 @@ mod tests {
 
     #[test]
     fn test_register_unregister_thread() {
+        let _guard = TEST_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         reset_state();
 
         register_worker_thread();
@@ -275,6 +284,9 @@ mod tests {
 
     #[test]
     fn test_gc_request() {
+        let _guard = TEST_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         reset_state();
 
         assert!(!is_gc_requested());
@@ -284,6 +296,9 @@ mod tests {
 
     #[test]
     fn test_begin_end_gc() {
+        let _guard = TEST_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         reset_state();
 
         assert!(!is_gc_in_progress());
@@ -299,6 +314,9 @@ mod tests {
 
     #[test]
     fn test_gc_coordinator_creation() {
+        let _guard = TEST_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         reset_state();
 
         let context = Arc::new(RuntimeContext::new(&RuntimeConfig::default()));

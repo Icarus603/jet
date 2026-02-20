@@ -479,7 +479,7 @@ async fn compile_unit(
     let tokens = jet_lexer::tokenize(&source);
 
     // Step 2: Parse into AST
-    let ast = match jet_parser::parse(tokens) {
+    let ast = match jet_parser::Parser::new(tokens).parse_module() {
         Ok(a) => a,
         Err(e) => {
             return CompilationResult {

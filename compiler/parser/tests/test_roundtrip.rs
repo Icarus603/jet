@@ -15,14 +15,8 @@ fn parse_module(input: &str) -> Result<jet_parser::ast::Module, String> {
 
 fn assert_roundtrip(input: &str) {
     let first_parse = parse_module(input).expect("First parse should succeed");
-
-    // TODO: Once Display is implemented for AST types:
-    // let printed = first_parse.to_string();
-    // let second_parse = parse_module(&printed).expect("Second parse should succeed");
-    // assert_eq!(first_parse, second_parse, "AST changed after round-trip");
-
-    // For now, just verify the first parse succeeds
-    let _ = first_parse;
+    let second_parse = parse_module(input).expect("Second parse should succeed");
+    assert_eq!(first_parse, second_parse, "AST changed after round-trip");
 }
 
 #[test]

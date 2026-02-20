@@ -10,9 +10,13 @@
 #![allow(dead_code)]
 
 use anyhow::{Context, Result};
+use semver::{Version, VersionReq};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::process::Command;
+use std::time::Duration;
 
 use crate::manifest::{Dependency, DetailedDependency, Manifest};
 
@@ -119,6 +123,18 @@ pub struct DependencyGraph {
     edges: HashMap<String, Vec<String>>,
 }
 
+#[derive(Debug, Deserialize)]
+struct RegistryCrateResponse {
+    versions: Vec<RegistryVersionEntry>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RegistryVersionEntry {
+    num: String,
+    #[serde(default)]
+    yanked: bool,
+}
+
 impl DependencyResolver {
     /// Create a new dependency resolver
     pub fn new() -> Result<Self> {
@@ -216,8 +232,6 @@ impl DependencyResolver {
         version_req: &str,
         features: &[String],
     ) -> Result<ResolvedDependency> {
-        // For now, create a placeholder resolution
-        // In a real implementation, this would query the registry
         let version = self
             .resolve_version_from_registry(name, version_req)
             .await?;
@@ -311,13 +325,21 @@ impl DependencyResolver {
         rev: Option<String>,
         features: &[String],
     ) -> Result<ResolvedDependency> {
-        // For now, create a placeholder
-        // In a real implementation, this would clone/fetch the repo
-        let version = "0.0.0-git".to_string();
+        let checkout =
+            self.ensure_git_checkout(url, branch.as_deref(), tag.as_deref(), rev.as_deref())?;
+        let manifest_path = checkout.join("jet.toml");
+        if !manifest_path.exists() {
+            anyhow::bail!(
+                "Git dependency {} does not contain a jet.toml at {}",
+                name,
+                manifest_path.display()
+            );
+        }
+        let manifest = Manifest::from_file(&manifest_path)?;
 
         Ok(ResolvedDependency {
             name: name.to_string(),
-            version,
+            version: manifest.package.version,
             source: DependencySource::Git {
                 url: url.to_string(),
                 rev,
@@ -325,38 +347,151 @@ impl DependencyResolver {
                 tag,
             },
             checksum: None,
-            dependencies: vec![],
+            dependencies: manifest.dependencies.keys().cloned().collect(),
             features: features.to_vec(),
         })
     }
 
     /// Resolve a version from the registry
-    async fn resolve_version_from_registry(
-        &self,
-        _name: &str,
-        version_req: &str,
-    ) -> Result<String> {
-        // For now, return a placeholder version
-        // In a real implementation, this would query the registry API
-        // and find the best matching version
+    async fn resolve_version_from_registry(&self, name: &str, version_req: &str) -> Result<String> {
+        let normalized = normalize_version_req(version_req)?;
+        let req = VersionReq::parse(&normalized)
+            .with_context(|| format!("invalid version requirement: {}", version_req))?;
+        let versions = self.fetch_registry_versions(name).await?;
 
-        // Parse simple semver requirements
-        if version_req.starts_with('=') {
-            // Exact version
-            Ok(version_req.trim_start_matches('=').to_string())
-        } else if version_req.starts_with("^") {
-            // Compatible version (caret)
-            Ok(version_req.trim_start_matches('^').to_string())
-        } else if version_req.starts_with("~") {
-            // Approximately equivalent (tilde)
-            Ok(version_req.trim_start_matches('~').to_string())
-        } else if version_req == "*" {
-            // Any version
-            Ok("1.0.0".to_string())
-        } else {
-            // Treat as caret by default
-            Ok(version_req.to_string())
+        versions
+            .into_iter()
+            .filter(|v| req.matches(v))
+            .max()
+            .map(|v| v.to_string())
+            .with_context(|| {
+                format!(
+                    "no matching version for {} {} in registry {}",
+                    name, version_req, self.registry_url
+                )
+            })
+    }
+
+    fn ensure_git_checkout(
+        &self,
+        url: &str,
+        branch: Option<&str>,
+        tag: Option<&str>,
+        rev: Option<&str>,
+    ) -> Result<PathBuf> {
+        let mut hasher = Sha256::new();
+        hasher.update(url.as_bytes());
+        if let Some(branch) = branch {
+            hasher.update(b"branch:");
+            hasher.update(branch.as_bytes());
         }
+        if let Some(tag) = tag {
+            hasher.update(b"tag:");
+            hasher.update(tag.as_bytes());
+        }
+        if let Some(rev) = rev {
+            hasher.update(b"rev:");
+            hasher.update(rev.as_bytes());
+        }
+        let digest = hex::encode(hasher.finalize());
+        let repo_dir = self.cache_dir.join("git").join(&digest[..16]);
+        if !repo_dir.exists() {
+            std::fs::create_dir_all(repo_dir.parent().unwrap_or(&self.cache_dir))?;
+            run_git_command(
+                Command::new("git")
+                    .arg("clone")
+                    .arg("--quiet")
+                    .arg(url)
+                    .arg(&repo_dir),
+                "clone git dependency",
+            )?;
+        } else {
+            run_git_command(
+                Command::new("git")
+                    .current_dir(&repo_dir)
+                    .arg("fetch")
+                    .arg("--all")
+                    .arg("--tags")
+                    .arg("--quiet"),
+                "fetch git dependency",
+            )?;
+        }
+
+        if let Some(rev) = rev {
+            run_git_command(
+                Command::new("git")
+                    .current_dir(&repo_dir)
+                    .arg("checkout")
+                    .arg("--quiet")
+                    .arg(rev),
+                "checkout git revision",
+            )?;
+        } else if let Some(tag) = tag {
+            run_git_command(
+                Command::new("git")
+                    .current_dir(&repo_dir)
+                    .arg("checkout")
+                    .arg("--quiet")
+                    .arg(format!("tags/{}", tag)),
+                "checkout git tag",
+            )?;
+        } else if let Some(branch) = branch {
+            run_git_command(
+                Command::new("git")
+                    .current_dir(&repo_dir)
+                    .arg("checkout")
+                    .arg("--quiet")
+                    .arg(branch),
+                "checkout git branch",
+            )?;
+        } else {
+            run_git_command(
+                Command::new("git")
+                    .current_dir(&repo_dir)
+                    .arg("checkout")
+                    .arg("--quiet")
+                    .arg("HEAD"),
+                "checkout git HEAD",
+            )?;
+        }
+
+        Ok(repo_dir)
+    }
+
+    async fn fetch_registry_versions(&self, name: &str) -> Result<Vec<Version>> {
+        let endpoint = format!(
+            "{}/api/v1/crates/{}",
+            self.registry_url.trim_end_matches('/'),
+            name
+        );
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(10))
+            .build()
+            .context("failed to create registry HTTP client")?;
+        let response = client
+            .get(&endpoint)
+            .send()
+            .await
+            .with_context(|| format!("failed to query registry endpoint {}", endpoint))?;
+        if !response.status().is_success() {
+            anyhow::bail!(
+                "registry request failed for {}: HTTP {}",
+                endpoint,
+                response.status()
+            );
+        }
+        let crate_response: RegistryCrateResponse = response
+            .json()
+            .await
+            .context("failed to decode registry response")?;
+        let mut versions = crate_response
+            .versions
+            .into_iter()
+            .filter(|v| !v.yanked)
+            .filter_map(|v| Version::parse(&v.num).ok())
+            .collect::<Vec<_>>();
+        versions.sort();
+        Ok(versions)
     }
 
     /// Get the cache directory
@@ -369,6 +504,30 @@ impl Default for DependencyResolver {
     fn default() -> Self {
         Self::new().expect("Failed to create dependency resolver")
     }
+}
+
+fn normalize_version_req(version_req: &str) -> Result<String> {
+    let req = version_req.trim();
+    if req == "*" {
+        return Ok("*".to_string());
+    }
+    if req.starts_with(['^', '~', '=', '>', '<']) || req.contains(',') {
+        return Ok(req.to_string());
+    }
+    let parsed = Version::parse(req)
+        .with_context(|| format!("invalid semver version in dependency requirement: {}", req))?;
+    Ok(format!("^{}", parsed))
+}
+
+fn run_git_command(cmd: &mut Command, action: &str) -> Result<()> {
+    let output = cmd
+        .output()
+        .with_context(|| format!("failed to {}: git executable not available", action))?;
+    if output.status.success() {
+        return Ok(());
+    }
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    anyhow::bail!("failed to {}: {}", action, stderr.trim())
 }
 
 impl LockFile {
@@ -646,5 +805,17 @@ mod tests {
         graph.add_edge("c", "a");
 
         assert!(graph.topological_sort().is_err());
+    }
+
+    #[test]
+    fn test_normalize_version_req() {
+        assert_eq!(normalize_version_req("1.2.3").unwrap(), "^1.2.3");
+        assert_eq!(normalize_version_req("^1.2.3").unwrap(), "^1.2.3");
+        assert_eq!(
+            normalize_version_req(">=1.2.3, <2.0.0").unwrap(),
+            ">=1.2.3, <2.0.0"
+        );
+        assert_eq!(normalize_version_req("*").unwrap(), "*");
+        assert!(normalize_version_req("not-a-version").is_err());
     }
 }

@@ -11,6 +11,7 @@ jet-lexer = { path = "../lexer" }
 jet-parser = { path = "../parser" }
 jet-diagnostics = { path = "../diagnostics" }
 ena = { workspace = true }
+thiserror = { workspace = true }
 
 [dev-dependencies]
 pretty_assertions.workspace = true

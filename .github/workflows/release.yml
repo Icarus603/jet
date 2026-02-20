@@ -228,13 +228,123 @@ jobs:
           name: jet-docs
           path: jet-${{ github.ref_name }}-docs.tar.gz
 
+  # Generate SBOM for the release
+  generate-sbom:
+    name: Generate SBOM
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-sbom
+        run: cargo install --locked cargo-sbom
+
+      - name: Generate SPDX SBOM
+        run: cargo sbom --output-format spdx-json-2-3 --output jet-sbom.spdx.json
+
+      - name: Generate CycloneDX SBOM
+        run: cargo sbom --output-format cyclone-dx-json-1-4 --output jet-sbom.cyclonedx.json
+
+      - name: Upload SBOM artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: |
+            jet-sbom.spdx.json
+            jet-sbom.cyclonedx.json
+
+  # Sign release artifacts with Sigstore
+  sign-artifacts:
+    name: Sign Artifacts
+    runs-on: ubuntu-latest
+    needs: [build-linux, build-macos-arm64, build-macos-x64, build-docs, generate-sbom]
+    permissions:
+      contents: write
+      id-token: write  # Required for Sigstore signing
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign artifacts with Sigstore
+        run: |
+          # Sign all tar.gz artifacts
+          for file in artifacts/*/*.tar.gz; do
+            echo "Signing $file"
+            cosign sign-blob --yes \
+              --output-signature "${file}.sig" \
+              --output-certificate "${file}.cert" \
+              "$file"
+          done
+
+      - name: Generate signing verification info
+        run: |
+          cat > SIGNING_VERIFICATION.md << 'EOF'
+          ## Artifact Signing Verification
+
+          All release artifacts are signed using [Sigstore](https://sigstore.dev/) cosign.
+
+          ### Prerequisites
+
+          Install cosign:
+          ```bash
+          # macOS
+          brew install cosign
+
+          # Linux
+          curl -O -L "https://github.com/sigstore/cosign/releases/latest/download/cosign-linux-amd64"
+          mv cosign-linux-amd64 cosign
+          chmod +x cosign
+          sudo mv cosign /usr/local/bin/
+          ```
+
+          ### Verify an artifact
+
+          ```bash
+          # Download the artifact, signature, and certificate
+          # Then verify:
+          cosign verify-blob \
+            --signature jet-VERSION-linux-x64.tar.gz.sig \
+            --certificate jet-VERSION-linux-x64.tar.gz.cert \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --certificate-identity-regexp https://github.com/Icarus603/jet/.github/workflows/release.yml@refs/tags/v \
+            jet-VERSION-linux-x64.tar.gz
+          ```
+
+          ### Expected Output
+
+          A successful verification will output:
+          ```
+          Verified OK
+          ```
+
+          The certificate contains information about the GitHub Actions workflow that produced the artifact,
+          including the repository, workflow name, and commit SHA.
+          EOF
+
+      - name: Upload signatures
+        uses: actions/upload-artifact@v4
+        with:
+          name: signatures
+          path: |
+            artifacts/**/*.sig
+            artifacts/**/*.cert
+            SIGNING_VERIFICATION.md
+
   # Create release and upload all assets
   create-release:
     name: Create Release
-    needs: [build-linux, build-macos-arm64, build-macos-x64, build-docs]
+    needs: [build-linux, build-macos-arm64, build-macos-x64, build-docs, generate-sbom, sign-artifacts]
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      id-token: write
     steps:
       - uses: actions/checkout@v4
 
@@ -254,7 +364,7 @@ jobs:
           cat > RELEASE_NOTES.md << EOF
           ## Changes in this Release
 
-          See `CHANGELOG.md` for full details.
+          See [CHANGELOG.md](https://github.com/Icarus603/jet/blob/main/CHANGELOG.md) for full details.
 
           ### Installation
 
@@ -270,6 +380,12 @@ jobs:
           ```
 
           Or download the appropriate binary for your platform below.
+
+          ### Security
+
+          All artifacts are signed with [Sigstore](https://sigstore.dev/) cosign. See [SIGNING_VERIFICATION.md](SIGNING_VERIFICATION.md) for verification instructions.
+
+          Software Bill of Materials (SBOM) files are provided in SPDX and CycloneDX formats for supply chain security.
 
           ### SHA256 Checksums
           EOF
@@ -296,7 +412,7 @@ jobs:
 
       - name: Generate checksums
         run: |
-          find artifacts -type f \( -name "*.tar.gz" -o -name "*.zip" \) -print0 | sort -z | xargs -0 shasum -a 256 > SHA256SUMS.txt
+          find artifacts -type f \( -name "*.tar.gz" -o -name "*.zip" -o -name "*.json" \) -print0 | sort -z | xargs -0 shasum -a 256 > SHA256SUMS.txt
           echo "" >> RELEASE_NOTES.md
           echo '```text' >> RELEASE_NOTES.md
           cat SHA256SUMS.txt >> RELEASE_NOTES.md
@@ -313,6 +429,10 @@ jobs:
             artifacts/jet-macos-arm64/*.tar.gz
             artifacts/jet-macos-x64/*.tar.gz
             artifacts/jet-docs/*.tar.gz
+            artifacts/sbom/*.json
+            artifacts/signatures/**/*.sig
+            artifacts/signatures/**/*.cert
+            artifacts/signatures/SIGNING_VERIFICATION.md
             SHA256SUMS.txt
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

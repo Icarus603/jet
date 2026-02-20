@@ -298,7 +298,7 @@ impl Resolver {
             })?
         };
 
-        Ok(format!("{}.{}{}", best.major, best.minor, best.patch))
+        Ok(format!("{}.{}.{}", best.major, best.minor, best.patch))
     }
 
     /// Fetch package metadata (with caching)
@@ -412,21 +412,37 @@ impl SemverReq {
             SemverReq::Gt(req) => version > req,
             SemverReq::Lte(req) => version <= req,
             SemverReq::Tilde(req) => {
-                // ~>1.2.3 matches >=1.2.3 and <1.3.0
-                // ~>1.2 matches >=1.2.0 and <1.3.0
-                // ~>1 matches >=1.0.0 and <2.0.0
-                version >= req
-                    && version.major == req.major
-                    && (req.minor != 0 || version.minor == req.minor)
+                // ~1.2.3 matches >=1.2.3 and <1.3.0
+                // ~1.2 matches >=1.2.0 and <1.3.0
+                // ~1 matches >=1.0.0 and <2.0.0
+                if version < req {
+                    return false;
+                }
+
+                // For tilde, we keep the same major and minor
+                version.major == req.major && version.minor == req.minor
             }
             SemverReq::Caret(req) => {
                 // ^1.2.3 matches >=1.2.3 and <2.0.0
                 // ^0.2.3 matches >=0.2.3 and <0.3.0
                 // ^0.0.3 matches >=0.0.3 and <0.0.4
-                version >= req
-                    && (version.major != 0
-                        || (req.minor == 0 && version.minor == 0)
-                        || (version.minor == req.minor && version.patch >= req.patch))
+                if version < req {
+                    return false;
+                }
+
+                if req.major == 0 {
+                    // 0.x.y - only allow patch changes
+                    if req.minor == 0 {
+                        // 0.0.x - exact match required
+                        version.major == 0 && version.minor == 0 && version.patch == req.patch
+                    } else {
+                        // 0.x.y - allow patch changes only
+                        version.major == 0 && version.minor == req.minor
+                    }
+                } else {
+                    // x.y.z where x >= 1 - allow minor and patch changes
+                    version.major == req.major
+                }
             }
             SemverReq::Wildcard => true,
             SemverReq::Range(left, right) => left.matches(version) && right.matches(version),
@@ -453,7 +469,7 @@ fn parse_semver_req(req: &str) -> Result<SemverReq> {
     }
 
     // Handle prefix operators
-    if req.starts_with("~=") {
+    if req.starts_with("~=") || req.starts_with("~>") {
         let version = parse_semver(&req[2..])?;
         return Ok(SemverReq::Tilde(version));
     }

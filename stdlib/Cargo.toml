@@ -11,6 +11,8 @@ repository = "https://github.com/jet-lang/jet"
 # Runtime support for GC integration
 jet-rt-gc = { path = "../runtime/gc" }
 jet-rt-sync = { path = "../runtime/sync" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
 
 [lib]
 name = "jet_stdlib"

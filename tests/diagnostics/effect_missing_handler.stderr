@@ -1,0 +1,8 @@
+error[E0602]: unhandled effect `DivisionByZero`
+ --> effect_missing_handler.jet:13:18
+   |
+13 |     let result = divide(10, 0)
+   |                  ^^^^^^^^^^^^^
+   |
+   = note: the function `divide` performs effect `DivisionByZero` which is not handled
+   = help: use `with handler` to handle this effect, or declare it in the function signature

@@ -7,6 +7,8 @@ edition = "2021"
 jet-lexer = { path = "../compiler/lexer" }
 jet-parser = { path = "../compiler/parser" }
 jet-diagnostics = { path = "../compiler/diagnostics" }
+jet-effect = { path = "../compiler/effect" }
+jet-ir = { path = "../compiler/ir" }
 
 anyhow = "1.0"
 tempfile = "3.8"

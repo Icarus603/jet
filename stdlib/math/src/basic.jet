@@ -6,6 +6,21 @@
 import core::option::{Option, Some, None}
 import core::traits::{Ord, PartialOrd}
 
+### FFI declarations for math operations.
+### These functions are provided by the runtime (stdlib/src/math.rs).
+
+extern fn jet_math_log(x: float64) -> float64
+extern fn jet_math_log10(x: float64) -> float64
+extern fn jet_math_log2(x: float64) -> float64
+extern fn jet_math_exp(x: float64) -> float64
+extern fn jet_math_sqrt(x: float64) -> float64
+extern fn jet_math_pow(base: float64, exp: float64) -> float64
+extern fn jet_math_floor(x: float64) -> float64
+extern fn jet_math_ceil(x: float64) -> float64
+extern fn jet_math_round(x: float64) -> float64
+extern fn jet_math_abs(x: float64) -> float64
+extern fn jet_math_signum(x: float64) -> float64
+
 ### Mathematical constant: pi (π)
 ###
 ### The ratio of a circle's circumference to its diameter.
@@ -53,34 +68,28 @@ fn clamp[T: Ord](value: T, min_val: T, max_val: T) -> T:
 
 ### Returns the square root of a number.
 fn sqrt(x: float64) -> float64:
-    # In a real implementation, this would use hardware sqrt instruction
-    # or a numerical approximation algorithm
-    x ** 0.5
+    jet_math_sqrt(x)
 
 ### Returns the cube root of a number.
 fn cbrt(x: float64) -> float64:
     if x >= 0.0:
-        x ** (1.0 / 3.0)
+        jet_math_pow(x, 1.0 / 3.0)
     else:
-        -((-x) ** (1.0 / 3.0))
+        -jet_math_pow(-x, 1.0 / 3.0)
 
 ### Returns base raised to the power of exp.
 fn pow(base: float64, exp: float64) -> float64:
-    # In a real implementation, this would use the pow instruction
-    # or a numerical approximation
-    base ** exp
+    jet_math_pow(base, exp)
 
 ### Returns e raised to the power of x.
 fn exp(x: float64) -> float64:
-    # In a real implementation, use Taylor series or hardware instruction
-    pow(e, x)
+    jet_math_exp(x)
 
 ### Returns the natural logarithm of x.
 fn ln(x: float64) -> float64 ! InvalidArgumentError:
     if x <= 0.0:
         raise InvalidArgumentError("ln requires positive argument")
-    # In a real implementation, use numerical approximation
-    log_base(x, e)
+    jet_math_log(x)
 
 ### Returns the logarithm of x with the given base.
 fn log(x: float64, base: float64) -> float64 ! InvalidArgumentError:
@@ -88,49 +97,31 @@ fn log(x: float64, base: float64) -> float64 ! InvalidArgumentError:
         raise InvalidArgumentError("log requires positive argument")
     if base <= 0.0 or base == 1.0:
         raise InvalidArgumentError("log requires positive base != 1")
-    log_base(x, base)
+    jet_math_log(x) / jet_math_log(base)
 
 ### Returns the base-2 logarithm of x.
 fn log2(x: float64) -> float64 ! InvalidArgumentError:
     if x <= 0.0:
         raise InvalidArgumentError("log2 requires positive argument")
-    log_base(x, 2.0)
+    jet_math_log2(x)
 
 ### Returns the base-10 logarithm of x.
 fn log10(x: float64) -> float64 ! InvalidArgumentError:
     if x <= 0.0:
         raise InvalidArgumentError("log10 requires positive argument")
-    log_base(x, 10.0)
-
-### Private: Helper function for logarithms.
-private fn log_base(x: float64, base: float64) -> float64:
-    # In a real implementation, use change of base formula with ln
-    # ln(x) / ln(base)
-    0.0  # Placeholder
+    jet_math_log10(x)
 
 ### Returns the largest integer less than or equal to x.
 fn floor(x: float64) -> float64:
-    # In a real implementation, use truncation or bit manipulation
-    let int_part = x as int64 as float64
-    if x < 0.0 and x != int_part:
-        int_part - 1.0
-    else:
-        int_part
+    jet_math_floor(x)
 
 ### Returns the smallest integer greater than or equal to x.
 fn ceil(x: float64) -> float64:
-    let int_part = x as int64 as float64
-    if x > 0.0 and x != int_part:
-        int_part + 1.0
-    else:
-        int_part
+    jet_math_ceil(x)
 
 ### Returns the nearest integer to x.
 fn round(x: float64) -> float64:
-    if x >= 0.0:
-        floor(x + 0.5)
-    else:
-        ceil(x - 0.5)
+    jet_math_round(x)
 
 ### Returns the integer part of x (truncates toward zero).
 fn trunc(x: float64) -> float64:
@@ -142,12 +133,7 @@ fn fract(x: float64) -> float64:
 
 ### Returns the sign of x (-1.0, 0.0, or 1.0).
 fn signum(x: float64) -> float64:
-    if x > 0.0:
-        1.0
-    else if x < 0.0:
-        -1.0
-    else:
-        0.0
+    jet_math_signum(x)
 
 ### Returns true if x is positive.
 fn is_positive(x: float64) -> bool:

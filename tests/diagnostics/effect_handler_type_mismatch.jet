@@ -1,0 +1,16 @@
+# Test: Effect handler type mismatch
+# Expected: Error about type mismatch in handler resume
+
+effect Compute:
+    fn get_value() -> int
+
+fn compute() ! Compute:
+    let x = perform Compute.get_value()
+    return x + 1
+
+fn main():
+    with handler:
+        # Wrong return type - should be int, not string
+        | Compute.get_value() => resume("wrong type")
+    in:
+        compute()

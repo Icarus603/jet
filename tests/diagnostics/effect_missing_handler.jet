@@ -1,0 +1,15 @@
+# Test: Missing effect handler
+# Expected: Error about effect not being handled
+
+effect DivisionByZero:
+    fn raise() -> never
+
+fn divide(a: int, b: int) -> int ! DivisionByZero:
+    if b == 0:
+        perform DivisionByZero.raise()
+    return a / b
+
+fn main():
+    # DivisionByZero effect is not handled
+    let result = divide(10, 0)
+    print(result)

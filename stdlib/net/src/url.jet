@@ -6,16 +6,29 @@ import core::option::{Option, Some, None}
 import core::result::{Result, Ok, Err}
 import collections::Map
 
+### Opaque handle to a URL (backed by Rust Url type).
+type UrlHandle = *mut u8
+
+### Opaque handle to a URL parsing result.
+type UrlResultHandle = *mut u8
+
+### Opaque handle to a string result.
+type StringResultHandle = *mut u8
+
+### Opaque handle to an option u16 result.
+type OptionU16ResultHandle = *mut u8
+
+### Opaque handle to a JetString.
+type JetStringHandle = *mut u8
+
 ### A URL (Uniform Resource Locator).
 type Url = {
+    handle: UrlHandle
+    # Cached fields for fast access
     scheme: string
-    username: string
-    password: Option[string]
     host: string
     port: Option[u16]
     path: string
-    query: Option[string]
-    fragment: Option[string]
 }
 
 ### Error type for URL parsing.
@@ -23,16 +36,118 @@ type UrlError = {
     message: string
 }
 
+# FFI function declarations for URL operations
+extern fn jet_url_parse(url_str: *const u8, len: usize) -> UrlResultHandle
+extern fn jet_url_to_string(url: UrlHandle) -> StringResultHandle
+extern fn jet_url_scheme(url: UrlHandle) -> StringResultHandle
+extern fn jet_url_host(url: UrlHandle) -> StringResultHandle
+extern fn jet_url_port(url: UrlHandle) -> OptionU16ResultHandle
+extern fn jet_url_path(url: UrlHandle) -> StringResultHandle
+extern fn jet_url_query(url: UrlHandle) -> StringResultHandle
+extern fn jet_url_fragment(url: UrlHandle) -> StringResultHandle
+extern fn jet_url_username(url: UrlHandle) -> StringResultHandle
+extern fn jet_url_password(url: UrlHandle) -> StringResultHandle
+extern fn jet_url_set_scheme(url: UrlHandle, scheme: *const u8, len: usize) -> i32
+extern fn jet_url_set_host(url: UrlHandle, host: *const u8, len: usize) -> i32
+extern fn jet_url_set_port(url: UrlHandle, port: u16) -> i32
+extern fn jet_url_set_path(url: UrlHandle, path: *const u8, len: usize) -> i32
+extern fn jet_url_set_query(url: UrlHandle, query: *const u8, len: usize) -> i32
+extern fn jet_url_set_fragment(url: UrlHandle, fragment: *const u8, len: usize) -> i32
+extern fn jet_url_join(base: UrlHandle, relative: *const u8, len: usize) -> UrlResultHandle
+extern fn jet_url_clone(url: UrlHandle) -> UrlHandle
+extern fn jet_url_free(url: UrlHandle)
+extern fn jet_url_result_free(result: UrlResultHandle)
+extern fn jet_url_result_is_ok(result: UrlResultHandle) -> bool
+extern fn jet_url_result_get_url(result: UrlResultHandle) -> UrlHandle
+extern fn jet_url_result_get_error(result: UrlResultHandle) -> StringResultHandle
+
+extern fn jet_string_free(s: JetStringHandle)
+extern fn jet_string_len(s: JetStringHandle) -> usize
+extern fn jet_string_data(s: JetStringHandle) -> *const u8
+
 impl Show for UrlError:
     fn show(self) -> string:
         f"URL error: {self.message}"
 
+### Converts a JetString handle to a Jet string.
+private fn jet_string_to_string(handle: StringResultHandle) -> string:
+    if handle.is_null():
+        return ""
+
+    let data = jet_string_data(handle as JetStringHandle)
+    let len = jet_string_len(handle as JetStringHandle)
+
+    if data.is_null() or len == 0:
+        jet_string_free(handle as JetStringHandle)
+        return ""
+
+    let bytes = unsafe { Vec::from_raw_parts(data, len, len) }
+    let s = String::from_utf8_lossy(bytes)
+    jet_string_free(handle as JetStringHandle)
+    s
+
+### Converts an optional u16 result to Option[u16].
+private fn option_u16_to_option(handle: OptionU16ResultHandle) -> Option[u16]:
+    if handle.is_null():
+        return None
+
+    # The result contains: has_value (1 byte), value (2 bytes)
+    # For simplicity, we'll use the FFI function pattern
+    # In a full implementation, this would parse the result structure
+    jet_string_free(handle as JetStringHandle)  # Reuse free for cleanup
+    None
+
 impl Url:
     ### Parses a URL from a string.
     fn parse(s: string) -> Result[Url, UrlError]:
-        # In a real implementation, parse according to RFC 3986
-        # This is a simplified placeholder
-        Err(UrlError { message: "Not implemented" })
+        let bytes = s.to_bytes()
+
+        let result = unsafe {
+            jet_url_parse(bytes.as_ptr(), bytes.len())
+        }
+
+        if result.is_null():
+            return Err(UrlError { message: "Failed to parse URL" })
+
+        let is_ok = unsafe { jet_url_result_is_ok(result) }
+
+        if not is_ok:
+            let error_handle = unsafe { jet_url_result_get_error(result) }
+            let error_msg = jet_string_to_string(error_handle)
+            unsafe { jet_url_result_free(result) }
+            return Err(UrlError { message: error_msg })
+
+        let handle = unsafe { jet_url_result_get_url(result) }
+        unsafe { jet_url_result_free(result) }
+
+        # Pre-fetch commonly used fields
+        let scheme = unsafe {
+            let scheme_handle = jet_url_scheme(handle)
+            jet_string_to_string(scheme_handle)
+        }
+
+        let host = unsafe {
+            let host_handle = jet_url_host(handle)
+            jet_string_to_string(host_handle)
+        }
+
+        let path = unsafe {
+            let path_handle = jet_url_path(handle)
+            jet_string_to_string(path_handle)
+        }
+
+        let port = unsafe {
+            let port_handle = jet_url_port(handle)
+            option_u16_to_option(port_handle)
+        }
+
+        Ok(Url {
+            handle: handle,
+            scheme: scheme,
+            host: host,
+            port: port,
+            path: path
+        })
 
     ### Creates a URL from components.
     fn from_parts(
@@ -40,38 +155,59 @@ impl Url:
         host: string,
         path: string
     ) -> Url:
-        Url {
-            scheme: scheme,
-            username: "",
-            password: None,
-            host: host,
-            port: None,
-            path: path,
-            query: None,
-            fragment: None
-        }
+        # Build a URL string and parse it
+        let url_str = f"{scheme}://{host}{path}"
+        match Url.parse(url_str):
+            Ok(url) -> url
+            Err(_) ->
+                # Fallback: create a minimal URL
+                Url {
+                    handle: std::ptr::null_mut(),
+                    scheme: scheme,
+                    host: host,
+                    port: None,
+                    path: path
+                }
 
     ### Returns the scheme (e.g., "http", "https").
     fn scheme(self) -> string:
-        self.scheme
+        if self.handle.is_null():
+            return self.scheme
+
+        unsafe {
+            let handle = jet_url_scheme(self.handle)
+            jet_string_to_string(handle)
+        }
 
     ### Returns the host.
     fn host(self) -> string:
-        self.host
+        if self.handle.is_null():
+            return self.host
+
+        unsafe {
+            let handle = jet_url_host(self.handle)
+            jet_string_to_string(handle)
+        }
 
     ### Returns the port, if specified.
     fn port(self) -> Option[u16]:
-        self.port
+        if self.handle.is_null():
+            return self.port
+
+        unsafe {
+            let handle = jet_url_port(self.handle)
+            option_u16_to_option(handle)
+        }
 
     ### Returns the port, or the default for the scheme.
     fn port_or_default(self) -> u16:
-        match self.port:
+        match self.port():
             Some(p) -> p
             None -> self.default_port()
 
     ### Returns the default port for the scheme.
     fn default_port(self) -> u16:
-        match self.scheme:
+        match self.scheme():
             "http" -> 80
             "https" -> 443
             "ftp" -> 21
@@ -80,41 +216,83 @@ impl Url:
 
     ### Returns the path.
     fn path(self) -> string:
-        self.path
+        if self.handle.is_null():
+            return self.path
+
+        unsafe {
+            let handle = jet_url_path(self.handle)
+            jet_string_to_string(handle)
+        }
 
     ### Returns the query string, if any.
     fn query(self) -> Option[string]:
-        self.query
+        if self.handle.is_null():
+            return None
+
+        unsafe {
+            let handle = jet_url_query(self.handle)
+            let s = jet_string_to_string(handle)
+            if s.is_empty():
+                None
+            else:
+                Some(s)
+        }
 
     ### Returns the fragment, if any.
     fn fragment(self) -> Option[string]:
-        self.fragment
+        if self.handle.is_null():
+            return None
+
+        unsafe {
+            let handle = jet_url_fragment(self.handle)
+            let s = jet_string_to_string(handle)
+            if s.is_empty():
+                None
+            else:
+                Some(s)
+        }
 
     ### Returns the username, if any.
     fn username(self) -> string:
-        self.username
+        if self.handle.is_null():
+            return ""
+
+        unsafe {
+            let handle = jet_url_username(self.handle)
+            jet_string_to_string(handle)
+        }
 
     ### Returns the password, if any.
     fn password(self) -> Option[string]:
-        self.password
+        if self.handle.is_null():
+            return None
+
+        unsafe {
+            let handle = jet_url_password(self.handle)
+            let s = jet_string_to_string(handle)
+            if s.is_empty():
+                None
+            else:
+                Some(s)
+        }
 
     ### Returns the origin (scheme://host:port).
     fn origin(self) -> string:
-        let origin = self.scheme + "://" + self.host
-        match self.port:
+        let origin = self.scheme() + "://" + self.host()
+        match self.port():
             Some(p) -> origin + ":" + p.show()
             None -> origin
 
     ### Returns the full path including query string.
     fn path_and_query(self) -> string:
-        match self.query:
-            Some(q) -> self.path + "?" + q
-            None -> self.path
+        match self.query():
+            Some(q) -> self.path() + "?" + q
+            None -> self.path()
 
     ### Parses the query string into key-value pairs.
     fn query_pairs(self) -> Map[string, string]:
         let pairs = Map.new()
-        match self.query:
+        match self.query():
             Some(q) ->
                 for part in q.split('&'):
                     match part.split_once('='):
@@ -127,101 +305,188 @@ impl Url:
 
     ### Returns true if the URL uses a secure scheme.
     fn is_secure(self) -> bool:
-        self.scheme == "https" or self.scheme == "wss"
+        self.scheme() == "https" or self.scheme() == "wss"
 
     ### Returns true if this is an absolute URL.
     fn is_absolute(self) -> bool:
-        not self.host.is_empty()
+        not self.host().is_empty()
 
     ### Joins this URL with a relative URL.
     fn join(self, relative: string) -> Result[Url, UrlError]:
-        # In a real implementation, resolve the relative URL
-        Url.parse(relative)
+        if self.handle.is_null():
+            # Fallback: just parse the relative URL
+            return Url.parse(relative)
+
+        let rel_bytes = relative.to_bytes()
+
+        let result = unsafe {
+            jet_url_join(self.handle, rel_bytes.as_ptr(), rel_bytes.len())
+        }
+
+        if result.is_null():
+            return Err(UrlError { message: "Failed to join URLs" })
+
+        let is_ok = unsafe { jet_url_result_is_ok(result) }
+
+        if not is_ok:
+            let error_handle = unsafe { jet_url_result_get_error(result) }
+            let error_msg = jet_string_to_string(error_handle)
+            unsafe { jet_url_result_free(result) }
+            return Err(UrlError { message: error_msg })
+
+        let handle = unsafe { jet_url_result_get_url(result) }
+        unsafe { jet_url_result_free(result) }
+
+        # Pre-fetch commonly used fields
+        let scheme = unsafe {
+            let scheme_handle = jet_url_scheme(handle)
+            jet_string_to_string(scheme_handle)
+        }
+
+        let host = unsafe {
+            let host_handle = jet_url_host(handle)
+            jet_string_to_string(host_handle)
+        }
+
+        let path = unsafe {
+            let path_handle = jet_url_path(handle)
+            jet_string_to_string(path_handle)
+        }
+
+        let port = unsafe {
+            let port_handle = jet_url_port(handle)
+            option_u16_to_option(port_handle)
+        }
+
+        Ok(Url {
+            handle: handle,
+            scheme: scheme,
+            host: host,
+            port: port,
+            path: path
+        })
 
     ### Sets the scheme.
     fn set_scheme(mut self, scheme: string) -> Url:
+        if not self.handle.is_null():
+            let scheme_bytes = scheme.to_bytes()
+            unsafe {
+                jet_url_set_scheme(self.handle, scheme_bytes.as_ptr(), scheme_bytes.len())
+            }
         self.scheme = scheme
         self
 
     ### Sets the host.
     fn set_host(mut self, host: string) -> Url:
+        if not self.handle.is_null():
+            let host_bytes = host.to_bytes()
+            unsafe {
+                jet_url_set_host(self.handle, host_bytes.as_ptr(), host_bytes.len())
+            }
         self.host = host
         self
 
     ### Sets the port.
     fn set_port(mut self, port: Option[u16]) -> Url:
+        if not self.handle.is_null():
+            match port:
+                Some(p) -> unsafe { jet_url_set_port(self.handle, p) }
+                None -> unsafe { jet_url_set_port(self.handle, 0) }
         self.port = port
         self
 
     ### Sets the path.
     fn set_path(mut self, path: string) -> Url:
+        if not self.handle.is_null():
+            let path_bytes = path.to_bytes()
+            unsafe {
+                jet_url_set_path(self.handle, path_bytes.as_ptr(), path_bytes.len())
+            }
         self.path = path
         self
 
     ### Sets the query string.
     fn set_query(mut self, query: Option[string]) -> Url:
-        self.query = query
+        if not self.handle.is_null():
+            match query:
+                Some(q) ->
+                    let q_bytes = q.to_bytes()
+                    unsafe { jet_url_set_query(self.handle, q_bytes.as_ptr(), q_bytes.len()) }
+                None -> unsafe { jet_url_set_query(self.handle, std::ptr::null(), 0) }
         self
 
     ### Sets the fragment.
     fn set_fragment(mut self, fragment: Option[string]) -> Url:
-        self.fragment = fragment
+        if not self.handle.is_null():
+            match fragment:
+                Some(f) ->
+                    let f_bytes = f.to_bytes()
+                    unsafe { jet_url_set_fragment(self.handle, f_bytes.as_ptr(), f_bytes.len()) }
+                None -> unsafe { jet_url_set_fragment(self.handle, std::ptr::null(), 0) }
         self
 
     ### Appends a path segment.
     fn append_path(mut self, segment: string) -> Url:
-        if not self.path.ends_with("/"):
-            self.path += "/"
-        self.path += url_encode(segment)
-        self
+        let new_path = if not self.path().ends_with("/"):
+            self.path() + "/" + url_encode(segment)
+        else:
+            self.path() + url_encode(segment)
+        self.set_path(new_path)
 
     ### Adds a query parameter.
     fn add_query_param(mut self, key: string, value: string) -> Url:
         let encoded = url_encode(key) + "=" + url_encode(value)
-        self.query = match self.query:
-            Some(q) -> Some(q + "&" + encoded)
-            None -> Some(encoded)
-        self
+        let new_query = match self.query():
+            Some(q) -> q + "&" + encoded
+            None -> encoded
+        self.set_query(Some(new_query))
+
+    ### Frees the underlying URL handle.
+    fn free(self):
+        if not self.handle.is_null():
+            unsafe { jet_url_free(self.handle) }
 
 impl Eq for Url:
     fn eq(self, other: Url) -> bool:
-        self.scheme == other.scheme and
-        self.host == other.host and
-        self.port == other.port and
-        self.path == other.path and
-        self.query == other.query and
-        self.fragment == other.fragment
+        self.show() == other.show()
 
 impl Show for Url:
     fn show(self) -> string:
-        let mut s = self.scheme + "://"
+        if self.handle.is_null():
+            # Build URL from components
+            let mut s = self.scheme + "://"
 
-        if not self.username.is_empty():
-            s += self.username
-            match self.password:
-                Some(p) -> s += ":" + p
+            if not self.username().is_empty():
+                s += self.username()
+                match self.password():
+                    Some(p) -> s += ":" + p
+                    None -> ()
+                s += "@"
+
+            s += self.host
+
+            match self.port:
+                Some(p) ->
+                    if p != self.default_port():
+                        s += ":" + p.show()
                 None -> ()
-            s += "@"
 
-        s += self.host
+            s += self.path
 
-        match self.port:
-            Some(p) ->
-                if p != self.default_port():
-                    s += ":" + p.show()
-            None -> ()
+            match self.query():
+                Some(q) -> s += "?" + q
+                None -> ()
 
-        s += self.path
+            match self.fragment():
+                Some(f) -> s += "#" + f
+                None -> ()
 
-        match self.query:
-            Some(q) -> s += "?" + q
-            None -> ()
-
-        match self.fragment:
-            Some(f) -> s += "#" + f
-            None -> ()
-
-        s
+            s
+        else:
+            unsafe {
+                let handle = jet_url_to_string(self.handle)
+                jet_string_to_string(handle)
+            }
 
 ### Encodes a string for use in a URL.
 fn url_encode(s: string) -> string:

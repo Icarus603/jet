@@ -328,6 +328,12 @@ impl Resolver {
                         self.errors.push(err);
                     }
                 }
+                ModuleItem::Spec(_) | ModuleItem::Example(_) => {
+                    // Spec and Example items don't define new names in the module scope
+                }
+                ModuleItem::GhostType(_) => {
+                    // Ghost types don't define runtime-visible names
+                }
             }
         }
 
@@ -556,6 +562,14 @@ impl Resolver {
                 Ok(())
             }
             ModuleItem::Effect(e) => self.resolve_effect_def(e),
+            ModuleItem::Spec(_) | ModuleItem::Example(_) => {
+                // Spec and Example items don't need resolution
+                Ok(())
+            }
+            ModuleItem::GhostType(_) => {
+                // Ghost types are for formal verification and don't need resolution
+                Ok(())
+            }
         }
     }
 
@@ -1210,6 +1224,10 @@ impl Resolver {
                 if let Some(value) = &resume.value {
                     self.resolve_expr(value)?;
                 }
+                Ok(())
+            }
+            Expr::Hole(_) => {
+                // Holes don't need resolution - they are placeholders for type-directed development
                 Ok(())
             }
         }
@@ -1909,12 +1927,14 @@ mod tests {
             where_clause: vec![],
             items: vec![ImplItem::Method(Function {
                 public: true,
+                attributes: vec![],
                 name: jet_parser::ast::Ident::new("new", make_span()),
                 generics: vec![],
                 params: vec![],
                 return_type: Some(Type::SelfType), // Return Self
                 effects: vec![],
                 where_clause: vec![],
+                contract: None,
                 body: Expr::Literal(Literal::Unit),
                 span: make_span(),
             })],

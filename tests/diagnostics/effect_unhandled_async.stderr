@@ -1,0 +1,8 @@
+error[E0601]: unhandled async effect
+ --> effect_unhandled_async.jet:4:5
+  |
+4 |     await fetch_data()
+  |     ^^^^^^^^^^^^^^^^^^
+  |
+  = help: await can only be used inside an async function or block
+  = note: consider marking the function with `async` or using `! async` in the signature

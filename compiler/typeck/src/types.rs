@@ -240,6 +240,8 @@ pub enum TypeKind {
     Channel(TypeId),
     /// Async type async T
     Async(TypeId),
+    /// Ghost type (for verification only, erased at runtime)
+    Ghost(TypeId),
 }
 
 /// Context for interning and managing types
@@ -380,6 +382,24 @@ impl TypeContext {
     /// Create a float type
     pub fn mk_float(&mut self, size: FloatSize) -> TypeId {
         self.intern(TypeKind::Float(size))
+    }
+
+    /// Create a ghost type
+    pub fn mk_ghost(&mut self, inner: TypeId) -> TypeId {
+        self.intern(TypeKind::Ghost(inner))
+    }
+
+    /// Check if a type is a ghost type
+    pub fn is_ghost(&self, id: TypeId) -> bool {
+        matches!(self.type_kind(id), TypeKind::Ghost(_))
+    }
+
+    /// Get the inner type of a ghost type
+    pub fn ghost_inner(&self, id: TypeId) -> Option<TypeId> {
+        match self.type_kind(id) {
+            TypeKind::Ghost(inner) => Some(*inner),
+            _ => None,
+        }
     }
 
     /// Format a type as a string
@@ -525,6 +545,17 @@ impl<'a> fmt::Display for TypeFormatter<'a> {
             }
             TypeKind::Async(inner) => {
                 write!(f, "async ")?;
+                write!(
+                    f,
+                    "{}",
+                    TypeFormatter {
+                        tcx: self.tcx,
+                        id: *inner
+                    }
+                )
+            }
+            TypeKind::Ghost(inner) => {
+                write!(f, "ghost ")?;
                 write!(
                     f,
                     "{}",

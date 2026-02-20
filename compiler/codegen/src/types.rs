@@ -107,6 +107,8 @@ impl<'ctx> TypeMapping<'ctx> for CodeGen<'ctx> {
                 .i8_type()
                 .ptr_type(AddressSpace::default())
                 .into()),
+            // Ghost types are erased at runtime - compile to void
+            Ty::Ghost(_) => Ok(self.context.struct_type(&[], false).into()),
         }
     }
 
@@ -166,6 +168,8 @@ impl<'ctx> TypeMapping<'ctx> for CodeGen<'ctx> {
             Ty::Function(_, _) => 8,
             // Named and generic types are pointer-sized (GC heap objects)
             Ty::Named(_) | Ty::Generic(_, _) => 8,
+            // Ghost types are erased at runtime - zero size
+            Ty::Ghost(_) => 0,
         };
         Ok(size)
     }
@@ -196,6 +200,8 @@ impl<'ctx> TypeMapping<'ctx> for CodeGen<'ctx> {
             Ty::Function(_, _) => 8,
             // Named and generic types are pointer-aligned (GC heap objects)
             Ty::Named(_) | Ty::Generic(_, _) => 8,
+            // Ghost types are erased at runtime, alignment is 0
+            Ty::Ghost(_) => 0,
         };
         Ok(align)
     }

@@ -1,0 +1,32 @@
+[package]
+name = "jet-lint"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Jet linter - comprehensive static analysis for code quality"
+
+[[bin]]
+name = "jet-lint"
+path = "src/main.rs"
+
+[lib]
+name = "jet_lint"
+path = "src/lib.rs"
+
+[dependencies]
+jet-lexer = { path = "../../compiler/lexer" }
+jet-parser = { path = "../../compiler/parser" }
+jet-resolve = { path = "../../compiler/resolve" }
+jet-typeck = { path = "../../compiler/typeck" }
+jet-diagnostics = { path = "../../compiler/diagnostics" }
+thiserror.workspace = true
+anyhow.workspace = true
+serde = { workspace = true, features = ["derive"] }
+toml.workspace = true
+
+serde_json.workspace = true
+
+[dev-dependencies]
+pretty_assertions.workspace = true

@@ -1,0 +1,8 @@
+# Test: Unnecessary effect declaration
+# Expected: Warning about unnecessarily declared effect
+
+fn pure_add(a: int, b: int) -> int ! io:
+    return a + b
+
+fn main():
+    print(pure_add(1, 2))

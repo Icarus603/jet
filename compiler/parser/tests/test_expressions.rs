@@ -80,7 +80,30 @@ fn test_unit_literal() {
 fn test_simple_identifier() {
     assert_parses("x");
     assert_parses("foo");
-    assert_parses("_");
+}
+
+#[test]
+fn test_hole_expression() {
+    // Hole expression for hole-driven development
+    let result = parse_expr("_");
+    assert!(result.is_ok(), "Expected '_' to parse as hole expression");
+    match result {
+        Ok(jet_parser::ast::Expr::Hole(_)) => {}
+        Ok(jet_parser::ast::Expr::Block(block))
+            if matches!(
+                block.stmts.first(),
+                Some(jet_parser::ast::Stmt::Expr(expr))
+                    if matches!(expr.as_ref(), jet_parser::ast::Expr::Hole(_))
+            ) => {}
+        Ok(other) => panic!("Expected Hole expression, got {:?}", other),
+        Err(e) => panic!("Parse error: {}", e),
+    }
+
+    // Holes can appear in various expression contexts
+    assert_parses("let x = _");
+    assert_parses("foo(_)");
+    assert_parses("_ + 1");
+    assert_parses("(1, _)");
 }
 
 // =============================================================================

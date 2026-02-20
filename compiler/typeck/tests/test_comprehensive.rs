@@ -161,7 +161,7 @@ fn test_simple_function_types() {
     return x + y
 
 fn test():
-    let result: int = add(1, 2)"#,
+    let res: int = add(1, 2)"#,
     );
 }
 
@@ -172,7 +172,7 @@ fn test_function_with_effects() {
     raise Error
 
 fn test():
-    let result: Result[int, Error] = try:
+    let res: Result[int, Error] = try:
         may_fail()"#,
     );
 }
@@ -187,7 +187,7 @@ fn double(x: int) -> int:
     return x * 2
 
 fn test():
-    let result: int = apply(double, 5)"#,
+    let res: int = apply(double, 5)"#,
     );
 }
 
@@ -488,7 +488,7 @@ fn test_slice_types() {
 
 fn test():
     let arr = [1, 2, 3, 4, 5]
-    let result = sum_slice(&arr)"#,
+    let res = sum_slice(&arr)"#,
     );
 }
 
@@ -517,7 +517,7 @@ fn may_fail() -> Result[int, string]:
     return Ok(42)
 
 fn test():
-    let result: Result[int, string] = may_fail()"#,
+    let res: Result[int, string] = may_fail()"#,
     );
 }
 
@@ -725,6 +725,6 @@ impl Comparable for int:
         return self < other
 
 fn test():
-    let result: int = sum_if_small(5, 3, 10)"#,
+    let res: int = sum_if_small(5, 3, 10)"#,
     );
 }

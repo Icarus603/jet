@@ -361,9 +361,16 @@ impl Linker {
                 cmd.arg("-arch");
                 cmd.arg(self.config.target.linker_arch());
 
-                // macOS version
+                // macOS version - detect from running system
+                let macos_version = std::process::Command::new("sw_vers")
+                    .arg("-productVersion")
+                    .output()
+                    .ok()
+                    .and_then(|out| String::from_utf8(out.stdout).ok())
+                    .map(|s| s.trim().to_string())
+                    .unwrap_or_else(|| "12.0".to_string());
                 cmd.arg("-macos_version_min");
-                cmd.arg("11.0");
+                cmd.arg(macos_version);
 
                 // System library
                 cmd.arg("-lSystem");

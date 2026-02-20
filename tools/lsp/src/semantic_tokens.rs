@@ -5,10 +5,10 @@
 
 use jet_lexer::{Span, SpannedToken, Token};
 use jet_parser::ast::{
-    Block, ConstDef, EffectDef, EnumDef, EnumVariant, Expr, FieldDef, FieldInit, Function, GenericParam,
-    HandlerArm, Ident, ImplDef, ImplItem, Import, ImportItem, MatchArm, Module, ModuleItem,
-    OperationDef, Param, Path, Pattern, Stmt, StructDef, TraitDef, TraitItem, Type, TypeAlias,
-    VariantBody, WhereBound,
+    Block, ConstDef, EffectDef, EnumDef, EnumVariant, Example, Expr, FieldDef, FieldInit, Function,
+    GenericParam, GhostType, HandlerArm, Ident, ImplDef, ImplItem, Import, ImportItem, MatchArm,
+    Module, ModuleItem, OperationDef, Param, Path, Pattern, Spec, Stmt, StructDef, TraitDef,
+    TraitItem, Type, TypeAlias, VariantBody, WhereBound,
 };
 use tower_lsp::lsp_types::{SemanticToken, SemanticTokenModifier, SemanticTokenType};
 
@@ -93,44 +93,64 @@ fn offset_to_position(source: &str, offset: usize) -> LineInfo {
 
 /// A builder for semantic tokens
 pub struct SemanticTokensBuilder {
-    tokens: Vec<SemanticToken>,
-    prev_line: u32,
-    prev_char: u32,
+    tokens: Vec<RawToken>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct RawToken {
+    line: u32,
+    character: u32,
+    length: u32,
+    token_type: u32,
+    modifier: u32,
 }
 
 impl SemanticTokensBuilder {
     pub fn new() -> Self {
-        Self {
-            tokens: Vec::new(),
-            prev_line: 0,
-            prev_char: 0,
-        }
+        Self { tokens: Vec::new() }
     }
 
     /// Add a token
     pub fn push(&mut self, line: u32, character: u32, length: u32, token_type: u32, modifier: u32) {
-        let delta_line = line - self.prev_line;
-        let delta_start = if delta_line == 0 {
-            character - self.prev_char
-        } else {
-            character
-        };
-
-        self.tokens.push(SemanticToken {
-            delta_line,
-            delta_start,
+        self.tokens.push(RawToken {
+            line,
+            character,
             length,
             token_type,
-            token_modifiers_bitset: modifier,
+            modifier,
         });
-
-        self.prev_line = line;
-        self.prev_char = character;
     }
 
     /// Build the final token list
     pub fn build(self) -> Vec<SemanticToken> {
-        self.tokens
+        let mut raw_tokens = self.tokens;
+        raw_tokens.sort_by_key(|t| (t.line, t.character));
+
+        let mut out = Vec::with_capacity(raw_tokens.len());
+        let mut prev_line = 0u32;
+        let mut prev_char = 0u32;
+
+        for token in raw_tokens {
+            let delta_line = token.line.saturating_sub(prev_line);
+            let delta_start = if delta_line == 0 {
+                token.character.saturating_sub(prev_char)
+            } else {
+                token.character
+            };
+
+            out.push(SemanticToken {
+                delta_line,
+                delta_start,
+                length: token.length,
+                token_type: token.token_type,
+                token_modifiers_bitset: token.modifier,
+            });
+
+            prev_line = token.line;
+            prev_char = token.character;
+        }
+
+        out
     }
 }
 
@@ -320,6 +340,20 @@ fn classify_token(token: &Token) -> Option<(u32, u32)> {
         Token::Ident(_) => None,
         Token::Label(_) => None,
 
+        // AI annotation tokens - skip (handled elsewhere if needed)
+        Token::Confidence
+        | Token::GeneratedBy
+        | Token::Prompt
+        | Token::HumanEditCount
+        | Token::AtSpec
+        | Token::AtExample
+        | Token::AtTestFor
+        | Token::Ghost
+        | Token::Requires
+        | Token::Ensures
+        | Token::Invariant
+        | Token::Result => None,
+
         // Other tokens - skip
         Token::Eof => None,
         Token::Error(_) => None,
@@ -384,13 +418,8 @@ impl<'a> SemanticTokenVisitor<'a> {
         let pos = offset_to_position(self.source, ident.span.start);
         let length = (ident.span.end - ident.span.start) as u32;
 
-        self.builder.push(
-            pos.line,
-            pos.character,
-            length,
-            token_type as u32,
-            modifier,
-        );
+        self.builder
+            .push(pos.line, pos.character, length, token_type as u32, modifier);
     }
 
     fn visit_module(&mut self, module: &Module) {
@@ -410,6 +439,9 @@ impl<'a> SemanticTokenVisitor<'a> {
             ModuleItem::Const(c) => self.visit_const_def(c),
             ModuleItem::Effect(e) => self.visit_effect_def(e),
             ModuleItem::Import(i) => self.visit_import(i),
+            ModuleItem::Spec(spec) => self.visit_spec(spec),
+            ModuleItem::Example(example) => self.visit_example(example),
+            ModuleItem::GhostType(ghost_type) => self.visit_ghost_type(ghost_type),
         }
     }
 
@@ -631,8 +663,8 @@ impl<'a> SemanticTokenVisitor<'a> {
                     self.visit_expr(&func.body);
                 }
                 ImplItem::Const { name, ty, value } => {
-                    let modifier = TokenModifier::Definition.to_bitset()
-                        | TokenModifier::Readonly.to_bitset();
+                    let modifier =
+                        TokenModifier::Definition.to_bitset() | TokenModifier::Readonly.to_bitset();
                     self.push_ident(name, TokenType::Variable, modifier);
                     self.visit_type(ty);
                     self.visit_expr(value);
@@ -663,8 +695,7 @@ impl<'a> SemanticTokenVisitor<'a> {
     }
 
     fn visit_const_def(&mut self, c: &ConstDef) {
-        let modifier = TokenModifier::Declaration.to_bitset()
-            | TokenModifier::Readonly.to_bitset();
+        let modifier = TokenModifier::Declaration.to_bitset() | TokenModifier::Readonly.to_bitset();
         self.push_ident(&c.name, TokenType::Variable, modifier);
         self.visit_type(&c.ty);
         self.visit_expr(&c.value);
@@ -732,6 +763,25 @@ impl<'a> SemanticTokenVisitor<'a> {
         }
     }
 
+    fn visit_spec(&mut self, _spec: &Spec) {
+        // `@spec` content is currently free-form text without identifier spans.
+    }
+
+    fn visit_example(&mut self, example: &Example) {
+        self.visit_expr(&example.code);
+    }
+
+    fn visit_ghost_type(&mut self, ghost_type: &GhostType) {
+        let modifier = TokenModifier::Declaration.to_bitset();
+        self.push_ident(&ghost_type.name, TokenType::Type, modifier);
+
+        for generic in &ghost_type.generics {
+            self.visit_generic_param(generic);
+        }
+
+        self.visit_type(&ghost_type.ty);
+    }
+
     fn visit_generic_param(&mut self, generic: &GenericParam) {
         let modifier = TokenModifier::Declaration.to_bitset();
         self.push_ident(&generic.name, TokenType::TypeParameter, modifier);
@@ -789,7 +839,11 @@ impl<'a> SemanticTokenVisitor<'a> {
                     }
                 }
             }
-            Pattern::Enum { path, variant, inner } => {
+            Pattern::Enum {
+                path,
+                variant,
+                inner,
+            } => {
                 self.visit_path(path, TokenType::Enum);
                 self.push_ident(variant, TokenType::EnumMember, 0);
                 if let Some(inner) = inner {
@@ -803,7 +857,11 @@ impl<'a> SemanticTokenVisitor<'a> {
             }
             Pattern::Rest(ident) => {
                 if let Some(ident) = ident {
-                    self.push_ident(ident, TokenType::Variable, TokenModifier::Declaration.to_bitset());
+                    self.push_ident(
+                        ident,
+                        TokenType::Variable,
+                        TokenModifier::Declaration.to_bitset(),
+                    );
                 }
             }
             Pattern::Or(left, right) => {
@@ -846,7 +904,11 @@ impl<'a> SemanticTokenVisitor<'a> {
                     self.visit_expr(size);
                 }
             }
-            Type::Function { params, return_type, effects } => {
+            Type::Function {
+                params,
+                return_type,
+                effects,
+            } => {
                 for param in params {
                     self.visit_type(param);
                 }
@@ -892,7 +954,11 @@ impl<'a> SemanticTokenVisitor<'a> {
                     self.visit_expr(arg);
                 }
             }
-            Expr::MethodCall { receiver, method, args } => {
+            Expr::MethodCall {
+                receiver,
+                method,
+                args,
+            } => {
                 self.visit_expr(receiver);
                 self.push_ident(method, TokenType::Method, 0);
                 for arg in args {
@@ -917,7 +983,11 @@ impl<'a> SemanticTokenVisitor<'a> {
             Expr::Block(block) => {
                 self.visit_block(block);
             }
-            Expr::If { cond, then_branch, else_branch } => {
+            Expr::If {
+                cond,
+                then_branch,
+                else_branch,
+            } => {
                 self.visit_expr(cond);
                 self.visit_expr(then_branch);
                 if let Some(else_branch) = else_branch {
@@ -934,7 +1004,12 @@ impl<'a> SemanticTokenVisitor<'a> {
                 self.visit_expr(cond);
                 self.visit_expr(body);
             }
-            Expr::For { pattern, iterable, body, .. } => {
+            Expr::For {
+                pattern,
+                iterable,
+                body,
+                ..
+            } => {
                 self.visit_pattern(pattern);
                 self.visit_expr(iterable);
                 self.visit_expr(body);
@@ -942,7 +1017,12 @@ impl<'a> SemanticTokenVisitor<'a> {
             Expr::Loop { body, .. } => {
                 self.visit_expr(body);
             }
-            Expr::Lambda { params, return_type, effects, body } => {
+            Expr::Lambda {
+                params,
+                return_type,
+                effects,
+                body,
+            } => {
                 for param in params {
                     self.visit_param(param);
                 }
@@ -1023,6 +1103,9 @@ impl<'a> SemanticTokenVisitor<'a> {
                 if let Some(value) = &resume.value {
                     self.visit_expr(value);
                 }
+            }
+            Expr::Hole(_) => {
+                // Hole expressions don't have tokens to highlight
             }
         }
     }
@@ -1142,6 +1225,8 @@ pub fn get_semantic_token_modifiers() -> Vec<SemanticTokenModifier> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use jet_lexer::Lexer;
+    use jet_parser::Parser;
 
     #[test]
     fn test_offset_to_position() {
@@ -1204,5 +1289,20 @@ mod tests {
         assert!(classify_token(&Token::String("hello".to_string())).is_some());
         assert!(classify_token(&Token::Plus).is_some());
         assert!(classify_token(&Token::Ident("foo".to_string())).is_none());
+    }
+
+    #[test]
+    fn test_semantic_tokens_with_spec_example_and_ghost_type() {
+        let source = r#"@spec "behavior"
+@example "demo" 1 + 2
+ghost type Phantom[T] = T
+"#;
+        let mut lexer = Lexer::new(source);
+        let tokens = lexer.tokenize();
+        let mut parser = Parser::new(tokens.clone());
+        let module = parser.parse_module().expect("parse should succeed");
+
+        let semantic = compute_semantic_tokens(source, &module, &tokens);
+        assert!(!semantic.is_empty());
     }
 }

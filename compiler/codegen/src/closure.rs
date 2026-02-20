@@ -43,7 +43,7 @@ use crate::context::CodeGen;
 use crate::error::{CodegenError, CodegenResult};
 use crate::gc::{emit_gc_alloc, AllocationSite};
 use crate::types::TypeMapping;
-use inkwell::types::{BasicType, StructType};
+use inkwell::types::{BasicMetadataTypeEnum, BasicType, StructType};
 use inkwell::values::{BasicMetadataValueEnum, BasicValueEnum, FunctionValue, PointerValue};
 use inkwell::AddressSpace;
 use jet_ir::{Ty, ValueId};
@@ -339,17 +339,177 @@ pub fn load_captured_value<'ctx>(
 
 /// Creates a trampoline function for calling a closure with a standard calling convention.
 ///
-/// This is useful when passing closures to C code or the runtime.
+/// A trampoline is a small wrapper function that adapts between the standard C calling
+/// convention and Jet's closure calling convention. This is essential when passing
+/// closures to C code or the runtime system.
+///
+/// The trampoline has a standard C calling convention:
+///   fn trampoline(arg1: T1, arg2: T2, ...) -> R
+///
+/// It internally calls the closure with Jet's convention:
+///   fn closure(env: *mut u8, arg1: T1, arg2: T2, ...) -> R
+///
+/// # Arguments
+///
+/// * `codegen` - The code generation context
+/// * `closure` - The closure value (struct containing function pointer and environment)
+/// * `name` - The name for the trampoline function
+/// * `param_types` - The types of the parameters (excluding environment)
+/// * `return_type` - The return type of the closure
+///
+/// # Returns
+///
+/// Returns the created trampoline function with standard C calling convention.
 pub fn create_closure_trampoline<'ctx>(
-    _codegen: &mut CodeGen<'ctx>,
-    _closure: BasicValueEnum<'ctx>,
-    _name: &str,
+    codegen: &mut CodeGen<'ctx>,
+    closure: BasicValueEnum<'ctx>,
+    name: &str,
+    param_types: &[Ty],
+    return_type: &Ty,
 ) -> CodegenResult<FunctionValue<'ctx>> {
-    // In a full implementation, this would create a small wrapper function
-    // that extracts the environment and calls the closure function
-    Err(CodegenError::unsupported_instruction(
-        "closure trampolines not yet implemented",
-    ))
+    // Build the parameter types for the trampoline (standard C calling convention)
+    let llvm_param_types: Vec<BasicMetadataTypeEnum<'ctx>> = param_types
+        .iter()
+        .map(|ty| codegen.jet_to_llvm_metadata(ty))
+        .collect::<CodegenResult<Vec<_>>>()?;
+
+    // Build the return type
+    let llvm_ret_type = if return_type.is_void() {
+        None
+    } else {
+        Some(codegen.jet_to_llvm(return_type)?)
+    };
+
+    // Create the trampoline function type with standard calling convention
+    let fn_type = match llvm_ret_type {
+        Some(ret_ty) => ret_ty.fn_type(&llvm_param_types, false),
+        None => codegen
+            .context
+            .void_type()
+            .fn_type(&llvm_param_types, false),
+    };
+
+    let trampoline_fn = codegen
+        .module
+        .add_function(&format!("trampoline_{}", name), fn_type, None);
+
+    // Create the entry basic block
+    let entry_block = codegen.context.append_basic_block(trampoline_fn, "entry");
+    let builder = codegen.context.create_builder();
+    builder.position_at_end(entry_block);
+
+    // Extract the function pointer and environment from the closure
+    let closure_struct = closure.into_struct_value();
+
+    // Extract function pointer (field 0)
+    let fn_ptr_val = builder
+        .build_extract_value(closure_struct, 0, "closure_fn_ptr")
+        .map_err(|e| CodegenError::instruction_error(e.to_string()))?;
+
+    // Extract environment pointer (field 1)
+    let env_ptr = builder
+        .build_extract_value(closure_struct, 1, "closure_env_ptr")
+        .map_err(|e| CodegenError::instruction_error(e.to_string()))?;
+
+    // Build the argument list for the closure call
+    // First argument is always the environment pointer
+    let mut call_args: Vec<BasicMetadataValueEnum<'ctx>> = vec![env_ptr.into()];
+
+    // Add the trampoline parameters as subsequent arguments
+    for (i, _) in param_types.iter().enumerate() {
+        let param = trampoline_fn
+            .get_nth_param(i as u32)
+            .ok_or_else(|| CodegenError::instruction_error(format!("missing param {}", i)))?;
+        call_args.push(param.into());
+    }
+
+    // Cast the function pointer to the correct type for the closure call
+    // Closure type: fn(env: *mut u8, ...) -> ret
+    let i8_ptr = codegen.context.i8_type().ptr_type(AddressSpace::default());
+
+    // Build the closure function type (with environment as first param)
+    let mut closure_param_types: Vec<BasicMetadataTypeEnum<'ctx>> = vec![i8_ptr.into()];
+    closure_param_types.extend(llvm_param_types.iter().cloned());
+
+    let closure_fn_type = match llvm_ret_type {
+        Some(ret_ty) => ret_ty.fn_type(&closure_param_types, false),
+        None => codegen
+            .context
+            .void_type()
+            .fn_type(&closure_param_types, false),
+    };
+
+    let fn_ptr = fn_ptr_val.into_pointer_value();
+
+    // Make the indirect call to the closure
+    let call_result = builder
+        .build_indirect_call(closure_fn_type, fn_ptr, &call_args, "closure_call")
+        .map_err(|e| CodegenError::instruction_error(e.to_string()))?;
+
+    // Return the result (or void)
+    if return_type.is_void() {
+        builder
+            .build_return(None)
+            .map_err(|e| CodegenError::instruction_error(e.to_string()))?;
+    } else {
+        let result = call_result
+            .try_as_basic_value()
+            .basic()
+            .ok_or_else(|| CodegenError::instruction_error("closure call returned void"))?;
+        builder
+            .build_return(Some(&result))
+            .map_err(|e| CodegenError::instruction_error(e.to_string()))?;
+    }
+
+    Ok(trampoline_fn)
+}
+
+/// Creates a trampoline for a closure with no arguments.
+///
+/// This is a convenience function for creating trampolines for closures
+/// that take no arguments (other than the implicit environment).
+pub fn create_closure_trampoline_0<'ctx>(
+    codegen: &mut CodeGen<'ctx>,
+    closure: BasicValueEnum<'ctx>,
+    name: &str,
+    return_type: &Ty,
+) -> CodegenResult<FunctionValue<'ctx>> {
+    create_closure_trampoline(codegen, closure, name, &[], return_type)
+}
+
+/// Creates a trampoline for a closure with one argument.
+pub fn create_closure_trampoline_1<'ctx>(
+    codegen: &mut CodeGen<'ctx>,
+    closure: BasicValueEnum<'ctx>,
+    name: &str,
+    param_type: &Ty,
+    return_type: &Ty,
+) -> CodegenResult<FunctionValue<'ctx>> {
+    create_closure_trampoline(
+        codegen,
+        closure,
+        name,
+        std::slice::from_ref(param_type),
+        return_type,
+    )
+}
+
+/// Creates a trampoline for a closure with two arguments.
+pub fn create_closure_trampoline_2<'ctx>(
+    codegen: &mut CodeGen<'ctx>,
+    closure: BasicValueEnum<'ctx>,
+    name: &str,
+    param1_type: &Ty,
+    param2_type: &Ty,
+    return_type: &Ty,
+) -> CodegenResult<FunctionValue<'ctx>> {
+    create_closure_trampoline(
+        codegen,
+        closure,
+        name,
+        &[param1_type.clone(), param2_type.clone()],
+        return_type,
+    )
 }
 
 #[cfg(test)]
@@ -378,5 +538,94 @@ mod tests {
 
         assert_eq!(info.captures.len(), 2);
         assert_eq!(info.param_types.len(), 1);
+    }
+
+    #[test]
+    fn test_create_closure_trampoline_0() {
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "test");
+
+        // Create a simple closure value
+        let closure_ty = closure_type(&context);
+        let closure_val = closure_ty.const_zero();
+
+        // Create a trampoline with no arguments
+        let trampoline =
+            create_closure_trampoline_0(&mut codegen, closure_val.into(), "test", &Ty::I32)
+                .unwrap();
+
+        // Check function name
+        assert_eq!(trampoline.get_name().to_str().unwrap(), "trampoline_test");
+
+        // Check that the function has an entry block
+        assert!(!trampoline.get_basic_blocks().is_empty());
+
+        // Verify the function
+        assert!(trampoline.verify(true));
+    }
+
+    #[test]
+    fn test_create_closure_trampoline_1() {
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "test");
+
+        // Create a simple closure value
+        let closure_ty = closure_type(&context);
+        let closure_val = closure_ty.const_zero();
+
+        // Create a trampoline with one argument
+        let trampoline = create_closure_trampoline_1(
+            &mut codegen,
+            closure_val.into(),
+            "test",
+            &Ty::I32,
+            &Ty::I32,
+        )
+        .unwrap();
+
+        // Check function name
+        assert_eq!(trampoline.get_name().to_str().unwrap(), "trampoline_test");
+
+        // Check that the function has one parameter (plus env is internal)
+        assert_eq!(trampoline.count_params(), 1);
+
+        // Check that the function has an entry block
+        assert!(!trampoline.get_basic_blocks().is_empty());
+
+        // Verify the function
+        assert!(trampoline.verify(true));
+    }
+
+    #[test]
+    fn test_create_closure_trampoline_2() {
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "test");
+
+        // Create a simple closure value
+        let closure_ty = closure_type(&context);
+        let closure_val = closure_ty.const_zero();
+
+        // Create a trampoline with two arguments
+        let trampoline = create_closure_trampoline_2(
+            &mut codegen,
+            closure_val.into(),
+            "test",
+            &Ty::I32,
+            &Ty::I32,
+            &Ty::I32,
+        )
+        .unwrap();
+
+        // Check function name
+        assert_eq!(trampoline.get_name().to_str().unwrap(), "trampoline_test");
+
+        // Check that the function has two parameters
+        assert_eq!(trampoline.count_params(), 2);
+
+        // Check that the function has an entry block
+        assert!(!trampoline.get_basic_blocks().is_empty());
+
+        // Verify the function
+        assert!(trampoline.verify(true));
     }
 }

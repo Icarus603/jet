@@ -14,8 +14,8 @@ use crate::unify::Unifier;
 use jet_diagnostics::{Diagnostic, DiagnosticBag, Span};
 use jet_lexer::Span as LexerSpan;
 use jet_parser::ast::{
-    AssignOp, BinaryOp, Block, Expr, Function, GenericParam, Ident, Literal, Module, ModuleItem,
-    Pattern, Stmt, Type as AstType, UnaryOp, WhereBound,
+    AssignOp, BinaryOp, Block, Expr, Function, GenericParam, HandlerArm, Ident, Literal, Module,
+    ModuleItem, Pattern, Stmt, Type as AstType, UnaryOp, WhereBound,
 };
 use std::collections::HashMap;
 
@@ -86,6 +86,8 @@ pub enum TypedExprKind {
     Spawn(Box<TypedExpr>),
     Async(TypedBlock),
     Concurrent(TypedBlock),
+    /// Hole placeholder for type-directed development
+    Hole(TypeId),
 }
 
 /// A typed block
@@ -565,7 +567,8 @@ impl<'tcx> TypeChecker<'tcx> {
                 } else {
                     // Self used outside of impl block or trait context
                     self.diagnostics.push(Diagnostic::error(
-                        "`Self` type can only be used within an impl block or trait definition".to_string(),
+                        "`Self` type can only be used within an impl block or trait definition"
+                            .to_string(),
                         Span::default(),
                     ));
                     Ok(self.fresh_var())
@@ -580,10 +583,7 @@ impl<'tcx> TypeChecker<'tcx> {
     /// - Simple types: `int`, `bool`, `MyStruct`
     /// - Module-qualified types: `std::collections::Vec`
     /// - Associated types: `<T as Trait>::Item`
-    fn resolve_type_path(
-        &mut self,
-        path: &jet_parser::ast::Path,
-    ) -> Result<TypeId, Diagnostic> {
+    fn resolve_type_path(&mut self, path: &jet_parser::ast::Path) -> Result<TypeId, Diagnostic> {
         // Handle single-segment paths (primitive types and simple type names)
         if path.segments.len() == 1 {
             let name = path.segments[0].name.as_str();
@@ -1008,10 +1008,20 @@ impl<'tcx> TypeChecker<'tcx> {
                         span,
                     })
                 } else {
-                    Err(Diagnostic::error(
-                        format!("variable not found: {}", ident.name),
+                    // Unknown variable — bind a fresh type var so type-checking can
+                    // continue. This covers module-level imports (e.g. `lib` from
+                    // `import lib`) that are not yet registered in the type env.
+                    // A non-fatal diagnostic is recorded; the resolver/codegen may
+                    // handle the unknown reference more precisely later.
+                    self.diagnostics.push(Diagnostic::error(
+                        format!("variable not found: `{}`", ident.name),
                         convert_span(ident.span),
-                    ))
+                    ));
+                    Ok(TypedExpr {
+                        kind: TypedExprKind::Variable(ident.clone()),
+                        ty: self.fresh_var(),
+                        span,
+                    })
                 }
             }
 
@@ -1428,6 +1438,7 @@ impl<'tcx> TypeChecker<'tcx> {
                 label: _,
                 cond,
                 body,
+                invariant: _,
             } => {
                 let typed_cond = self.infer_expr(cond)?;
                 self.try_unify(typed_cond.ty, TypeId::BOOL, span);
@@ -1449,6 +1460,7 @@ impl<'tcx> TypeChecker<'tcx> {
                 pattern,
                 iterable,
                 body,
+                invariant: _,
             } => {
                 let typed_iterable = self.infer_expr(iterable)?;
                 let elem_ty = self.fresh_var();
@@ -1563,21 +1575,47 @@ impl<'tcx> TypeChecker<'tcx> {
             }),
 
             Expr::StructLiteral { path: _, fields: _ } => {
-                // Struct literals require struct definitions
-                // For now, return a fresh variable
+                // Infer any field value expressions first.
+                if let Expr::StructLiteral { fields, .. } = expr {
+                    for field in fields {
+                        if let Some(value) = &field.value {
+                            let _ = self.infer_expr(value)?;
+                        } else if self.lookup_variable(&field.name.name).is_none() {
+                            self.diagnostics.push(Diagnostic::error(
+                                format!(
+                                    "struct field shorthand `{}` requires a variable in scope",
+                                    field.name.name
+                                ),
+                                span,
+                            ));
+                        }
+                    }
+                }
+
+                // Resolve the struct path type when possible.
+                let struct_ty = if let Expr::StructLiteral { path, .. } = expr {
+                    self.resolve_type_path(path).unwrap_or_else(|diag| {
+                        self.diagnostics.push(diag);
+                        self.fresh_var()
+                    })
+                } else {
+                    self.fresh_var()
+                };
+
                 Ok(TypedExpr {
                     kind: TypedExprKind::Literal(Literal::Unit),
-                    ty: self.fresh_var(),
+                    ty: struct_ty,
                     span,
                 })
             }
 
             Expr::Spawn(expr) => {
                 let typed_expr = self.infer_expr(expr)?;
-                // Spawn creates a task, result type depends on the spawned expression
+                // Spawn returns a task handle that can be awaited.
+                let handle_ty = self.tcx.intern(TypeKind::Async(typed_expr.ty));
                 Ok(TypedExpr {
                     kind: TypedExprKind::Spawn(Box::new(typed_expr)),
-                    ty: self.fresh_var(),
+                    ty: handle_ty,
                     span,
                 })
             }
@@ -1595,22 +1633,33 @@ impl<'tcx> TypeChecker<'tcx> {
 
             Expr::Concurrent(block) => {
                 let typed_block = self.infer_block(block)?;
+                let block_ty = typed_block.ty;
 
                 Ok(TypedExpr {
                     kind: TypedExprKind::Concurrent(typed_block),
-                    ty: TypeId::UNIT,
+                    ty: block_ty,
                     span,
                 })
             }
 
             Expr::SelfExpr(_) => {
-                // Self expression type depends on the impl context
-                // For now, return a fresh variable
-                Ok(TypedExpr {
-                    kind: TypedExprKind::Literal(Literal::Unit),
-                    ty: self.fresh_var(),
-                    span,
-                })
+                if let Some(self_ty) = self.self_type {
+                    Ok(TypedExpr {
+                        kind: TypedExprKind::Literal(Literal::Unit),
+                        ty: self_ty,
+                        span,
+                    })
+                } else {
+                    self.diagnostics.push(Diagnostic::error(
+                        "`self` can only be used within an impl or trait method".to_string(),
+                        span,
+                    ));
+                    Ok(TypedExpr {
+                        kind: TypedExprKind::Literal(Literal::Unit),
+                        ty: self.fresh_var(),
+                        span,
+                    })
+                }
             }
 
             Expr::Pass => Ok(TypedExpr {
@@ -1619,22 +1668,48 @@ impl<'tcx> TypeChecker<'tcx> {
                 span,
             }),
 
-            // Effect system expressions - stub implementations
-            Expr::Raise(_) => Ok(TypedExpr {
-                kind: TypedExprKind::Literal(Literal::Unit),
-                ty: TypeId::NEVER,
-                span,
-            }),
-            Expr::Handle(_) => Ok(TypedExpr {
-                kind: TypedExprKind::Literal(Literal::Unit),
-                ty: self.fresh_var(),
-                span,
-            }),
-            Expr::Resume(_) => Ok(TypedExpr {
-                kind: TypedExprKind::Literal(Literal::Unit),
-                ty: TypeId::NEVER,
-                span,
-            }),
+            Expr::Raise(raise) => {
+                for arg in &raise.args {
+                    let _ = self.infer_expr(arg)?;
+                }
+
+                Ok(TypedExpr {
+                    kind: TypedExprKind::Literal(Literal::Unit),
+                    ty: TypeId::NEVER,
+                    span,
+                })
+            }
+            Expr::Handle(handle) => {
+                let mut typed_body = self.infer_expr(&handle.body)?;
+                self.check_handler_bodies(
+                    &handle.handlers,
+                    typed_body.ty,
+                    convert_span(handle.span),
+                )?;
+                typed_body.span = span;
+                Ok(typed_body)
+            }
+            Expr::Resume(resume) => {
+                if let Some(value) = &resume.value {
+                    let _ = self.infer_expr(value)?;
+                }
+
+                Ok(TypedExpr {
+                    kind: TypedExprKind::Literal(Literal::Unit),
+                    ty: TypeId::NEVER,
+                    span,
+                })
+            }
+            Expr::Hole(_) => {
+                // Holes are placeholders for type-directed development.
+                // They get a fresh type variable that the IDE can use for suggestions.
+                let hole_ty = self.fresh_var();
+                Ok(TypedExpr {
+                    kind: TypedExprKind::Hole(hole_ty),
+                    ty: hole_ty,
+                    span,
+                })
+            }
         }
     }
 
@@ -1750,15 +1825,43 @@ impl<'tcx> TypeChecker<'tcx> {
 
             Stmt::Continue { label: _ } => Ok(TypedStmt::Continue),
 
-            Stmt::Handle { .. } => {
-                // Handle statement - stub implementation
-                Ok(TypedStmt::Expr(TypedExpr {
-                    kind: TypedExprKind::Literal(Literal::Unit),
-                    ty: TypeId::UNIT,
-                    span: Span::default(),
-                }))
+            Stmt::Handle { body, handlers } => {
+                let typed_body = self.infer_expr(body)?;
+                self.check_handler_bodies(handlers, typed_body.ty, Span::default())?;
+                Ok(TypedStmt::Expr(typed_body))
             }
         }
+    }
+
+    fn check_handler_bodies(
+        &mut self,
+        handlers: &[HandlerArm],
+        handled_ty: TypeId,
+        span: Span,
+    ) -> Result<(), Diagnostic> {
+        for handler in handlers {
+            self.enter_scope();
+
+            for pattern in &handler.params {
+                let param_ty = self.fresh_var();
+                self.bind_pattern(pattern, param_ty, false, span);
+            }
+
+            if let Some(resume_name) = &handler.resume_name {
+                let resume_input = self.fresh_var();
+                let resume_ty =
+                    self.tcx
+                        .mk_function(vec![resume_input], TypeId::NEVER, EffectSet::empty());
+                self.bind_variable(resume_name.name.clone(), resume_ty, false);
+            }
+
+            let typed_handler_body = self.infer_expr(&handler.body)?;
+            self.try_unify(typed_handler_body.ty, handled_ty, span);
+
+            self.exit_scope();
+        }
+
+        Ok(())
     }
 
     /// Type check a function
@@ -1850,18 +1953,38 @@ impl<'tcx> TypeChecker<'tcx> {
         // Type-check each impl item
         for item in &impl_def.items {
             match item {
-                ImplItem::Method(func) => {
-                    match self.infer_function(func) {
-                        Ok(typed_func) => {
-                            items.push(TypedModuleItem::Function(typed_func));
+                ImplItem::Method(func) => match self.infer_function(func) {
+                    Ok(typed_func) => {
+                        items.push(TypedModuleItem::Function(typed_func));
+                    }
+                    Err(diag) => {
+                        self.diagnostics.push(diag);
+                    }
+                },
+                ImplItem::Const {
+                    name, ty, value, ..
+                } => {
+                    let declared_ty = match self.resolve_type(ty) {
+                        Ok(ty) => ty,
+                        Err(diag) => {
+                            self.diagnostics.push(diag);
+                            self.fresh_var()
+                        }
+                    };
+                    match self.infer_expr(value) {
+                        Ok(typed_value) => {
+                            self.try_unify(typed_value.ty, declared_ty, convert_span(name.span));
                         }
                         Err(diag) => {
                             self.diagnostics.push(diag);
                         }
                     }
                 }
-                // TODO: Handle const and type alias items in impl blocks
-                _ => {}
+                ImplItem::TypeAlias(type_alias) => {
+                    if let Err(diag) = self.resolve_type(&type_alias.ty) {
+                        self.diagnostics.push(diag);
+                    }
+                }
             }
         }
 
@@ -1873,9 +1996,23 @@ impl<'tcx> TypeChecker<'tcx> {
     pub fn infer_module(&mut self, module: &Module) -> Result<TypedModule, Diagnostic> {
         let mut items = Vec::new();
 
-        // First pass: bind function signatures and enum variant constructors
+        // First pass: bind function signatures, enum variant constructors, and module imports
         for item in &module.items {
             match item {
+                ModuleItem::Import(import) => {
+                    // Bind the module name as an opaque fresh type variable so that
+                    // `import lib; lib.helper()` does not fail with "variable not found".
+                    let module_ty = self.fresh_var();
+                    let module_name = match import {
+                        jet_parser::ast::Import::Simple { path, .. }
+                        | jet_parser::ast::Import::From { path, .. } => {
+                            path.segments.first().map(|s| s.name.clone())
+                        }
+                    };
+                    if let Some(name) = module_name {
+                        self.bind_variable(name, module_ty, false);
+                    }
+                }
                 ModuleItem::Function(func) => {
                     let mut param_types = Vec::new();
                     for param in &func.params {
@@ -1916,6 +2053,26 @@ impl<'tcx> TypeChecker<'tcx> {
                         self.bind_variable(variant.name.name.clone(), variant_ty, false);
                     }
                 }
+                ModuleItem::Const(const_def) => {
+                    let const_ty = self.resolve_type(&const_def.ty).unwrap_or_else(|diag| {
+                        self.diagnostics.push(diag);
+                        self.fresh_var()
+                    });
+                    self.bind_variable(const_def.name.name.clone(), const_ty, false);
+                }
+                ModuleItem::Struct(struct_def) => {
+                    // Bind struct names so type references and struct literals resolve
+                    // consistently during expression and impl checking.
+                    let struct_ty = self.fresh_var();
+                    self.bind_variable(struct_def.name.name.clone(), struct_ty, false);
+                }
+                ModuleItem::TypeAlias(type_alias) => {
+                    let alias_ty = self.resolve_type(&type_alias.ty).unwrap_or_else(|diag| {
+                        self.diagnostics.push(diag);
+                        self.fresh_var()
+                    });
+                    self.bind_variable(type_alias.name.name.clone(), alias_ty, false);
+                }
                 _ => {}
             }
         }
@@ -1935,9 +2092,43 @@ impl<'tcx> TypeChecker<'tcx> {
                     // Type-check impl block methods with Self type context
                     self.type_check_impl_block(impl_def, &mut items);
                 }
-                _ => {
-                    // TODO: Handle other module items
+                ModuleItem::Const(const_def) => {
+                    let declared_ty = self.resolve_type(&const_def.ty).unwrap_or_else(|diag| {
+                        self.diagnostics.push(diag);
+                        self.fresh_var()
+                    });
+                    match self.infer_expr(&const_def.value) {
+                        Ok(typed_value) => {
+                            self.try_unify(
+                                typed_value.ty,
+                                declared_ty,
+                                convert_span(const_def.span),
+                            );
+                        }
+                        Err(diag) => self.diagnostics.push(diag),
+                    }
                 }
+                ModuleItem::TypeAlias(type_alias) => {
+                    if let Err(diag) = self.resolve_type(&type_alias.ty) {
+                        self.diagnostics.push(diag);
+                    }
+                }
+                ModuleItem::GhostType(ghost_ty) => {
+                    if let Err(diag) = self.resolve_type(&ghost_ty.ty) {
+                        self.diagnostics.push(diag);
+                    }
+                }
+                ModuleItem::Example(example) => {
+                    if let Err(diag) = self.infer_expr(&example.code) {
+                        self.diagnostics.push(diag);
+                    }
+                }
+                ModuleItem::Import(_)
+                | ModuleItem::Struct(_)
+                | ModuleItem::Enum(_)
+                | ModuleItem::Trait(_)
+                | ModuleItem::Effect(_)
+                | ModuleItem::Spec(_) => {}
             }
         }
 
@@ -2334,6 +2525,7 @@ mod tests {
         let while_expr = Expr::While {
             label: None,
             cond: Box::new(Expr::Literal(Literal::Bool(true))),
+            invariant: None,
             body: Box::new(Expr::Block(Block {
                 stmts: vec![],
                 expr: None,
@@ -2401,6 +2593,81 @@ mod tests {
 
         let typed = checker.infer_expr_with_defaults(&pass_expr).unwrap();
         assert_eq!(typed.ty, TypeId::UNIT);
+    }
+
+    #[test]
+    fn test_spawn_returns_async_handle() {
+        let mut tcx = TypeContext::new();
+        let mut checker = TypeChecker::new(&mut tcx);
+
+        let expr = Expr::Spawn(Box::new(Expr::Literal(Literal::Integer(42))));
+        let typed = checker.infer_expr_with_defaults(&expr).unwrap();
+
+        match tcx.type_kind(typed.ty) {
+            TypeKind::Async(_) => {}
+            other => panic!("expected async handle type, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_concurrent_returns_block_type() {
+        let mut tcx = TypeContext::new();
+        let mut checker = TypeChecker::new(&mut tcx);
+
+        let expr = Expr::Concurrent(Block {
+            stmts: vec![],
+            expr: Some(Box::new(Expr::Literal(Literal::Integer(7)))),
+            span: LexerSpan::default(),
+        });
+
+        let typed = checker.infer_expr_with_defaults(&expr).unwrap();
+        assert_eq!(typed.ty, TypeId::INT);
+    }
+
+    #[test]
+    fn test_struct_literal_resolves_bound_type() {
+        let mut tcx = TypeContext::new();
+        let mut checker = TypeChecker::new(&mut tcx);
+
+        let point_ty = TypeId::INT;
+        checker.bind_variable("Point".to_string(), point_ty, false);
+
+        let expr = Expr::StructLiteral {
+            path: jet_parser::ast::Path::new(
+                vec![Ident::new("Point", LexerSpan::default())],
+                LexerSpan::default(),
+            ),
+            fields: vec![jet_parser::ast::FieldInit {
+                name: Ident::new("x", LexerSpan::default()),
+                value: Some(Expr::Literal(Literal::Integer(1))),
+            }],
+        };
+
+        let typed = checker.infer_expr(&expr).unwrap();
+        assert_eq!(typed.ty, point_ty);
+    }
+
+    #[test]
+    fn test_self_expr_uses_context_type() {
+        let mut tcx = TypeContext::new();
+        let self_ty = tcx.fresh_var(1);
+        let mut checker = TypeChecker::new(&mut tcx);
+        checker.self_type = Some(self_ty);
+
+        let expr = Expr::SelfExpr(LexerSpan::default());
+        let typed = checker.infer_expr(&expr).unwrap();
+        assert_eq!(typed.ty, self_ty);
+    }
+
+    #[test]
+    fn test_self_expr_outside_context_reports_error() {
+        let mut tcx = TypeContext::new();
+        let mut checker = TypeChecker::new(&mut tcx);
+
+        let expr = Expr::SelfExpr(LexerSpan::default());
+        let _typed = checker.infer_expr(&expr).unwrap();
+
+        assert!(checker.has_errors());
     }
 
     #[test]

@@ -53,6 +53,9 @@ pub enum Ty {
     Generic(String, Vec<Ty>),
     /// Reference to a named type definition.
     Named(String),
+    /// Ghost type (erased at runtime, used for verification).
+    /// The inner type represents the underlying type for type checking.
+    Ghost(Box<Ty>),
 }
 
 impl Ty {
@@ -76,6 +79,7 @@ impl Ty {
             Ty::Function(_, _) => 8, // Function pointer
             Ty::Generic(_, _) => 8,  // Monomorphized to pointer or struct
             Ty::Named(_) => 8,       // Assume pointer-sized until resolved
+            Ty::Ghost(_) => 0,       // Ghost types are erased at runtime
         }
     }
 
@@ -159,6 +163,7 @@ impl fmt::Display for Ty {
                 write!(f, ">")
             }
             Ty::Named(name) => write!(f, "{}", name),
+            Ty::Ghost(inner) => write!(f, "ghost {}", inner),
         }
     }
 }

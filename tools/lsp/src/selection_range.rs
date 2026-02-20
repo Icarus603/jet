@@ -82,6 +82,9 @@ fn get_module_item_range(doc: &Document, item: &ModuleItem) -> Option<Range> {
         ModuleItem::Import(_) => return None, // Import is an enum, not a struct with span
         ModuleItem::Impl(i) => i.span,
         ModuleItem::Effect(e) => e.span,
+        ModuleItem::Spec(s) => s.span,
+        ModuleItem::Example(e) => e.span,
+        ModuleItem::GhostType(g) => g.span,
     };
     Some(doc.span_to_range(span))
 }
@@ -958,6 +961,7 @@ fn get_expr_span(expr: &Expr) -> jet_lexer::Span {
             };
             jet_lexer::Span::new(start, end)
         }
+        Expr::Hole(span) => *span,
     }
 }
 

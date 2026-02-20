@@ -2,20 +2,22 @@
 //!
 //! Measures end-to-end compilation performance.
 
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
 use std::fs;
 use std::path::Path;
 use std::process::Command;
 use tempfile::TempDir;
 
+/// Create a small program for compilation
 fn create_small_program() -> String {
     r#"
 fn main():
     print("Hello, World!")
-"
+"#
     .to_string()
 }
 
+/// Create a medium program for compilation
 fn create_medium_program() -> String {
     r#"
 fn factorial(n: int) -> int:
@@ -42,10 +44,11 @@ fn main():
     else:
         "fibonacci is larger"
     print(result)
-"
+"#
     .to_string()
 }
 
+/// Create a large program for compilation
 fn create_large_program() -> String {
     let mut result = String::new();
 
@@ -108,6 +111,79 @@ impl Status{i}:
     result
 }
 
+/// Create a program with complex types
+fn create_complex_types_program() -> String {
+    let mut result = String::new();
+
+    // Generic structs
+    for i in 0..20 {
+        result.push_str(&format!(
+            r#"struct Container{i}[T]:
+    value: T
+    count: int
+
+impl[T] Container{i}[T]:
+    fn new(value: T) -> Container{i}[T]:
+        return Container{i} {{ value: value, count: 0 }}
+
+    fn get(self) -> T:
+        return self.value
+
+    fn increment(mut self):
+        self.count = self.count + 1
+
+"#
+        ));
+    }
+
+    // Nested generic types
+    result.push_str(
+        r#"
+struct Pair[A, B]:
+    first: A
+    second: B
+
+struct Triple[A, B, C]:
+    first: A
+    second: B
+    third: C
+
+enum Option[T]:
+    | Some(T)
+    | None
+
+enum Result[T, E]:
+    | Ok(T)
+    | Err(E)
+
+fn main():
+    print("Complex types loaded")
+"#,
+    );
+
+    result
+}
+
+/// Create a program with deep nesting
+fn create_deep_nesting_program() -> String {
+    let mut result = String::from("fn main():\n");
+
+    // Deep if nesting
+    for i in 0..20 {
+        let indent = "    ".repeat(i + 1);
+        result.push_str(&format!("{}if true:\n", indent));
+        result.push_str(&format!("{}    let x_{} = {}\n", indent, i, i));
+    }
+
+    // Close all blocks
+    for i in (0..20).rev() {
+        let indent = "    ".repeat(i + 1);
+        result.push_str(&format!("{}    print(x_{})\n", indent, i));
+    }
+
+    result
+}
+
 fn compile_time_benchmark(c: &mut Criterion) {
     let mut group = c.benchmark_group("compile_time");
 
@@ -124,55 +200,123 @@ fn compile_time_benchmark(c: &mut Criterion) {
         return;
     }
 
-    let programs = [
-        ("small", create_small_program()),
-        ("medium", create_medium_program()),
-        ("large", create_large_program()),
-    ];
+    // Benchmark small program
+    let small_source = create_small_program();
+    let temp_dir = TempDir::new().unwrap();
+    let source_file = temp_dir.path().join("small.jet");
+    fs::write(&source_file, &small_source).unwrap();
 
-    for (name, source) in &programs {
-        let temp_dir = TempDir::new().unwrap();
-        let source_file = temp_dir.path().join("test.jet");
-        fs::write(&source_file, source).unwrap();
+    group.throughput(Throughput::Bytes(small_source.len() as u64));
+    group.bench_function("small_program", |b| {
+        b.iter(|| {
+            let output = Command::new(&jet_binary)
+                .arg("build")
+                .arg(black_box(&source_file))
+                .arg("-o")
+                .arg(temp_dir.path().join("small_output"))
+                .output()
+                .expect("Failed to execute jet build");
 
-        let source_bytes = source.len() as u64;
-        group.throughput(Throughput::Bytes(source_bytes));
+            let _ = black_box(output);
+        });
+    });
 
-        group.bench_with_input(
-            BenchmarkId::new("full_compile", name),
-            &source_file,
-            |b, source_file| {
-                b.iter(|| {
-                    let output = Command::new(&jet_binary)
-                        .arg("build")
-                        .arg(black_box(source_file))
-                        .arg("-o")
-                        .arg(temp_dir.path().join("output"))
-                        .output()
-                        .expect("Failed to execute jet build");
+    // Benchmark medium program
+    let medium_source = create_medium_program();
+    let source_file = temp_dir.path().join("medium.jet");
+    fs::write(&source_file, &medium_source).unwrap();
 
-                    // We don't care about success/failure for timing
-                    let _ = output;
-                });
-            },
-        );
+    group.throughput(Throughput::Bytes(medium_source.len() as u64));
+    group.bench_function("medium_program", |b| {
+        b.iter(|| {
+            let output = Command::new(&jet_binary)
+                .arg("build")
+                .arg(black_box(&source_file))
+                .arg("-o")
+                .arg(temp_dir.path().join("medium_output"))
+                .output()
+                .expect("Failed to execute jet build");
 
-        group.bench_with_input(
-            BenchmarkId::new("parse_only", name),
-            &source_file,
-            |b, source_file| {
-                b.iter(|| {
-                    let output = Command::new(&jet_binary)
-                        .arg("parse")
-                        .arg(black_box(source_file))
-                        .output()
-                        .expect("Failed to execute jet parse");
+            let _ = black_box(output);
+        });
+    });
 
-                    let _ = output;
-                });
-            },
-        );
-    }
+    // Benchmark large program
+    let large_source = create_large_program();
+    let source_file = temp_dir.path().join("large.jet");
+    fs::write(&source_file, &large_source).unwrap();
+
+    group.throughput(Throughput::Bytes(large_source.len() as u64));
+    group.bench_function("large_program", |b| {
+        b.iter(|| {
+            let output = Command::new(&jet_binary)
+                .arg("build")
+                .arg(black_box(&source_file))
+                .arg("-o")
+                .arg(temp_dir.path().join("large_output"))
+                .output()
+                .expect("Failed to execute jet build");
+
+            let _ = black_box(output);
+        });
+    });
+
+    // Benchmark complex types
+    let complex_source = create_complex_types_program();
+    let source_file = temp_dir.path().join("complex.jet");
+    fs::write(&source_file, &complex_source).unwrap();
+
+    group.throughput(Throughput::Bytes(complex_source.len() as u64));
+    group.bench_function("complex_types", |b| {
+        b.iter(|| {
+            let output = Command::new(&jet_binary)
+                .arg("build")
+                .arg(black_box(&source_file))
+                .arg("-o")
+                .arg(temp_dir.path().join("complex_output"))
+                .output()
+                .expect("Failed to execute jet build");
+
+            let _ = black_box(output);
+        });
+    });
+
+    // Benchmark deep nesting
+    let deep_source = create_deep_nesting_program();
+    let source_file = temp_dir.path().join("deep.jet");
+    fs::write(&source_file, &deep_source).unwrap();
+
+    group.throughput(Throughput::Bytes(deep_source.len() as u64));
+    group.bench_function("deep_nesting", |b| {
+        b.iter(|| {
+            let output = Command::new(&jet_binary)
+                .arg("build")
+                .arg(black_box(&source_file))
+                .arg("-o")
+                .arg(temp_dir.path().join("deep_output"))
+                .output()
+                .expect("Failed to execute jet build");
+
+            let _ = black_box(output);
+        });
+    });
+
+    // Benchmark parse-only for comparison
+    group.bench_function("parse_only_small", |b| {
+        let small_source = create_small_program();
+        let source_file = temp_dir.path().join("parse_small.jet");
+        fs::write(&source_file, &small_source).unwrap();
+
+        b.iter(|| {
+            let output = Command::new(&jet_binary)
+                .arg("parse")
+                .arg(black_box(&source_file))
+                .output()
+                .expect("Failed to execute jet parse");
+
+            let _ = black_box(output);
+        });
+    });
 
     group.finish();
 }

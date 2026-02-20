@@ -536,6 +536,7 @@ fn get_expr_span(expr: &Expr) -> jet_lexer::Span {
         Expr::Handle(handle) => handle.span,
         Expr::Resume(resume) => resume.span,
         Expr::StructLiteral { path, .. } => path.span,
+        Expr::Hole(span) => *span,
     }
 }
 

@@ -31,8 +31,12 @@
 
 pub mod associated_types;
 pub mod checker;
+pub mod const_eval;
 pub mod constraints;
+pub mod contracts;
 pub mod patterns;
+pub mod semantic_eq;
+pub mod spec_extract;
 pub mod traits;
 pub mod types;
 pub mod unify;
@@ -45,11 +49,26 @@ pub use checker::{
     Scheme, TypeChecker, TypedBlock, TypedExpr, TypedExprKind, TypedFunction, TypedMatchArm,
     TypedModule, TypedModuleItem, TypedParam, TypedStmt,
 };
+pub use const_eval::{
+    eval_const_bool, eval_const_expr, eval_const_integer, is_const_false, is_const_nonzero,
+    is_const_true, is_const_zero, ConstEvalContext, ConstEvalError, ConstEvalResult, ConstValue,
+};
 pub use constraints::{
     Constraint, ConstraintSet, ConstraintSolver, GenericContext, GenericParamInfo,
     WhereClauseChecker,
 };
+pub use contracts::{
+    Condition, ConstantValue as ContractConstantValue, ContractChecking, ContractCondition,
+    ContractContext, ContractVerifier, FunctionContract,
+};
 pub use patterns::{Binding, PatternConstructor, PatternInference, PatternInferrer, PatternMatrix};
+pub use semantic_eq::{
+    verify_refactoring_preserves_semantics, RefactoringVerificationError, SemanticEq,
+};
+pub use spec_extract::{
+    analyze_property, extract_function_specs, extract_module_specs, generate_hints, FunctionSpecs,
+    PropertyInfo, Specification, TestGenHint,
+};
 pub use traits::{
     Impl, ImplItem, MethodCandidate, MethodSource, Resolution, ResolutionError, Trait, TraitBound,
     TraitContext, TraitItemDef, TraitResolver,
@@ -159,6 +178,7 @@ mod integration_tests {
 
     fn create_test_module() -> Module {
         Module {
+            attributes: vec![],
             items: vec![],
             span: Span::default(),
         }

@@ -7,6 +7,7 @@ import core::result::{Result, Ok, Err}
 import collections::Map
 import addr::{SocketAddr}
 import tcp::{TcpStream}
+import url::{Url}
 
 ### HTTP request method.
 enum Method:
@@ -136,6 +137,9 @@ impl Headers:
     fn clear(mut self):
         self.headers.clear()
 
+### Opaque handle to an HTTP response managed by the runtime.
+type HttpResponseHandle = *mut u8
+
 ### An HTTP request.
 type HttpRequest = {
     method: Method
@@ -182,8 +186,7 @@ impl HttpRequest:
 
     ### Sets the request body from a string.
     fn body_string(mut self, body: string) -> HttpRequest:
-        # In a real implementation, convert string to bytes
-        self.body = Vec.new()
+        self.body = body.into_bytes()
         self
 
     ### Sets the Content-Type header.
@@ -203,15 +206,91 @@ impl HttpRequest:
 
 ### An HTTP response.
 type HttpResponse = {
+    handle: HttpResponseHandle
     status: StatusCode
     headers: Headers
     body: Vec[u8]
 }
 
+### FFI declarations for HTTP operations.
+### These functions are provided by the runtime (stdlib/src/net.rs).
+
+### Creates a new HTTP client.
+extern fn jet_http_client_new() -> *mut u8
+
+### Creates an HTTP client with a custom timeout.
+extern fn jet_http_client_with_timeout(secs: u64) -> *mut u8
+
+### Frees an HTTP client.
+extern fn jet_http_client_free(client: *mut u8)
+
+### Performs a GET request.
+### Returns a pointer to a result structure: (success: bool, response_or_error: *mut u8)
+extern fn jet_http_client_get(client: *mut u8, url: *const u8, url_len: usize) -> *mut u8
+
+### Performs a POST request.
+### Returns a pointer to a result structure: (success: bool, response_or_error: *mut u8)
+extern fn jet_http_client_post(client: *mut u8, url: *const u8, url_len: usize, body: *const u8, body_len: usize) -> *mut u8
+
+### Performs a PUT request.
+### Returns a pointer to a result structure: (success: bool, response_or_error: *mut u8)
+extern fn jet_http_client_put(client: *mut u8, url: *const u8, url_len: usize, body: *const u8, body_len: usize) -> *mut u8
+
+### Performs a DELETE request.
+### Returns a pointer to a result structure: (success: bool, response_or_error: *mut u8)
+extern fn jet_http_client_delete(client: *mut u8, url: *const u8, url_len: usize) -> *mut u8
+
+### Returns the status code from an HTTP response.
+extern fn jet_http_response_status(response: *mut u8) -> u16
+
+### Returns the body from an HTTP response as a byte vector pointer.
+extern fn jet_http_response_body(response: *mut u8) -> *mut u8
+
+### Returns a header value from an HTTP response.
+extern fn jet_http_response_header(response: *mut u8, name: *const u8, name_len: usize) -> *mut u8
+
+### Frees an HTTP response.
+extern fn jet_http_response_free(response: *mut u8)
+
+### Converts a JetString pointer to a string.
+extern fn jet_string_to_jet_string(ptr: *mut u8) -> string
+
+### Frees a JetString.
+extern fn jet_string_free(ptr: *mut u8)
+
+### Frees a Vec<u8>.
+extern fn jet_vec_free(vec: *mut u8)
+
+### Returns the length of a Vec<u8>.
+extern fn jet_vec_len(vec: *mut u8) -> usize
+
 impl HttpResponse:
+    ### Creates a new HTTP response from an FFI handle.
+    fn from_handle(handle: HttpResponseHandle) -> HttpResponse:
+        unsafe {
+            let status = jet_http_response_status(handle)
+            let body_handle = jet_http_response_body(handle)
+            let body = Vec.new()
+            if not body_handle.is_null():
+                let len = jet_vec_len(body_handle)
+                # Copy bytes from the FFI buffer to our Vec
+                let src = body_handle as *mut u8
+                for i in 0..len:
+                    body.push(*src.add(i))
+                jet_vec_free(body_handle)
+
+            HttpResponse {
+                handle: handle,
+                status: status,
+                headers: Headers.new(),
+                body: body
+            }
+        }
+
     ### Creates a new HTTP response.
     fn new(status: StatusCode) -> HttpResponse:
         HttpResponse {
+            handle: std::ptr::null_mut(),
             status: status,
             headers: Headers.new(),
             body: Vec.new()
@@ -231,12 +310,23 @@ impl HttpResponse:
 
     ### Returns the body as a string.
     fn body_string(self) -> string:
-        # In a real implementation, convert bytes to string
-        ""
+        String::from_utf8_lossy(self.body)
 
     ### Returns the Content-Type header.
     fn content_type(self) -> Option[string]:
-        self.headers.get("Content-Type")
+        unsafe {
+            if self.handle.is_null():
+                return None
+            let name = "Content-Type"
+            let name_bytes = name.as_bytes()
+            let value_ptr = jet_http_response_header(self.handle, name_bytes.ptr, name_bytes.len())
+            if value_ptr.is_null():
+                None
+            else:
+                let result = jet_string_to_jet_string(value_ptr)
+                jet_string_free(value_ptr)
+                Some(result)
+        }
 
     ### Returns the Content-Length header.
     fn content_length(self) -> Option[usize]:
@@ -244,8 +334,16 @@ impl HttpResponse:
             Some(s) -> Some(s.parse().unwrap_or(0))
             None -> None
 
+    ### Frees the underlying HTTP response.
+    fn free(self):
+        unsafe {
+            if not self.handle.is_null():
+                jet_http_response_free(self.handle)
+        }
+
 ### An HTTP client.
 type HttpClient = {
+    handle: *mut u8
     timeout: Option[float64]
     follow_redirects: bool
     max_redirects: usize
@@ -284,11 +382,15 @@ impl Show for HttpErrorKind:
 impl HttpClient:
     ### Creates a new HTTP client with default settings.
     fn new() -> HttpClient:
-        HttpClient {
-            timeout: Some(30.0),
-            follow_redirects: true,
-            max_redirects: 10,
-            default_headers: Headers.new()
+        unsafe {
+            let handle = jet_http_client_new()
+            HttpClient {
+                handle: handle,
+                timeout: Some(30.0),
+                follow_redirects: true,
+                max_redirects: 10,
+                default_headers: Headers.new()
+            }
         }
 
     ### Sets the request timeout.
@@ -313,24 +415,95 @@ impl HttpClient:
 
     ### Sends an HTTP request.
     fn send(self, request: HttpRequest) -> Result[HttpResponse, HttpError] ! async:
-        # In a real implementation, send the HTTP request
-        Err(HttpError { message: "Not implemented", kind: HttpErrorKind::Other })
+        match request.method:
+            Method::GET -> self.get(request.url)
+            Method::POST -> self.post(request.url, request.body)
+            Method::PUT -> self.put(request.url, request.body)
+            Method::DELETE -> self.delete(request.url)
+            _ -> Err(HttpError { message: "Unsupported HTTP method", kind: HttpErrorKind::Other })
 
     ### Sends a GET request.
     fn get(self, url: Url) -> Result[HttpResponse, HttpError] ! async:
-        self.send(HttpRequest.get(url))
+        unsafe {
+            let url_str = url.show()
+            let url_bytes = url_str.as_bytes()
+            let result_ptr = jet_http_client_get(self.handle, url_bytes.ptr, url_bytes.len())
+
+            # The result structure is: (success: bool, response_or_error: *mut u8)
+            let success = *(result_ptr as *const bool)
+            let response_or_error = *((result_ptr + 8) as *const *mut u8)
+
+            if success:
+                Ok(HttpResponse::from_handle(response_or_error))
+            else:
+                let error_msg = jet_string_to_jet_string(response_or_error)
+                jet_string_free(response_or_error)
+                Err(HttpError { message: error_msg, kind: HttpErrorKind::Other })
+        }
 
     ### Sends a POST request.
     fn post(self, url: Url, body: Vec[u8]) -> Result[HttpResponse, HttpError] ! async:
-        self.send(HttpRequest.post(url).body(body))
+        unsafe {
+            let url_str = url.show()
+            let url_bytes = url_str.as_bytes()
+            let result_ptr = jet_http_client_post(self.handle, url_bytes.ptr, url_bytes.len(), body.as_ptr(), body.len())
+
+            # The result structure is: (success: bool, response_or_error: *mut u8)
+            let success = *(result_ptr as *const bool)
+            let response_or_error = *((result_ptr + 8) as *const *mut u8)
+
+            if success:
+                Ok(HttpResponse::from_handle(response_or_error))
+            else:
+                let error_msg = jet_string_to_jet_string(response_or_error)
+                jet_string_free(response_or_error)
+                Err(HttpError { message: error_msg, kind: HttpErrorKind::Other })
+        }
 
     ### Sends a PUT request.
     fn put(self, url: Url, body: Vec[u8]) -> Result[HttpResponse, HttpError] ! async:
-        self.send(HttpRequest.put(url).body(body))
+        unsafe {
+            let url_str = url.show()
+            let url_bytes = url_str.as_bytes()
+            let result_ptr = jet_http_client_put(self.handle, url_bytes.ptr, url_bytes.len(), body.as_ptr(), body.len())
+
+            # The result structure is: (success: bool, response_or_error: *mut u8)
+            let success = *(result_ptr as *const bool)
+            let response_or_error = *((result_ptr + 8) as *const *mut u8)
+
+            if success:
+                Ok(HttpResponse::from_handle(response_or_error))
+            else:
+                let error_msg = jet_string_to_jet_string(response_or_error)
+                jet_string_free(response_or_error)
+                Err(HttpError { message: error_msg, kind: HttpErrorKind::Other })
+        }
 
     ### Sends a DELETE request.
     fn delete(self, url: Url) -> Result[HttpResponse, HttpError] ! async:
-        self.send(HttpRequest.delete(url))
+        unsafe {
+            let url_str = url.show()
+            let url_bytes = url_str.as_bytes()
+            let result_ptr = jet_http_client_delete(self.handle, url_bytes.ptr, url_bytes.len())
+
+            # The result structure is: (success: bool, response_or_error: *mut u8)
+            let success = *(result_ptr as *const bool)
+            let response_or_error = *((result_ptr + 8) as *const *mut u8)
+
+            if success:
+                Ok(HttpResponse::from_handle(response_or_error))
+            else:
+                let error_msg = jet_string_to_jet_string(response_or_error)
+                jet_string_free(response_or_error)
+                Err(HttpError { message: error_msg, kind: HttpErrorKind::Other })
+        }
+
+    ### Frees the HTTP client.
+    fn free(self):
+        unsafe {
+            if not self.handle.is_null():
+                jet_http_client_free(self.handle)
+        }
 
 ### An HTTP server.
 type HttpServer = {

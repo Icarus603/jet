@@ -6,7 +6,7 @@ pub mod ast;
 pub mod error;
 
 use ast::*;
-use error::{ParseError, ParseResult};
+use error::{ParseError, ParseErrorKind, ParseResult};
 use jet_lexer::{Span, SpannedToken, Token};
 
 /// The parser struct
@@ -47,6 +47,7 @@ impl Parser {
 
         let end_span = self.current_span();
         Ok(Module {
+            attributes: Vec::new(),
             items,
             span: Span::new(start_span.start, end_span.end),
         })
@@ -54,6 +55,9 @@ impl Parser {
 
     /// Parse a module-level item
     fn parse_module_item(&mut self) -> ParseResult<ModuleItem> {
+        // Parse attributes first
+        let attributes = self.parse_attributes()?;
+
         // Check for visibility
         let public = self.match_token(&Token::Pub);
 
@@ -64,8 +68,12 @@ impl Parser {
                 }
                 self.parse_import().map(ModuleItem::Import)
             }
-            Some(Token::Fn) => self.parse_function(public).map(ModuleItem::Function),
-            Some(Token::Struct) => self.parse_struct(public).map(ModuleItem::Struct),
+            Some(Token::Fn) => self
+                .parse_function(public, attributes.clone())
+                .map(ModuleItem::Function),
+            Some(Token::Struct) => self
+                .parse_struct(public, attributes.clone())
+                .map(ModuleItem::Struct),
             Some(Token::Enum) => self.parse_enum(public).map(ModuleItem::Enum),
             Some(Token::Trait) => self.parse_trait(public).map(ModuleItem::Trait),
             Some(Token::Impl) => self.parse_impl().map(ModuleItem::Impl),
@@ -81,9 +89,13 @@ impl Parser {
             Some(Token::Async) => {
                 // Async function
                 self.advance(); // consume async
-                self.parse_function(public).map(ModuleItem::Function)
+                self.parse_function(public, attributes.clone())
+                    .map(ModuleItem::Function)
             }
             Some(Token::Effect) => self.parse_effect_def(public).map(ModuleItem::Effect),
+            Some(Token::Ghost) => self.parse_ghost_type(public).map(ModuleItem::GhostType),
+            Some(Token::AtSpec) => self.parse_spec().map(ModuleItem::Spec),
+            Some(Token::AtExample) => self.parse_example().map(ModuleItem::Example),
             Some(token) => Err(ParseError::unexpected_token(
                 "module item",
                 token,
@@ -182,7 +194,11 @@ impl Parser {
     }
 
     /// Parse a function definition
-    fn parse_function(&mut self, public: bool) -> ParseResult<Function> {
+    fn parse_function(
+        &mut self,
+        public: bool,
+        attributes: Vec<Attribute>,
+    ) -> ParseResult<Function> {
         let start_span = self.current_span();
         self.consume(Token::Fn, "`fn`")?;
 
@@ -217,11 +233,25 @@ impl Parser {
         };
 
         // Where clause
+        self.skip_newlines();
+        // Skip indent tokens - where clause may be at higher indentation
+        while self.check(&Token::Indent) {
+            self.advance();
+        }
         let where_clause = if self.check(&Token::Where) {
             self.parse_where_clause()?
         } else {
             Vec::new()
         };
+
+        // Parse optional contract clauses (requires/ensures)
+        let contract = self.parse_contract_clause()?;
+
+        // Skip newlines and any dedent tokens (contract clauses may be at higher indentation)
+        self.skip_newlines();
+        while self.check(&Token::Dedent) {
+            self.advance();
+        }
 
         // Body
         let body = self.parse_block_or_expr()?;
@@ -229,12 +259,14 @@ impl Parser {
         let end_span = self.current_span();
         Ok(Function {
             public,
+            attributes,
             name,
             generics,
             params,
             return_type,
             effects,
             where_clause,
+            contract,
             body,
             span: Span::new(start_span.start, end_span.end),
         })
@@ -417,6 +449,41 @@ impl Parser {
         Ok(bounds)
     }
 
+    /// Parse contract clause (requires/ensures)
+    fn parse_contract_clause(&mut self) -> ParseResult<Option<Contract>> {
+        let mut requires = Vec::new();
+        let mut ensures = Vec::new();
+        let start_span = self.current_span();
+
+        // Parse zero or more requires/ensures clauses
+        loop {
+            self.skip_newlines();
+            // Also skip indent tokens - contract clauses may be at higher indentation
+            while self.check(&Token::Indent) {
+                self.advance();
+            }
+            if self.match_token(&Token::Requires) {
+                let expr = self.parse_expr()?;
+                requires.push(expr);
+            } else if self.match_token(&Token::Ensures) {
+                let expr = self.parse_expr()?;
+                ensures.push(expr);
+            } else {
+                break;
+            }
+        }
+
+        if requires.is_empty() && ensures.is_empty() {
+            Ok(None)
+        } else {
+            let end_span = self.current_span();
+            Ok(Some(Contract {
+                requires,
+                ensures,
+                span: Span::new(start_span.start, end_span.end),
+            }))
+        }
+    }
     /// Parse a block or expression (for function body)
     fn parse_block_or_expr(&mut self) -> ParseResult<Expr> {
         if self.check(&Token::Colon) {
@@ -441,7 +508,7 @@ impl Parser {
     }
 
     /// Parse a struct definition
-    fn parse_struct(&mut self, public: bool) -> ParseResult<StructDef> {
+    fn parse_struct(&mut self, public: bool, attributes: Vec<Attribute>) -> ParseResult<StructDef> {
         let start_span = self.current_span();
         self.consume(Token::Struct, "`struct`")?;
 
@@ -458,7 +525,9 @@ impl Parser {
 
         // Check for tuple struct: `struct Point(f64, f64)`
         if self.check(&Token::LParen) {
-            return self.parse_tuple_struct(start_span, public, name, generics);
+            return self.parse_tuple_struct_with_attributes(
+                start_span, public, name, attributes, generics,
+            );
         }
 
         // Body
@@ -471,6 +540,7 @@ impl Parser {
             let end_span = self.current_span();
             return Ok(StructDef {
                 public,
+                attributes,
                 name,
                 generics,
                 fields: Vec::new(),
@@ -505,6 +575,7 @@ impl Parser {
         let end_span = self.current_span();
         Ok(StructDef {
             public,
+            attributes,
             name,
             generics,
             fields,
@@ -513,11 +584,12 @@ impl Parser {
     }
 
     /// Parse a tuple struct definition: `struct Point(f64, f64)`
-    fn parse_tuple_struct(
+    fn parse_tuple_struct_with_attributes(
         &mut self,
         start_span: Span,
         public: bool,
         name: Ident,
+        attributes: Vec<Attribute>,
         generics: Vec<GenericParam>,
     ) -> ParseResult<StructDef> {
         self.consume(Token::LParen, "`(`")?;
@@ -548,6 +620,7 @@ impl Parser {
         let end_span = self.current_span();
         Ok(StructDef {
             public,
+            attributes,
             name,
             generics,
             fields,
@@ -888,7 +961,7 @@ impl Parser {
 
         // Check for trait impl: `impl Trait for Type`
         let trait_path = if self.peek_ahead_for_for() {
-            let path = self.parse_path()?;
+            let path = self.parse_trait_impl_path()?;
             self.consume(Token::For, "`for`")?;
             Some(path)
         } else {
@@ -930,6 +1003,32 @@ impl Parser {
         })
     }
 
+    /// Parse trait path in an impl header, allowing optional generic arguments.
+    ///
+    /// Example accepted forms:
+    /// - `impl Display for Point:`
+    /// - `impl[T] Container[T] for Box[T]:`
+    ///
+    /// Generic arguments are parsed and validated syntactically, but the impl
+    /// AST currently stores only the trait path segments.
+    fn parse_trait_impl_path(&mut self) -> ParseResult<Path> {
+        let path = self.parse_path()?;
+
+        if self.match_token(&Token::LBracket) {
+            if !self.check(&Token::RBracket) {
+                loop {
+                    self.parse_type()?;
+                    if !self.match_token(&Token::Comma) {
+                        break;
+                    }
+                }
+            }
+            self.consume(Token::RBracket, "`]`")?;
+        }
+
+        Ok(path)
+    }
+
     /// Peek ahead to check if there's a `for` keyword (for trait impl detection)
     fn peek_ahead_for_for(&self) -> bool {
         let mut pos = self.position;
@@ -967,13 +1066,13 @@ impl Parser {
     fn parse_impl_item(&mut self) -> ParseResult<ImplItem> {
         match self.peek() {
             Some(Token::Fn) => {
-                let func = self.parse_function(false)?;
+                let func = self.parse_function(false, Vec::new())?;
                 Ok(ImplItem::Method(func))
             }
             Some(Token::Async) => {
                 // async fn in impl block
                 self.advance(); // consume async
-                let mut func = self.parse_function(false)?;
+                let mut func = self.parse_function(false, Vec::new())?;
                 // Mark function as async by adding async effect
                 func.effects
                     .push(Type::Path(Path::single(Ident::new("async", func.span))));
@@ -1024,6 +1123,36 @@ impl Parser {
 
         let end_span = self.current_span();
         Ok(TypeAlias {
+            public,
+            name,
+            generics,
+            ty,
+            span: Span::new(start_span.start, end_span.end),
+        })
+    }
+
+    /// Parse a ghost type declaration
+    fn parse_ghost_type(&mut self, public: bool) -> ParseResult<GhostType> {
+        let start_span = self.current_span();
+        self.consume(Token::Ghost, "`ghost`")?;
+        self.consume(Token::Type, "`type`")?;
+
+        let name = self.parse_identifier()?;
+
+        // Generic parameters
+        let generics = if self.match_token(&Token::LBracket) {
+            let params = self.parse_generic_params()?;
+            self.consume(Token::RBracket, "`]`")?;
+            params
+        } else {
+            Vec::new()
+        };
+
+        self.consume(Token::Assign, "`=`")?;
+        let ty = self.parse_type()?;
+
+        let end_span = self.current_span();
+        Ok(GhostType {
             public,
             name,
             generics,
@@ -1623,6 +1752,12 @@ impl Parser {
                 self.advance();
                 Ok(Expr::Literal(Literal::Bool(false)))
             }
+            Some(Token::Result) => {
+                // 'result' keyword for referring to return value in postconditions
+                let span = self.current_span();
+                self.advance();
+                Ok(Expr::Variable(Ident::new("result", span)))
+            }
             Some(Token::Ident(_)) => {
                 let path = self.parse_path()?;
                 // Check if it's a struct literal
@@ -1633,15 +1768,28 @@ impl Parser {
                 }
             }
             Some(Token::Chan) => {
-                let span = self.current_span();
+                let start_span = self.current_span();
                 self.advance();
-                Ok(Expr::Variable(Ident::new("chan", span)))
+                let mut segments = vec![Ident::new("chan", start_span)];
+
+                while self.match_token(&Token::ColonColon) {
+                    segments.push(self.parse_identifier()?);
+                }
+
+                let end_span = self.current_span();
+                let path = Path::new(segments, Span::new(start_span.start, end_span.end));
+
+                if self.match_token(&Token::LBrace) {
+                    self.parse_struct_literal_rest(path)
+                } else {
+                    Ok(Expr::Path(path))
+                }
             }
             Some(Token::Underscore) => {
-                // Underscore as an expression (used in certain contexts)
+                // Hole expression for hole-driven development
                 let span = self.current_span();
                 self.advance();
-                Ok(Expr::Variable(Ident::new("_", span)))
+                Ok(Expr::Hole(span))
             }
             Some(Token::Unit) => {
                 self.advance();
@@ -1773,25 +1921,15 @@ impl Parser {
         let cond = Box::new(self.parse_expr()?);
 
         self.consume(Token::Colon, "`:`")?;
+        let then_branch = Box::new(self.parse_if_branch_body()?);
         self.skip_newlines();
-        self.consume(Token::Indent, "indentation")?;
-        let then_block = self.parse_block_internal()?;
-        self.skip_newlines();
-        self.consume(Token::Dedent, "dedentation")?;
-
-        let then_branch = Box::new(Expr::Block(then_block));
 
         // Check for elif/else
         let else_branch = if self.check(&Token::Elif) {
             Some(Box::new(self.parse_elif_chain()?))
         } else if self.match_token(&Token::Else) {
             self.consume(Token::Colon, "`:`")?;
-            self.skip_newlines();
-            self.consume(Token::Indent, "indentation")?;
-            let else_block = self.parse_block_internal()?;
-            self.skip_newlines();
-            self.consume(Token::Dedent, "dedentation")?;
-            Some(Box::new(Expr::Block(else_block)))
+            Some(Box::new(self.parse_if_branch_body()?))
         } else {
             None
         };
@@ -1809,25 +1947,15 @@ impl Parser {
         let cond = Box::new(self.parse_expr()?);
 
         self.consume(Token::Colon, "`:`")?;
+        let then_branch = Box::new(self.parse_if_branch_body()?);
         self.skip_newlines();
-        self.consume(Token::Indent, "indentation")?;
-        let then_block = self.parse_block_internal()?;
-        self.skip_newlines();
-        self.consume(Token::Dedent, "dedentation")?;
-
-        let then_branch = Box::new(Expr::Block(then_block));
 
         // Check for more elif/else
         let else_branch = if self.check(&Token::Elif) {
             Some(Box::new(self.parse_elif_chain()?))
         } else if self.match_token(&Token::Else) {
             self.consume(Token::Colon, "`:`")?;
-            self.skip_newlines();
-            self.consume(Token::Indent, "indentation")?;
-            let else_block = self.parse_block_internal()?;
-            self.skip_newlines();
-            self.consume(Token::Dedent, "dedentation")?;
-            Some(Box::new(Expr::Block(else_block)))
+            Some(Box::new(self.parse_if_branch_body()?))
         } else {
             None
         };
@@ -1837,6 +1965,35 @@ impl Parser {
             then_branch,
             else_branch,
         })
+    }
+
+    /// Parse an if/elif/else branch body.
+    ///
+    /// Supports both block form:
+    /// `if cond:`
+    /// `    expr`
+    ///
+    /// and inline expression form:
+    /// `if cond: expr else: other`
+    fn parse_if_branch_body(&mut self) -> ParseResult<Expr> {
+        if self.match_token(&Token::Newline) {
+            self.skip_newlines();
+            self.consume(Token::Indent, "indentation")?;
+            let block = self.parse_block_internal()?;
+            self.skip_newlines();
+            self.consume(Token::Dedent, "dedentation")?;
+            return Ok(Expr::Block(block));
+        }
+
+        if self.check(&Token::Indent) {
+            self.advance();
+            let block = self.parse_block_internal()?;
+            self.skip_newlines();
+            self.consume(Token::Dedent, "dedentation")?;
+            return Ok(Expr::Block(block));
+        }
+
+        self.parse_expr()
     }
 
     /// Parse a match expression
@@ -1923,6 +2080,27 @@ impl Parser {
         self.consume(Token::While, "`while`")?;
         let cond = Box::new(self.parse_expr()?);
 
+        // Parse optional invariant clause(s)
+        let mut invariant = None;
+        loop {
+            self.skip_newlines();
+            // Skip indent tokens - invariants may be at higher indentation
+            while self.check(&Token::Indent) {
+                self.advance();
+            }
+            if self.match_token(&Token::Invariant) {
+                invariant = Some(Box::new(self.parse_expr()?));
+            } else {
+                break;
+            }
+        }
+
+        // Skip newlines and any dedent tokens before the colon
+        self.skip_newlines();
+        while self.check(&Token::Dedent) {
+            self.advance();
+        }
+
         self.consume(Token::Colon, "`:`")?;
         self.skip_newlines();
         self.consume(Token::Indent, "indentation")?;
@@ -1933,6 +2111,7 @@ impl Parser {
         Ok(Expr::While {
             label,
             cond,
+            invariant,
             body: Box::new(Expr::Block(block)),
         })
     }
@@ -1943,6 +2122,27 @@ impl Parser {
         let pattern = self.parse_pattern()?;
         self.consume(Token::In, "`in`")?;
         let iterable = Box::new(self.parse_expr()?);
+
+        // Parse optional invariant clause(s)
+        let mut invariant = None;
+        loop {
+            self.skip_newlines();
+            // Skip indent tokens - invariants may be at higher indentation
+            while self.check(&Token::Indent) {
+                self.advance();
+            }
+            if self.match_token(&Token::Invariant) {
+                invariant = Some(Box::new(self.parse_expr()?));
+            } else {
+                break;
+            }
+        }
+
+        // Skip newlines and any dedent tokens before the colon
+        self.skip_newlines();
+        while self.check(&Token::Dedent) {
+            self.advance();
+        }
 
         self.consume(Token::Colon, "`:`")?;
         self.skip_newlines();
@@ -1955,6 +2155,7 @@ impl Parser {
             label,
             pattern,
             iterable,
+            invariant,
             body: Box::new(Expr::Block(block)),
         })
     }
@@ -2163,6 +2364,7 @@ impl Parser {
     /// Parse handler arms for effect handling
     fn parse_handler_arms(&mut self) -> ParseResult<Vec<HandlerArm>> {
         let mut handlers = Vec::new();
+        self.skip_newlines();
 
         // Handlers can be introduced with 'with' or just start with the arms
         if self.check(&Token::With) {
@@ -2949,21 +3151,321 @@ impl Parser {
         // Skip tokens until we find a likely module item boundary
         while !self.is_at_end() {
             match self.peek() {
-                Some(Token::Import) | Some(Token::Fn) | Some(Token::Struct) | Some(Token::Enum)
-                | Some(Token::Trait) | Some(Token::Impl) | Some(Token::Type) | Some(Token::Let)
-                | Some(Token::Pub) | Some(Token::Dedent) => break,
+                Some(Token::Import)
+                | Some(Token::Fn)
+                | Some(Token::Struct)
+                | Some(Token::Enum)
+                | Some(Token::Trait)
+                | Some(Token::Impl)
+                | Some(Token::Type)
+                | Some(Token::Let)
+                | Some(Token::Pub)
+                | Some(Token::Dedent)
+                | Some(Token::AtSpec)
+                | Some(Token::AtExample)
+                | Some(Token::Confidence)
+                | Some(Token::GeneratedBy)
+                | Some(Token::Prompt)
+                | Some(Token::HumanEditCount) => break,
                 _ => {
                     self.advance();
                 }
             }
         }
     }
-}
 
-/// Parse source code into an AST module
-pub fn parse(tokens: Vec<SpannedToken>) -> ParseResult<Module> {
-    let mut parser = Parser::new(tokens);
-    parser.parse_module()
+    /// Parse AI annotation attributes (e.g., @confidence(high), @generated_by("model"))
+    fn parse_attributes(&mut self) -> ParseResult<Vec<Attribute>> {
+        let mut attributes = Vec::new();
+
+        loop {
+            self.skip_newlines();
+            match self.peek() {
+                Some(Token::Confidence)
+                | Some(Token::GeneratedBy)
+                | Some(Token::Prompt)
+                | Some(Token::HumanEditCount) => {
+                    attributes.push(self.parse_attribute()?);
+                }
+                _ => break,
+            }
+        }
+
+        Ok(attributes)
+    }
+
+    /// Parse a single attribute
+    fn parse_attribute(&mut self) -> ParseResult<Attribute> {
+        let start_span = self.current_span();
+
+        // Get the attribute name from the token
+        let name = match self.peek() {
+            Some(Token::Confidence) => {
+                self.advance();
+                Ident::new("confidence", start_span)
+            }
+            Some(Token::GeneratedBy) => {
+                self.advance();
+                Ident::new("generated_by", start_span)
+            }
+            Some(Token::Prompt) => {
+                self.advance();
+                Ident::new("prompt", start_span)
+            }
+            Some(Token::HumanEditCount) => {
+                self.advance();
+                Ident::new("human_edit_count", start_span)
+            }
+            _ => {
+                return Err(ParseError::unexpected_token(
+                    "attribute",
+                    self.peek().unwrap_or(&Token::Eof),
+                    self.current_span(),
+                ))
+            }
+        };
+
+        // Parse arguments: (arg1, arg2, name=value)
+        let arguments = if self.check(&Token::LParen) {
+            self.parse_attribute_args()?
+        } else {
+            Vec::new()
+        };
+
+        let end_span = self.current_span();
+        Ok(Attribute {
+            name,
+            arguments,
+            span: Span::new(start_span.start, end_span.end),
+        })
+    }
+
+    /// Parse attribute arguments: (arg1, arg2, name=value)
+    fn parse_attribute_args(&mut self) -> ParseResult<Vec<AttributeArg>> {
+        self.consume(Token::LParen, "`(`")?;
+        let mut args = Vec::new();
+
+        if !self.check(&Token::RParen) {
+            loop {
+                args.push(self.parse_attribute_arg()?);
+                if !self.match_token(&Token::Comma) {
+                    break;
+                }
+            }
+        }
+
+        self.consume(Token::RParen, "`)`")?;
+        Ok(args)
+    }
+
+    /// Parse a single attribute argument (positional or named)
+    fn parse_attribute_arg(&mut self) -> ParseResult<AttributeArg> {
+        // Check if this is a named argument: name = value
+        if let Some(Token::Ident(name)) = self.peek() {
+            let name = name.clone();
+            // Look ahead to see if followed by =
+            let saved_pos = self.position;
+            self.advance();
+            if self.match_token(&Token::Assign) {
+                let value = self.parse_attribute_value()?;
+                let name_ident = Ident::new(name, self.current_span());
+                return Ok(AttributeArg::Named {
+                    name: name_ident,
+                    value,
+                });
+            }
+            // Not a named argument, backtrack
+            self.position = saved_pos;
+        }
+
+        // Positional argument
+        let value = self.parse_attribute_value()?;
+        Ok(AttributeArg::Positional(value))
+    }
+
+    /// Parse an attribute value (string, number, bool, identifier)
+    fn parse_attribute_value(&mut self) -> ParseResult<AttributeValue> {
+        match self.peek() {
+            Some(Token::String(s)) => {
+                let s = s.clone();
+                self.advance();
+                Ok(AttributeValue::String(s))
+            }
+            Some(Token::Integer(n)) => {
+                let n = n.clone();
+                self.advance();
+                // Parse as i64
+                match n.parse::<i64>() {
+                    Ok(val) => Ok(AttributeValue::Integer(val)),
+                    Err(_) => Err(ParseError::new(
+                        ParseErrorKind::InvalidSyntax,
+                        self.current_span(),
+                        format!("Invalid integer: {}", n),
+                    )),
+                }
+            }
+            Some(Token::Float(n)) => {
+                let n = n.clone();
+                self.advance();
+                // Parse as f64
+                match n.parse::<f64>() {
+                    Ok(val) => Ok(AttributeValue::Float(val)),
+                    Err(_) => Err(ParseError::new(
+                        ParseErrorKind::InvalidSyntax,
+                        self.current_span(),
+                        format!("Invalid float: {}", n),
+                    )),
+                }
+            }
+            Some(Token::True) => {
+                self.advance();
+                Ok(AttributeValue::Bool(true))
+            }
+            Some(Token::False) => {
+                self.advance();
+                Ok(AttributeValue::Bool(false))
+            }
+            Some(Token::Ident(name)) => {
+                let name = name.clone();
+                let span = self.current_span();
+                self.advance();
+                Ok(AttributeValue::Ident(Ident::new(name, span)))
+            }
+            Some(token) => Err(ParseError::unexpected_token(
+                "attribute value",
+                token,
+                self.current_span(),
+            )),
+            None => Err(ParseError::unexpected_eof(
+                "attribute value",
+                self.current_span(),
+            )),
+        }
+    }
+
+    /// Parse a @spec annotation
+    /// Format: @spec "description" or @spec "description" @test_for(function_name)
+    fn parse_spec(&mut self) -> ParseResult<Spec> {
+        let start_span = self.current_span();
+        self.consume(Token::AtSpec, "@spec")?;
+
+        // Parse the description string
+        let description = match self.peek() {
+            Some(Token::String(s)) => {
+                let desc = s.clone();
+                self.advance();
+                desc
+            }
+            Some(token) => {
+                return Err(ParseError::unexpected_token(
+                    "string literal for spec description",
+                    token,
+                    self.current_span(),
+                ))
+            }
+            None => {
+                return Err(ParseError::unexpected_eof(
+                    "spec description",
+                    self.current_span(),
+                ))
+            }
+        };
+
+        // Check for optional @test_for annotation
+        let test_for = if self.check(&Token::AtTestFor) {
+            self.advance(); // consume @test_for
+            self.consume(Token::LParen, "`(`")?;
+            let func_name = match self.peek() {
+                Some(Token::Ident(s)) => {
+                    let name = s.clone();
+                    self.advance();
+                    name
+                }
+                Some(token) => {
+                    return Err(ParseError::unexpected_token(
+                        "function name",
+                        token,
+                        self.current_span(),
+                    ))
+                }
+                None => {
+                    return Err(ParseError::unexpected_eof(
+                        "function name",
+                        self.current_span(),
+                    ))
+                }
+            };
+            self.consume(Token::RParen, "`)")?;
+            Some(func_name)
+        } else {
+            None
+        };
+
+        let end_span = self.current_span();
+        Ok(Spec {
+            description,
+            test_for,
+            span: Span::new(start_span.start, end_span.end),
+        })
+    }
+
+    /// Parse an @example annotation
+    /// Format: @example ["caption"] { code } or @example ["caption"] @test_for(func) { code }
+    fn parse_example(&mut self) -> ParseResult<Example> {
+        let start_span = self.current_span();
+        self.consume(Token::AtExample, "@example")?;
+
+        // Parse optional caption string
+        let caption = if let Some(Token::String(s)) = self.peek() {
+            let cap = s.clone();
+            self.advance();
+            Some(cap)
+        } else {
+            None
+        };
+
+        // Check for optional @test_for annotation
+        let test_for = if self.check(&Token::AtTestFor) {
+            self.advance(); // consume @test_for
+            self.consume(Token::LParen, "`(`")?;
+            let func_name = match self.peek() {
+                Some(Token::Ident(s)) => {
+                    let name = s.clone();
+                    self.advance();
+                    name
+                }
+                Some(token) => {
+                    return Err(ParseError::unexpected_token(
+                        "function name",
+                        token,
+                        self.current_span(),
+                    ))
+                }
+                None => {
+                    return Err(ParseError::unexpected_eof(
+                        "function name",
+                        self.current_span(),
+                    ))
+                }
+            };
+            self.consume(Token::RParen, "`)")?;
+            Some(func_name)
+        } else {
+            None
+        };
+
+        // Parse the code expression (typically a block or function)
+        self.skip_newlines();
+        let code = Box::new(self.parse_expr()?);
+
+        let end_span = self.current_span();
+        Ok(Example {
+            caption,
+            code,
+            test_for,
+            span: Span::new(start_span.start, end_span.end),
+        })
+    }
 }
 
 #[cfg(test)]

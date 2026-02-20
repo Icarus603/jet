@@ -554,17 +554,317 @@ impl<'ctx, 'module> FunctionCompiler<'ctx, 'module> {
                 struct_ty,
             } => {
                 let ptr_val = self.get_value(*ptr)?.into_pointer_value();
-                let struct_llvm_ty = self.jet_type_to_llvm(struct_ty)?;
-                let field_ptr = self
-                    .builder
-                    .build_struct_gep(struct_llvm_ty, ptr_val, *field_index as u32, "fieldptr")
-                    .map_err(|e| CodegenError::instruction_error(e.to_string()))?;
+                let field_ptr = match struct_ty {
+                    jet_ir::Ty::Struct(_) => {
+                        let struct_llvm_ty = self.jet_type_to_llvm(struct_ty)?;
+                        self.builder
+                            .build_struct_gep(
+                                struct_llvm_ty,
+                                ptr_val,
+                                *field_index as u32,
+                                "fieldptr",
+                            )
+                            .map_err(|e| CodegenError::instruction_error(e.to_string()))?
+                    }
+                    jet_ir::Ty::Named(_) | jet_ir::Ty::Generic(_, _) => ptr_val,
+                    _ => {
+                        return Err(CodegenError::instruction_error(format!(
+                            "GetFieldPtr requires a struct type, got {:?}",
+                            struct_ty
+                        )));
+                    }
+                };
                 self.value_map.insert(*result, field_ptr.into());
                 Ok(Some(field_ptr.into()))
             }
 
-            // TODO: Implement more instructions
-            _ => Err(CodegenError::unsupported_instruction(format!("{:?}", inst))),
+            jet_ir::Instruction::GetElementPtr {
+                result,
+                ptr,
+                index,
+                elem_ty,
+            } => {
+                let ptr_val = self.get_value(*ptr)?.into_pointer_value();
+                let index_val = self.get_value(*index)?.into_int_value();
+                let llvm_elem_ty = self.jet_type_to_llvm(elem_ty)?;
+                let elem_ptr = unsafe {
+                    self.builder
+                        .build_gep(llvm_elem_ty, ptr_val, &[index_val], "gep")
+                        .map_err(|e| CodegenError::instruction_error(e.to_string()))?
+                };
+                self.value_map.insert(*result, elem_ptr.into());
+                Ok(Some(elem_ptr.into()))
+            }
+
+            jet_ir::Instruction::FloatCast { result, value, ty } => {
+                let val = self.get_value(*value)?.into_float_value();
+                let target_ty = self.jet_type_to_llvm(ty)?.into_float_type();
+                let source_bits = val.get_type().get_bit_width();
+                let target_bits = target_ty.get_bit_width();
+
+                let cast_val = if target_bits > source_bits {
+                    self.builder
+                        .build_float_ext(val, target_ty, "fpext")
+                        .map_err(|e| CodegenError::instruction_error(e.to_string()))?
+                        .into()
+                } else if target_bits < source_bits {
+                    self.builder
+                        .build_float_trunc(val, target_ty, "fptrunc")
+                        .map_err(|e| CodegenError::instruction_error(e.to_string()))?
+                        .into()
+                } else {
+                    val.into()
+                };
+
+                self.value_map.insert(*result, cast_val);
+                Ok(Some(cast_val))
+            }
+
+            jet_ir::Instruction::IntToFloat { result, value, ty } => {
+                let val = self.get_value(*value)?.into_int_value();
+                let target_ty = self.jet_type_to_llvm(ty)?.into_float_type();
+                let cast_val = self
+                    .builder
+                    .build_signed_int_to_float(val, target_ty, "sitofp")
+                    .map_err(|e| CodegenError::instruction_error(e.to_string()))?
+                    .into();
+                self.value_map.insert(*result, cast_val);
+                Ok(Some(cast_val))
+            }
+
+            jet_ir::Instruction::FloatToInt { result, value, ty } => {
+                let val = self.get_value(*value)?.into_float_value();
+                let target_ty = self.jet_type_to_llvm(ty)?.into_int_type();
+                let cast_val = self
+                    .builder
+                    .build_float_to_signed_int(val, target_ty, "fptosi")
+                    .map_err(|e| CodegenError::instruction_error(e.to_string()))?
+                    .into();
+                self.value_map.insert(*result, cast_val);
+                Ok(Some(cast_val))
+            }
+
+            jet_ir::Instruction::CallIndirect {
+                result,
+                ptr,
+                args,
+                ty,
+            } => {
+                let ptr_val = self.get_value(*ptr)?;
+                let fn_ptr = if ptr_val.is_struct_value() {
+                    let struct_val = ptr_val.into_struct_value();
+                    self.builder
+                        .build_extract_value(struct_val, 0, "closure_func_ptr")
+                        .map_err(|e| CodegenError::instruction_error(e.to_string()))?
+                        .into_pointer_value()
+                } else {
+                    ptr_val.into_pointer_value()
+                };
+
+                let arg_values: Vec<BasicMetadataValueEnum<'ctx>> = args
+                    .iter()
+                    .map(|arg| self.get_value(*arg).map(|v| v.into()))
+                    .collect::<CodegenResult<Vec<_>>>()?;
+
+                let param_types: Vec<BasicMetadataTypeEnum<'ctx>> = arg_values
+                    .iter()
+                    .map(|v| match *v {
+                        BasicMetadataValueEnum::IntValue(v) => Ok(v.get_type().into()),
+                        BasicMetadataValueEnum::FloatValue(v) => Ok(v.get_type().into()),
+                        BasicMetadataValueEnum::PointerValue(v) => Ok(v.get_type().into()),
+                        BasicMetadataValueEnum::StructValue(v) => Ok(v.get_type().into()),
+                        BasicMetadataValueEnum::ArrayValue(v) => Ok(v.get_type().into()),
+                        BasicMetadataValueEnum::VectorValue(v) => Ok(v.get_type().into()),
+                        _ => Err(CodegenError::instruction_error(
+                            "unsupported metadata argument for indirect call",
+                        )),
+                    })
+                    .collect::<CodegenResult<Vec<_>>>()?;
+
+                let fn_ty = if ty.is_void() {
+                    self.context.void_type().fn_type(&param_types, false)
+                } else {
+                    self.jet_type_to_llvm(ty)?.fn_type(&param_types, false)
+                };
+
+                let call_val = self
+                    .builder
+                    .build_indirect_call(fn_ty, fn_ptr, &arg_values, "callind")
+                    .map_err(|e| CodegenError::instruction_error(e.to_string()))?;
+
+                let result_val = call_val.try_as_basic_value().basic();
+                if let Some(val) = result_val {
+                    self.value_map.insert(*result, val);
+                    Ok(Some(val))
+                } else {
+                    Ok(None)
+                }
+            }
+
+            jet_ir::Instruction::StructAgg { result, fields, ty } => {
+                let struct_ty = self.jet_type_to_llvm(ty)?.into_struct_type();
+                let mut struct_val = struct_ty.const_zero();
+                let field_count = struct_ty.count_fields() as usize;
+
+                for (i, field_id) in fields.iter().enumerate().take(field_count) {
+                    let field_val = self.get_value(*field_id)?;
+                    struct_val = self
+                        .builder
+                        .build_insert_value(struct_val, field_val, i as u32, "structagg")
+                        .map_err(|e| CodegenError::instruction_error(e.to_string()))?
+                        .into_struct_value();
+                }
+
+                let val: BasicValueEnum<'ctx> = struct_val.into();
+                self.value_map.insert(*result, val);
+                Ok(Some(val))
+            }
+
+            jet_ir::Instruction::ArrayAgg {
+                result,
+                elements,
+                ty,
+            } => {
+                let array_ty = self.jet_type_to_llvm(ty)?.into_array_type();
+                let mut array_val = array_ty.const_zero();
+                let elem_count = array_ty.len() as usize;
+
+                for (i, elem_id) in elements.iter().enumerate().take(elem_count) {
+                    let elem_val = self.get_value(*elem_id)?;
+                    array_val = self
+                        .builder
+                        .build_insert_value(array_val, elem_val, i as u32, "arrayagg")
+                        .map_err(|e| CodegenError::instruction_error(e.to_string()))?
+                        .into_array_value();
+                }
+
+                let val: BasicValueEnum<'ctx> = array_val.into();
+                self.value_map.insert(*result, val);
+                Ok(Some(val))
+            }
+
+            jet_ir::Instruction::ExtractField {
+                result,
+                aggregate,
+                field_index,
+            } => {
+                let agg_val = self.get_value(*aggregate)?;
+                if !agg_val.is_struct_value() {
+                    return Err(CodegenError::invalid_operand(
+                        "extract_field",
+                        "aggregate is not a struct value",
+                    ));
+                }
+
+                let struct_val = agg_val.into_struct_value();
+                let extracted = self
+                    .builder
+                    .build_extract_value(struct_val, *field_index as u32, "extractfield")
+                    .map_err(|e| CodegenError::instruction_error(e.to_string()))?;
+                self.value_map.insert(*result, extracted);
+                Ok(Some(extracted))
+            }
+
+            jet_ir::Instruction::InsertField {
+                result,
+                aggregate,
+                field_index,
+                value,
+            } => {
+                let agg_val = self.get_value(*aggregate)?;
+                let field_val = self.get_value(*value)?;
+                if !agg_val.is_struct_value() {
+                    return Err(CodegenError::invalid_operand(
+                        "insert_field",
+                        "aggregate is not a struct value",
+                    ));
+                }
+
+                let struct_val = agg_val.into_struct_value();
+                let inserted = self
+                    .builder
+                    .build_insert_value(struct_val, field_val, *field_index as u32, "insertfield")
+                    .map_err(|e| CodegenError::instruction_error(e.to_string()))?
+                    .into_struct_value();
+                let val: BasicValueEnum<'ctx> = inserted.into();
+                self.value_map.insert(*result, val);
+                Ok(Some(val))
+            }
+
+            jet_ir::Instruction::TryCall {
+                result, func, args, ..
+            } => {
+                let fn_val = *self
+                    .function_map
+                    .get(func)
+                    .ok_or_else(|| CodegenError::function_not_found(func.clone()))?;
+
+                let arg_values: Vec<BasicMetadataValueEnum<'ctx>> = args
+                    .iter()
+                    .map(|arg| self.get_value(*arg).map(|v| v.into()))
+                    .collect::<CodegenResult<Vec<_>>>()?;
+
+                let call_val = self
+                    .builder
+                    .build_call(fn_val, &arg_values, "try_call")
+                    .map_err(|e| CodegenError::instruction_error(e.to_string()))?;
+
+                let result_val = call_val.try_as_basic_value().basic();
+                if let Some(val) = result_val {
+                    self.value_map.insert(*result, val);
+                    Ok(Some(val))
+                } else {
+                    Ok(None)
+                }
+            }
+
+            jet_ir::Instruction::Resume { .. } => Ok(None),
+
+            jet_ir::Instruction::Await { result, future } => {
+                let val = self.get_value(*future)?;
+                self.value_map.insert(*result, val);
+                Ok(Some(val))
+            }
+
+            jet_ir::Instruction::DebugPrint { value } => {
+                let val = self.get_value(*value)?;
+
+                let printf_ty = self.context.i32_type().fn_type(
+                    &[self
+                        .context
+                        .i8_type()
+                        .ptr_type(AddressSpace::default())
+                        .into()],
+                    true,
+                );
+                let printf = self
+                    .module
+                    .get_function("printf")
+                    .unwrap_or_else(|| self.module.add_function("printf", printf_ty, None));
+
+                let format_str = if val.is_int_value() {
+                    "%d\n"
+                } else if val.is_float_value() {
+                    "%f\n"
+                } else {
+                    "%p\n"
+                };
+                let fmt = self
+                    .builder
+                    .build_global_string_ptr(format_str, "debug_fmt")
+                    .map_err(|e| CodegenError::instruction_error(e.to_string()))?;
+
+                self.builder
+                    .build_call(
+                        printf,
+                        &[fmt.as_pointer_value().into(), val.into()],
+                        "debug_print",
+                    )
+                    .map_err(|e| CodegenError::instruction_error(e.to_string()))?;
+                Ok(None)
+            }
+
+            jet_ir::Instruction::Nop => Ok(None),
         }
     }
 
@@ -677,6 +977,17 @@ impl<'ctx, 'module> FunctionCompiler<'ctx, 'module> {
                 .bool_type()
                 .const_int(*val as u64, false)
                 .into()),
+            jet_ir::ConstantValue::String(s) => {
+                if let Some(func) = self.function_map.get(s).copied() {
+                    Ok(func.as_global_value().as_pointer_value().into())
+                } else {
+                    let string_ptr = self
+                        .builder
+                        .build_global_string_ptr(s, "str")
+                        .map_err(|e| CodegenError::instruction_error(e.to_string()))?;
+                    Ok(string_ptr.as_pointer_value().into())
+                }
+            }
             jet_ir::ConstantValue::Null(ty) => {
                 let ptr_ty = self.jet_type_to_llvm(ty)?.into_pointer_type();
                 Ok(ptr_ty.const_null().into())
@@ -691,7 +1002,6 @@ impl<'ctx, 'module> FunctionCompiler<'ctx, 'module> {
                 let llvm_ty = self.jet_type_to_llvm(ty)?;
                 Ok(llvm_ty.const_zero())
             }
-            _ => Err(CodegenError::invalid_constant(format!("{:?}", value))),
         }
     }
 
@@ -833,6 +1143,10 @@ impl<'ctx, 'module> FunctionCompiler<'ctx, 'module> {
                     .i8_type()
                     .ptr_type(AddressSpace::default())
                     .into())
+            }
+            jet_ir::Ty::Ghost(_) => {
+                // Ghost types are erased at runtime - represented as empty struct
+                Ok(self.context.struct_type(&[], false).into())
             }
         }
     }

@@ -3,15 +3,15 @@
 //! These tests verify that the `lower_typed_expr()` function correctly
 //! converts typed AST expressions (TypedExpr) to Jet IR instructions.
 
-use jet_ir::{Instruction, Ty, ValueId};
-use jet_lower::{lower_module, lower_typed_expression, LoweringContext};
-use jet_typeck::{
-    EffectSet, TypedExpr, TypedExprKind, TypedFunction,
-    TypedModule, TypedModuleItem, TypedParam, TypeContext, TypeId,
-};
-use jet_parser::ast::{BinaryOp, Ident, Literal, Pattern, UnaryOp};
 use jet_diagnostics::Span as DiagnosticsSpan;
+use jet_ir::{Instruction, Ty, ValueId};
 use jet_lexer::Span as LexerSpan;
+use jet_lower::{lower_module, lower_typed_expression, LoweringContext};
+use jet_parser::ast::{BinaryOp, Ident, Literal, Pattern, UnaryOp};
+use jet_typeck::{
+    EffectSet, TypeContext, TypeId, TypedExpr, TypedExprKind, TypedFunction, TypedModule,
+    TypedModuleItem, TypedParam,
+};
 
 fn make_ident(name: &str) -> Ident {
     Ident::new(name, LexerSpan::new(0, 0))
@@ -85,12 +85,10 @@ fn test_lower_typed_literal_bool() {
     let block = &func.blocks[0];
 
     match &block.instructions[0] {
-        Instruction::Const { value, .. } => {
-            match value {
-                jet_ir::ConstantValue::Bool(b) => assert_eq!(*b, true),
-                _ => panic!("Expected boolean constant"),
-            }
-        }
+        Instruction::Const { value, .. } => match value {
+            jet_ir::ConstantValue::Bool(b) => assert!(*b),
+            _ => panic!("Expected boolean constant"),
+        },
         _ => panic!("Expected Const instruction"),
     }
 }

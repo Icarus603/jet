@@ -293,6 +293,22 @@ jobs:
       - name: Check unsafe API safety docs
         run: bash scripts/check_safety_docs.sh
 
+  # License and security check with cargo-deny
+  cargo-deny:
+    name: Cargo Deny
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-deny
+        run: cargo install --locked cargo-deny
+
+      - name: Run cargo deny check
+        run: cargo deny check
+
   # Coverage report
   coverage:
     name: Code Coverage

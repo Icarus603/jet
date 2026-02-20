@@ -34,12 +34,14 @@ pub fn lower_typed_function(ctx: &mut LoweringContext, func: &jet_typeck::TypedF
     // Create the IR function
     let mut ir_func = Function::new(&func.name.name, params, return_ty.clone());
 
-    // Add effects - temporarily disabled until effect metadata is available
-    // for effect in &func.effects.effects {
-    //     if let Some(ir_effect) = lower_typed_effect(effect, ctx.type_context()) {
-    //         ir_func.effects.push(ir_effect);
-    //     }
-    // }
+    // Add effects from the typed function metadata.
+    // Effect names are lowered via `lower_typed_effect` until richer DefId->name
+    // lookup metadata is available in the lowering context.
+    for effect in &func.effects.effects {
+        if let Some(ir_effect) = lower_typed_effect(effect, ctx.type_context()) {
+            ir_func.effects.push(ir_effect);
+        }
+    }
 
     // Mark as exported if public
     if func.public {
@@ -243,6 +245,7 @@ fn lower_effect(effect: &ast::Type) -> Option<Effect> {
 }
 
 /// Lowers a typeck effect instance to an IR effect.
+#[allow(dead_code)]
 fn lower_typed_effect(
     effect: &jet_typeck::EffectInstance,
     _tcx: &jet_typeck::TypeContext,
@@ -376,6 +379,7 @@ mod tests {
     use super::*;
     use jet_lexer::Span;
     use jet_parser::ast::{Ident, Pattern, Type};
+    use jet_typeck::{DefId, EffectInstance, EffectSet, IntSize, TypedExpr, TypedExprKind};
 
     fn make_ident(name: &str) -> Ident {
         Ident::new(name, Span::new(0, 0))
@@ -389,6 +393,7 @@ mod tests {
         // fn add(x: int, y: int) -> int: x + y
         let func = ast::Function {
             public: false,
+            attributes: vec![],
             name: make_ident("add"),
             generics: vec![],
             params: vec![
@@ -413,6 +418,7 @@ mod tests {
             ))),
             effects: vec![],
             where_clause: vec![],
+            contract: None,
             body: ast::Expr::Binary {
                 op: ast::BinaryOp::Add,
                 left: Box::new(ast::Expr::Variable(make_ident("x"))),
@@ -465,12 +471,47 @@ mod tests {
     }
 
     #[test]
+    fn test_lower_typed_function_effects() {
+        let mut tcx = jet_typeck::TypeContext::new();
+        let int_ty = tcx.mk_int(IntSize::I64);
+        let mut ctx = LoweringContext::new("test", &tcx);
+
+        let func = jet_typeck::TypedFunction {
+            public: false,
+            name: make_ident("typed_effect"),
+            generics: vec![],
+            params: vec![],
+            return_type: int_ty,
+            effects: EffectSet::singleton(EffectInstance {
+                effect: DefId(42),
+                args: vec![],
+            }),
+            where_clause: vec![],
+            body: TypedExpr {
+                kind: TypedExprKind::Literal(ast::Literal::Integer(1)),
+                ty: int_ty,
+                span: jet_diagnostics::Span::new(0, 0),
+            },
+            span: jet_diagnostics::Span::new(0, 0),
+        };
+
+        let func_idx = lower_typed_function(&mut ctx, &func);
+        assert_eq!(func_idx, 0);
+        assert_eq!(ctx.module.functions.len(), 1);
+        assert_eq!(
+            ctx.module.functions[0].effects,
+            vec![Effect::Raise(Ty::Named("effect_42".to_string()))]
+        );
+    }
+
+    #[test]
     fn test_lower_struct_def() {
         let tcx = jet_typeck::TypeContext::new();
         let mut ctx = LoweringContext::new("test", &tcx);
 
         let struct_def = ast::StructDef {
             public: true,
+            attributes: vec![],
             name: make_ident("Point"),
             generics: vec![],
             fields: vec![

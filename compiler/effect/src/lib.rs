@@ -214,6 +214,7 @@ mod integration_tests {
     fn create_test_module(items: Vec<ModuleItem>) -> Module {
         Module {
             items,
+            attributes: vec![],
             span: test_span(),
         }
     }
@@ -221,12 +222,14 @@ mod integration_tests {
     fn create_function(name: &str, effects: Vec<Type>, body: Expr) -> Function {
         Function {
             public: true,
+            attributes: vec![],
             name: Ident::new(name, test_span()),
             generics: vec![],
             params: vec![],
             return_type: None,
             effects,
             where_clause: vec![],
+            contract: None,
             body,
             span: test_span(),
         }

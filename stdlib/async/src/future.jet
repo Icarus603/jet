@@ -78,8 +78,12 @@ impl Future[T]:
     ###
     ### This should only be used in blocking contexts.
     fn block_on(self) -> T:
-        # In a real implementation, run the runtime until completion
-        panic("block_on not implemented")
+        while true:
+            match self.poll():
+                Poll::Ready(value):
+                    return value
+                Poll::Pending:
+                    ()
 
 ### Result of polling a future.
 enum Poll[T]:

@@ -1,1 +1,1 @@
-ParseError { kind: UnexpectedToken, span: Span { start: 9, end: 10 }, message: "expected `:` or `->`, found \\n" }
+ParseError { kind: UnexpectedToken, span: Span { start: 14, end: 18 }, message: "expected `:` or `->`, found pass" }

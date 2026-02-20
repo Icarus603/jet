@@ -415,6 +415,49 @@ fn extract_symbols_from_item(
                 });
             }
         }
+        ModuleItem::Spec(spec) => {
+            let name = if spec.description.is_empty() {
+                "spec".to_string()
+            } else {
+                format!("spec: {}", spec.description)
+            };
+            symbols.push(SymbolInfo {
+                name,
+                kind: SymbolKind::OBJECT,
+                location: Location {
+                    uri: doc.uri.clone(),
+                    range: doc.span_to_range(spec.span),
+                },
+                container_name: container_name.clone(),
+            });
+        }
+        ModuleItem::Example(example) => {
+            let name = if let Some(caption) = &example.caption {
+                format!("example: {caption}")
+            } else {
+                "example".to_string()
+            };
+            symbols.push(SymbolInfo {
+                name,
+                kind: SymbolKind::OBJECT,
+                location: Location {
+                    uri: doc.uri.clone(),
+                    range: doc.span_to_range(example.span),
+                },
+                container_name: container_name.clone(),
+            });
+        }
+        ModuleItem::GhostType(ghost) => {
+            symbols.push(SymbolInfo {
+                name: ghost.name.name.clone(),
+                kind: SymbolKind::TYPE_PARAMETER,
+                location: Location {
+                    uri: doc.uri.clone(),
+                    range: doc.span_to_range(ghost.name.span),
+                },
+                container_name: container_name.clone(),
+            });
+        }
     }
 
     symbols
@@ -473,6 +516,8 @@ pub async fn search_workspace_symbols(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::document::Document;
+    use tower_lsp::lsp_types::Url;
 
     #[test]
     fn test_fuzzy_match() {
@@ -489,5 +534,24 @@ mod tests {
         assert_eq!(calculate_match_score("Hello", "hello"), 90);
         assert!(calculate_match_score("hello", "hel") > 0);
         assert!(calculate_match_score("hello", "xyz") == 0);
+    }
+
+    #[test]
+    fn test_extract_symbols_for_spec_example_and_ghost_type() {
+        let source = r#"@spec "describes behavior"
+@example "sample" 42
+ghost type Model = int
+"#;
+        let uri = Url::parse("file:///workspace/test.jet").unwrap();
+        let mut doc = Document::new(uri, 1, source.to_string());
+        doc.parse();
+        let ast = doc.ast.as_ref().expect("AST should parse");
+
+        let symbols = extract_symbols_from_module(&doc, ast);
+        let names: Vec<&str> = symbols.iter().map(|s| s.name.as_str()).collect();
+
+        assert!(names.iter().any(|n| n.starts_with("spec:")));
+        assert!(names.iter().any(|n| n.starts_with("example:")));
+        assert!(names.contains(&"Model"));
     }
 }

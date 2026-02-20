@@ -1,0 +1,17 @@
+# Test: Incomplete effect handler
+# Expected: Error about incomplete handler operations
+
+effect FileIO:
+    fn read(path: string) -> string
+    fn write(path: string, content: string) -> ()
+
+fn process_file() ! FileIO:
+    perform FileIO.read("input.txt")
+    perform FileIO.write("output.txt", "data")
+
+fn main():
+    with handler:
+        # Only handles read, not write
+        | FileIO.read(path) => resume("content")
+    in:
+        process_file()

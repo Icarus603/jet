@@ -74,8 +74,7 @@ impl Runtime:
 
     ### Blocks the current thread until the future completes.
     fn block_on[T](self, future: Future[T]) -> T:
-        # In a real implementation, run the event loop
-        panic("block_on not implemented")
+        future.block_on()
 
     ### Shuts down the runtime.
     fn shutdown(self):
@@ -116,8 +115,7 @@ fn spawn[T](future: Future[T]) -> TaskHandle[T]:
 
 ### Blocks the current thread until the future completes.
 fn block_on[T](future: Future[T]) -> T:
-    # In a real implementation, create a temporary runtime and block
-    panic("block_on not implemented")
+    Runtime::new().block_on(future)
 
 ### Returns true if running inside a runtime context.
 fn in_runtime_context() -> bool:

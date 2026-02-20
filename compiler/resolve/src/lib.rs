@@ -92,12 +92,14 @@ mod integration_tests {
     fn make_simple_function(name: &str, body: Expr) -> Function {
         Function {
             public: true,
+            attributes: vec![],
             name: make_ident(name),
             generics: vec![],
             params: vec![],
             return_type: None,
             effects: vec![],
             where_clause: vec![],
+            contract: None,
             body,
             span: make_span(),
         }
@@ -205,6 +207,7 @@ mod integration_tests {
             .items
             .push(ModuleItem::Struct(jet_parser::ast::StructDef {
                 public: true,
+                attributes: vec![],
                 name: make_ident("MyStruct"),
                 generics: vec![],
                 fields: vec![],
@@ -214,6 +217,7 @@ mod integration_tests {
         // Add a function that uses the struct type
         let func = Function {
             public: true,
+            attributes: vec![],
             name: make_ident("make_struct"),
             generics: vec![],
             params: vec![],
@@ -222,6 +226,7 @@ mod integration_tests {
             )))),
             effects: vec![],
             where_clause: vec![],
+            contract: None,
             body: Expr::Literal(Literal::Unit),
             span: make_span(),
         };

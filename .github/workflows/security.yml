@@ -1,0 +1,189 @@
+name: Security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Run daily at 00:00 UTC
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  # Audit dependencies for known vulnerabilities
+  cargo-audit:
+    name: Cargo Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-audit
+        run: cargo install --locked cargo-audit
+
+      - name: Run cargo audit
+        run: cargo audit --json --output audit-report.json || true
+
+      - name: Upload audit report
+        uses: actions/upload-artifact@v4
+        with:
+          name: cargo-audit-report
+          path: audit-report.json
+
+      - name: Check for critical vulnerabilities
+        run: |
+          if [ -f audit-report.json ]; then
+            critical_count=$(jq '[.vulnerabilities.list[] | select(.advisory.severity == "critical")] | length' audit-report.json 2>/dev/null || echo "0")
+            if [ "$critical_count" -gt 0 ]; then
+              echo "::error::Found $critical_count critical vulnerabilities"
+              cargo audit
+              exit 1
+            fi
+          fi
+
+      - name: Run cargo audit (display)
+        run: cargo audit
+
+  # Check licenses and advisories with cargo-deny
+  cargo-deny:
+    name: Cargo Deny
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        check: [advisories, bans, licenses, sources]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-deny
+        run: cargo install --locked cargo-deny
+
+      - name: Run cargo deny ${{ matrix.check }}
+        run: cargo deny check ${{ matrix.check }}
+
+  # Run cargo-deny all checks
+  cargo-deny-all:
+    name: Cargo Deny (All)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-deny
+        run: cargo install --locked cargo-deny
+
+      - name: Run cargo deny check
+        run: cargo deny check
+
+  # Check for outdated dependencies
+  cargo-outdated:
+    name: Outdated Dependencies
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-outdated
+        run: cargo install --locked cargo-outdated
+
+      - name: Check for outdated dependencies
+        run: cargo outdated --root-deps-only --format list
+
+  # Run cargo-geiger to detect unsafe code
+  unsafe-check:
+    name: Unsafe Code Detection
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install LLVM
+        run: |
+          wget https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh 21
+          sudo apt-get install -y libllvm21 llvm-21-dev libclang-21-dev libpolly-21-dev
+
+      - name: Install cargo-geiger
+        run: cargo install --locked cargo-geiger
+
+      - name: Detect unsafe code
+        env:
+          LLVM_SYS_211_PREFIX: /usr/lib/llvm-21
+        run: cargo geiger --all-features --all-targets --output-format Json > unsafe-report.json || true
+
+      - name: Upload unsafe code report
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsafe-code-report
+          path: unsafe-report.json
+
+  # Check for secrets in the repository
+  secret-detection:
+    name: Secret Detection
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run GitLeaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
+
+  # SBOM generation check
+  sbom-check:
+    name: SBOM Generation Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-sbom
+        run: cargo install --locked cargo-sbom
+
+      - name: Generate SBOM
+        run: cargo sbom --output-format spdx-json-2-3 --output sbom.spdx.json
+
+      - name: Upload SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: sbom.spdx.json
+
+  # Dependency review for PRs
+  dependency-review:
+    name: Dependency Review
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Dependency Review
+        uses: actions/dependency-review-action@v3
+        with:
+          fail-on-severity: high

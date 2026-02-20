@@ -132,6 +132,24 @@ pub enum Token {
     Eof,
     Error(String),
     DocComment(String),
+
+    // AI Annotation keywords
+    Confidence,
+    GeneratedBy,
+    Prompt,
+    HumanEditCount,
+
+    // Literate programming annotations
+    AtSpec,    // @spec
+    AtExample, // @example
+    AtTestFor, // @test_for
+
+    // Contract keywords
+    Requires,  // requires
+    Ensures,   // ensures
+    Invariant, // invariant
+    Ghost,     // ghost
+    Result,    // result (for postconditions)
 }
 
 impl fmt::Display for Token {
@@ -243,6 +261,18 @@ impl fmt::Display for Token {
             Token::Eof => write!(f, "EOF"),
             Token::Error(s) => write!(f, "ERROR({})", s),
             Token::DocComment(s) => write!(f, "///{}", s),
+            Token::Confidence => write!(f, "confidence"),
+            Token::GeneratedBy => write!(f, "generated_by"),
+            Token::Prompt => write!(f, "prompt"),
+            Token::HumanEditCount => write!(f, "human_edit_count"),
+            Token::AtSpec => write!(f, "@spec"),
+            Token::AtExample => write!(f, "@example"),
+            Token::AtTestFor => write!(f, "@test_for"),
+            Token::Requires => write!(f, "requires"),
+            Token::Ensures => write!(f, "ensures"),
+            Token::Invariant => write!(f, "invariant"),
+            Token::Ghost => write!(f, "ghost"),
+            Token::Result => write!(f, "result"),
         }
     }
 }
@@ -328,6 +358,18 @@ pub fn is_keyword(s: &str) -> bool {
             | "where"
             | "while"
             | "with"
+            | "confidence"
+            | "generated_by"
+            | "prompt"
+            | "human_edit_count"
+            | "spec"
+            | "example"
+            | "test_for"
+            | "requires"
+            | "ensures"
+            | "invariant"
+            | "ghost"
+            | "result"
     )
 }
 
@@ -379,6 +421,18 @@ pub fn keyword_to_token(s: &str) -> Option<Token> {
         "where" => Some(Token::Where),
         "while" => Some(Token::While),
         "with" => Some(Token::With),
+        "confidence" => Some(Token::Confidence),
+        "generated_by" => Some(Token::GeneratedBy),
+        "prompt" => Some(Token::Prompt),
+        "human_edit_count" => Some(Token::HumanEditCount),
+        "spec" => Some(Token::AtSpec),
+        "example" => Some(Token::AtExample),
+        "test_for" => Some(Token::AtTestFor),
+        "requires" => Some(Token::Requires),
+        "ensures" => Some(Token::Ensures),
+        "invariant" => Some(Token::Invariant),
+        "ghost" => Some(Token::Ghost),
+        "result" => Some(Token::Result),
         _ => None,
     }
 }
@@ -402,5 +456,25 @@ mod tests {
         assert_eq!(keyword_to_token("fn"), Some(Token::Fn));
         assert_eq!(keyword_to_token("if"), Some(Token::If));
         assert_eq!(keyword_to_token("foo"), None);
+    }
+}
+
+#[cfg(test)]
+mod contract_tests {
+    use super::*;
+
+    #[test]
+    fn test_contract_keywords() {
+        assert!(is_keyword("requires"));
+        assert!(is_keyword("ensures"));
+        assert!(is_keyword("invariant"));
+        assert!(is_keyword("ghost"));
+        assert!(is_keyword("result"));
+
+        assert_eq!(keyword_to_token("requires"), Some(Token::Requires));
+        assert_eq!(keyword_to_token("ensures"), Some(Token::Ensures));
+        assert_eq!(keyword_to_token("invariant"), Some(Token::Invariant));
+        assert_eq!(keyword_to_token("ghost"), Some(Token::Ghost));
+        assert_eq!(keyword_to_token("result"), Some(Token::Result));
     }
 }

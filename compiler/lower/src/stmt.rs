@@ -403,15 +403,11 @@ fn lower_continue_stmt(ctx: &mut LoweringContext, label: Option<&ast::Ident>) {
 }
 
 /// Lowers a typed statement to IR.
-///
-/// This is a stub implementation that will be expanded to properly handle
-/// typed statements. For now, it returns None.
 pub fn lower_typed_stmt(
-    _ctx: &mut LoweringContext,
-    _stmt: &jet_typeck::TypedStmt,
+    ctx: &mut LoweringContext,
+    stmt: &jet_typeck::TypedStmt,
 ) -> Option<jet_ir::ValueId> {
-    // TODO: Implement full typed statement lowering
-    None
+    crate::expr::lower_typed_stmt_impl(ctx, stmt)
 }
 
 /// Lowers a block expression/statement.

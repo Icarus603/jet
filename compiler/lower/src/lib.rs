@@ -23,12 +23,15 @@
 //!     lower_module(module, tcx, "main")
 //! }
 //! ```
+#![allow(unused_imports, unused_variables, unreachable_patterns)]
+#![allow(clippy::collapsible_match, clippy::redundant_closure)]
 
 pub mod closure;
 pub mod context;
 pub mod effect;
 pub mod expr;
 pub mod function;
+pub mod ghost;
 pub mod pattern;
 pub mod stmt;
 pub mod ty;

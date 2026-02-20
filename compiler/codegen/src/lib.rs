@@ -169,6 +169,16 @@ pub fn compile_module<'ctx>(
 
     // Check if there's a main function that needs wrapping
     let has_main = ir_module.functions.iter().any(|f| f.name == "main");
+    eprintln!(
+        "DEBUG compile_module: module='{}' has_main={} functions={:?}",
+        ir_module.name,
+        has_main,
+        ir_module
+            .functions
+            .iter()
+            .map(|f| &f.name)
+            .collect::<Vec<_>>()
+    );
 
     // Compile all functions (main will be renamed to jet_main in declare_function)
     function::compile_all_functions(codegen, &ir_module.functions)?;

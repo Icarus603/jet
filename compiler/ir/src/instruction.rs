@@ -241,6 +241,10 @@ pub enum Instruction {
     // Debug
     /// Debug print a value.
     DebugPrint { value: ValueId },
+
+    // Ghost code
+    /// No-op instruction (used for ghost code erasure).
+    Nop,
 }
 
 /// A constant value for the Const instruction.
@@ -283,6 +287,7 @@ impl Instruction {
             Instruction::Resume { .. } => None,
             Instruction::Await { result, .. } => Some(*result),
             Instruction::DebugPrint { .. } => None,
+            Instruction::Nop => None,
         }
     }
 
@@ -319,6 +324,7 @@ impl Instruction {
             Instruction::Resume { value } => vec![*value],
             Instruction::Await { future, .. } => vec![*future],
             Instruction::DebugPrint { value } => vec![*value],
+            Instruction::Nop => vec![],
         }
     }
 
@@ -534,6 +540,9 @@ impl fmt::Display for Instruction {
             }
             Instruction::DebugPrint { value } => {
                 write!(f, "debugprint {}", value)
+            }
+            Instruction::Nop => {
+                write!(f, "nop")
             }
         }
     }

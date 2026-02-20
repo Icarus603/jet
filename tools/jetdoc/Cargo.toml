@@ -1,0 +1,38 @@
+[package]
+name = "jet-doc"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Documentation generator for the Jet programming language"
+
+[[bin]]
+name = "jetdoc"
+path = "src/main.rs"
+
+[dependencies]
+# Core dependencies
+anyhow = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { version = "1.0", features = ["full"] }
+clap = { workspace = true }
+
+# Compiler crates
+jet-lexer = { path = "../../compiler/lexer" }
+jet-parser = { path = "../../compiler/parser" }
+jet-diagnostics = { path = "../../compiler/diagnostics" }
+
+# HTML generation
+pulldown-cmark = "0.9"  # Markdown parsing
+askama = "0.12"         # Type-safe HTML templates
+comrak = "0.24"         # GitHub-flavored markdown
+
+# File handling
+walkdir = "2.4"
+tempfile = "3.8"
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }

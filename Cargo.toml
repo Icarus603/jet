@@ -29,6 +29,10 @@ members = [
     "tools/lsp",
     "tools/fmt",
     "tools/jetpkg",
+    "tools/jetdoc",
+    "tools/jettest",
+    "tools/lint",
+    "tools/repl",
 
     # Integration tests
     "tests",
@@ -46,6 +50,7 @@ repository = "https://github.com/jet-lang/jet"
 thiserror = "1.0"
 anyhow = "1.0"
 serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
 
 # Lexer/parser
 logos = "0.14"

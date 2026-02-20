@@ -1,7 +1,23 @@
 # Jet Language Specification
 
 **Version:** 1.0.0-draft
-**Status:** Work in Progress
+**Status:** Draft (1.0 scope-defined)
+
+---
+
+## Implementation Scope (1.0)
+
+This document contains the full language design surface, including some syntax reserved for post-1.0 evolution.
+
+For Jet 1.0 production guarantees, treat these areas as scope-limited unless explicitly marked supported in `docs/user-guide.md`:
+- Full `handle` expression surface (effect handler syntax variants)
+- Some advanced parser forms (for example, single-element tuple literal form)
+- Extended generic `impl` declaration forms beyond the currently validated parser subset
+
+The normative production contract for 1.0 is the combination of:
+- `docs/user-guide.md` support matrix
+- `PRODUCTION_READINESS.md` release gates
+- Passing CI/workspace verification gates
 
 ---
 

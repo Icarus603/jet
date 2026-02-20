@@ -584,6 +584,7 @@ fn get_expr_span(expr: &Expr) -> jet_lexer::Span {
             };
             jet_lexer::Span::new(start, end)
         }
+        Expr::Hole(span) => *span,
     }
 }
 

@@ -63,6 +63,9 @@ impl Formatter {
             ModuleItem::Const(const_def) => self.format_const(const_def),
             ModuleItem::TypeAlias(type_alias) => self.format_type_alias(type_alias),
             ModuleItem::Effect(effect_def) => self.format_effect(effect_def),
+            ModuleItem::Spec(spec) => self.format_spec(spec),
+            ModuleItem::Example(example) => self.format_example(example),
+            ModuleItem::GhostType(ghost_type) => self.format_ghost_type(ghost_type),
         }
     }
 
@@ -334,16 +337,17 @@ impl Formatter {
             self.write_newline();
             match item {
                 ImplItem::Method(func) => {
-                    self.write_str("fn ");
-                    self.write_str(&func.name.name);
-                    self.write_str("(...): ...");
+                    self.format_function(func);
                 }
-                ImplItem::Const { name, ty, .. } => {
+                ImplItem::Const {
+                    name, ty, value, ..
+                } => {
                     self.write_str("const ");
                     self.write_str(&name.name);
                     self.write_str(": ");
                     self.format_type(ty);
-                    self.write_str(" = ...");
+                    self.write_str(" = ");
+                    self.format_expr(value);
                 }
                 ImplItem::TypeAlias(type_alias) => {
                     self.write_str("type ");
@@ -407,7 +411,7 @@ impl Formatter {
             self.write_str("pub ");
         }
 
-        self.write_str("let ");
+        self.write_str("const ");
         self.write_str(&const_def.name.name);
         self.write_str(": ");
         self.format_type(&const_def.ty);
@@ -485,6 +489,57 @@ impl Formatter {
 
         self.indent_level -= 1;
         self.write_newline();
+    }
+
+    /// Format a spec annotation.
+    fn format_spec(&mut self, spec: &Spec) {
+        self.write_str("@spec ");
+        self.write_str(&format!("{:?}", spec.description));
+        if let Some(test_for) = &spec.test_for {
+            self.write_str(" @test_for(");
+            self.write_str(test_for);
+            self.write_str(")");
+        }
+    }
+
+    /// Format an example annotation.
+    fn format_example(&mut self, example: &Example) {
+        self.write_str("@example");
+        if let Some(caption) = &example.caption {
+            self.write_str(" ");
+            self.write_str(&format!("{:?}", caption));
+        }
+        if let Some(test_for) = &example.test_for {
+            self.write_str(" @test_for(");
+            self.write_str(test_for);
+            self.write_str(")");
+        }
+        self.write_str(" ");
+        self.format_expr(&example.code);
+    }
+
+    /// Format a ghost type declaration.
+    fn format_ghost_type(&mut self, ghost_type: &GhostType) {
+        if ghost_type.public {
+            self.write_str("pub ");
+        }
+
+        self.write_str("ghost type ");
+        self.write_str(&ghost_type.name.name);
+
+        if !ghost_type.generics.is_empty() {
+            self.write_str("[");
+            for (i, param) in ghost_type.generics.iter().enumerate() {
+                if i > 0 {
+                    self.write_str(", ");
+                }
+                self.write_str(&param.name.name);
+            }
+            self.write_str("]");
+        }
+
+        self.write_str(" = ");
+        self.format_type(&ghost_type.ty);
     }
 
     /// Format a pattern
@@ -838,6 +893,7 @@ impl Formatter {
             Expr::Raise(_) => "raise ...".to_string(),
             Expr::Handle(_) => "handle ...".to_string(),
             Expr::Resume(_) => "resume ...".to_string(),
+            Expr::Hole(_) => "_".to_string(),
         }
     }
 
@@ -1104,5 +1160,18 @@ mod tests {
 
         let result = format_source(source).unwrap();
         assert!(result.contains("struct Point:"));
+    }
+
+    #[test]
+    fn test_format_spec_example_and_ghost_type() {
+        let source = r#"@spec "sort returns ascending order" @test_for(sort)
+@example "sorts a small list" @test_for(sort) [3, 1, 2]
+ghost type Sorted = [int]
+"#;
+
+        let result = format_source(source).unwrap();
+        assert!(result.contains("@spec \"sort returns ascending order\" @test_for(sort)"));
+        assert!(result.contains("@example \"sorts a small list\" @test_for(sort) [3, 1, 2]"));
+        assert!(result.contains("ghost type Sorted = [int]"));
     }
 }

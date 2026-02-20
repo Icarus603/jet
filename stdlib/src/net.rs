@@ -1034,6 +1034,482 @@ fn map_io_error(e: std::io::Error) -> IoError {
     IoError::new(&e.to_string(), kind)
 }
 
+// C ABI exports for FFI
+
+/// Connects to a remote TCP address.
+///
+/// # Safety
+/// The caller must pass a valid pointer and length according to `jet_tcp_stream_connect`'s FFI contract.
+#[no_mangle]
+pub unsafe extern "C" fn jet_tcp_stream_connect(
+    addr: *const u8,
+    addr_len: usize,
+) -> *mut TcpStream {
+    if addr.is_null() {
+        return std::ptr::null_mut();
+    }
+    let bytes = unsafe { std::slice::from_raw_parts(addr, addr_len) };
+    let addr_str = String::from_utf8_lossy(bytes);
+    match TcpStream::connect(&addr_str) {
+        Ok(stream) => Box::into_raw(Box::new(stream)),
+        Err(_) => std::ptr::null_mut(),
+    }
+}
+
+/// Reads data from a TCP stream into a buffer.
+///
+/// Returns the number of bytes read, or -1 on error.
+///
+/// # Safety
+/// The caller must pass valid pointers according to `jet_tcp_stream_read`'s FFI contract.
+#[no_mangle]
+pub unsafe extern "C" fn jet_tcp_stream_read(
+    stream: *mut TcpStream,
+    buf: *mut u8,
+    buf_len: usize,
+) -> i64 {
+    if stream.is_null() || buf.is_null() {
+        return -1;
+    }
+    let stream = unsafe { &mut *stream };
+    let buffer = unsafe { std::slice::from_raw_parts_mut(buf, buf_len) };
+    match stream.read(buffer) {
+        Ok(n) => n as i64,
+        Err(_) => -1,
+    }
+}
+
+/// Writes data to a TCP stream.
+///
+/// Returns the number of bytes written, or -1 on error.
+///
+/// # Safety
+/// The caller must pass valid pointers according to `jet_tcp_stream_write`'s FFI contract.
+#[no_mangle]
+pub unsafe extern "C" fn jet_tcp_stream_write(
+    stream: *mut TcpStream,
+    buf: *const u8,
+    buf_len: usize,
+) -> i64 {
+    if stream.is_null() || buf.is_null() {
+        return -1;
+    }
+    let stream = unsafe { &mut *stream };
+    let buffer = unsafe { std::slice::from_raw_parts(buf, buf_len) };
+    match stream.write(buffer) {
+        Ok(n) => n as i64,
+        Err(_) => -1,
+    }
+}
+
+/// Closes a TCP stream.
+///
+/// # Safety
+/// The caller must pass a valid pointer according to `jet_tcp_stream_close`'s FFI contract.
+#[no_mangle]
+pub unsafe extern "C" fn jet_tcp_stream_close(stream: *mut TcpStream) {
+    if !stream.is_null() {
+        unsafe { drop(Box::from_raw(stream)) };
+    }
+}
+
+/// Sets the read timeout for a TCP stream.
+///
+/// # Safety
+/// The caller must pass a valid pointer according to `jet_tcp_stream_set_read_timeout`'s FFI contract.
+#[no_mangle]
+pub unsafe extern "C" fn jet_tcp_stream_set_read_timeout(stream: *mut TcpStream, secs: u64) {
+    if stream.is_null() {
+        return;
+    }
+    let stream = unsafe { &*stream };
+    let _ = stream.set_read_timeout(secs);
+}
+
+/// Sets the write timeout for a TCP stream.
+///
+/// # Safety
+/// The caller must pass a valid pointer according to `jet_tcp_stream_set_write_timeout`'s FFI contract.
+#[no_mangle]
+pub unsafe extern "C" fn jet_tcp_stream_set_write_timeout(stream: *mut TcpStream, secs: u64) {
+    if stream.is_null() {
+        return;
+    }
+    let stream = unsafe { &*stream };
+    let _ = stream.set_write_timeout(secs);
+}
+
+/// Binds a TCP listener to an address.
+///
+/// # Safety
+/// The caller must pass a valid pointer and length according to `jet_tcp_listener_bind`'s FFI contract.
+#[no_mangle]
+pub unsafe extern "C" fn jet_tcp_listener_bind(
+    addr: *const u8,
+    addr_len: usize,
+) -> *mut TcpListener {
+    if addr.is_null() {
+        return std::ptr::null_mut();
+    }
+    let bytes = unsafe { std::slice::from_raw_parts(addr, addr_len) };
+    let addr_str = String::from_utf8_lossy(bytes);
+    match TcpListener::bind(&addr_str) {
+        Ok(listener) => Box::into_raw(Box::new(listener)),
+        Err(_) => std::ptr::null_mut(),
+    }
+}
+
+/// Accepts a new incoming connection.
+///
+/// Returns a pointer to the new TcpStream, or null on error.
+///
+/// # Safety
+/// The caller must pass a valid pointer according to `jet_tcp_listener_accept`'s FFI contract.
+#[no_mangle]
+pub unsafe extern "C" fn jet_tcp_listener_accept(listener: *mut TcpListener) -> *mut TcpStream {
+    if listener.is_null() {
+        return std::ptr::null_mut();
+    }
+    let listener = unsafe { &*listener };
+    match listener.accept() {
+        Ok((stream, _)) => Box::into_raw(Box::new(stream)),
+        Err(_) => std::ptr::null_mut(),
+    }
+}
+
+/// Closes a TCP listener.
+///
+/// # Safety
+/// The caller must pass a valid pointer according to `jet_tcp_listener_close`'s FFI contract.
+#[no_mangle]
+pub unsafe extern "C" fn jet_tcp_listener_close(listener: *mut TcpListener) {
+    if !listener.is_null() {
+        unsafe { drop(Box::from_raw(listener)) };
+    }
+}
+
+/// Creates a new HTTP client with default settings.
+#[no_mangle]
+pub extern "C" fn jet_http_client_new() -> *mut HttpClient {
+    Box::into_raw(Box::new(HttpClient::new()))
+}
+
+/// Creates a new HTTP client with a custom timeout.
+#[no_mangle]
+pub extern "C" fn jet_http_client_with_timeout(secs: u64) -> *mut HttpClient {
+    Box::into_raw(Box::new(HttpClient::with_timeout(secs)))
+}
+
+/// Performs a GET request.
+///
+/// # Safety
+/// The caller must pass valid pointers according to `jet_http_client_get`'s FFI contract.
+#[no_mangle]
+pub unsafe extern "C" fn jet_http_client_get(
+    client: *mut HttpClient,
+    url: *const u8,
+    url_len: usize,
+) -> *mut HttpResponse {
+    if client.is_null() || url.is_null() {
+        return std::ptr::null_mut();
+    }
+    let client = unsafe { &*client };
+    let bytes = unsafe { std::slice::from_raw_parts(url, url_len) };
+    let url_str = String::from_utf8_lossy(bytes);
+    match client.get(&url_str) {
+        Ok(response) => Box::into_raw(Box::new(response)),
+        Err(_) => std::ptr::null_mut(),
+    }
+}
+
+/// Performs a POST request.
+///
+/// # Safety
+/// The caller must pass valid pointers according to `jet_http_client_post`'s FFI contract.
+#[no_mangle]
+pub unsafe extern "C" fn jet_http_client_post(
+    client: *mut HttpClient,
+    url: *const u8,
+    url_len: usize,
+    body: *const u8,
+    body_len: usize,
+) -> *mut HttpResponse {
+    if client.is_null() || url.is_null() {
+        return std::ptr::null_mut();
+    }
+    let client = unsafe { &*client };
+    let url_bytes = unsafe { std::slice::from_raw_parts(url, url_len) };
+    let url_str = String::from_utf8_lossy(url_bytes);
+    let body_slice = if body.is_null() {
+        &[]
+    } else {
+        unsafe { std::slice::from_raw_parts(body, body_len) }
+    };
+    match client.post(&url_str, body_slice) {
+        Ok(response) => Box::into_raw(Box::new(response)),
+        Err(_) => std::ptr::null_mut(),
+    }
+}
+
+/// Performs a PUT request.
+///
+/// # Safety
+/// The caller must pass valid pointers according to `jet_http_client_put`'s FFI contract.
+#[no_mangle]
+pub unsafe extern "C" fn jet_http_client_put(
+    client: *mut HttpClient,
+    url: *const u8,
+    url_len: usize,
+    body: *const u8,
+    body_len: usize,
+) -> *mut HttpResponse {
+    if client.is_null() || url.is_null() {
+        return std::ptr::null_mut();
+    }
+    let client = unsafe { &*client };
+    let url_bytes = unsafe { std::slice::from_raw_parts(url, url_len) };
+    let url_str = String::from_utf8_lossy(url_bytes);
+    let body_slice = if body.is_null() {
+        &[]
+    } else {
+        unsafe { std::slice::from_raw_parts(body, body_len) }
+    };
+    match client.put(&url_str, body_slice) {
+        Ok(response) => Box::into_raw(Box::new(response)),
+        Err(_) => std::ptr::null_mut(),
+    }
+}
+
+/// Performs a DELETE request.
+///
+/// # Safety
+/// The caller must pass valid pointers according to `jet_http_client_delete`'s FFI contract.
+#[no_mangle]
+pub unsafe extern "C" fn jet_http_client_delete(
+    client: *mut HttpClient,
+    url: *const u8,
+    url_len: usize,
+) -> *mut HttpResponse {
+    if client.is_null() || url.is_null() {
+        return std::ptr::null_mut();
+    }
+    let client = unsafe { &*client };
+    let bytes = unsafe { std::slice::from_raw_parts(url, url_len) };
+    let url_str = String::from_utf8_lossy(bytes);
+    match client.delete(&url_str) {
+        Ok(response) => Box::into_raw(Box::new(response)),
+        Err(_) => std::ptr::null_mut(),
+    }
+}
+
+/// Frees an HTTP client.
+///
+/// # Safety
+/// The caller must pass a valid pointer according to `jet_http_client_free`'s FFI contract.
+#[no_mangle]
+pub unsafe extern "C" fn jet_http_client_free(client: *mut HttpClient) {
+    if !client.is_null() {
+        unsafe { drop(Box::from_raw(client)) };
+    }
+}
+
+/// Returns the status code of an HTTP response.
+///
+/// # Safety
+/// The caller must pass a valid pointer according to `jet_http_response_status`'s FFI contract.
+#[no_mangle]
+pub unsafe extern "C" fn jet_http_response_status(response: *const HttpResponse) -> u16 {
+    if response.is_null() {
+        return 0;
+    }
+    let response = unsafe { &*response };
+    response.status_code
+}
+
+/// Returns the body of an HTTP response as a string.
+///
+/// # Safety
+/// The caller must pass a valid pointer according to `jet_http_response_body`'s FFI contract.
+#[no_mangle]
+pub unsafe extern "C" fn jet_http_response_body(response: *const HttpResponse) -> *mut JetString {
+    if response.is_null() {
+        return std::ptr::null_mut();
+    }
+    let response = unsafe { &*response };
+    Box::into_raw(Box::new(response.body_as_string()))
+}
+
+/// Returns the body of an HTTP response as raw bytes.
+///
+/// The `len` parameter is set to the length of the body.
+/// Returns a pointer to the body bytes (not owned by caller).
+///
+/// # Safety
+/// The caller must pass valid pointers according to `jet_http_response_body_as_bytes`'s FFI contract.
+#[no_mangle]
+pub unsafe extern "C" fn jet_http_response_body_as_bytes(
+    response: *const HttpResponse,
+    len: *mut usize,
+) -> *const u8 {
+    if response.is_null() || len.is_null() {
+        return std::ptr::null();
+    }
+    let response = unsafe { &*response };
+    unsafe { *len = response.body.len() };
+    response.body.as_ptr()
+}
+
+/// Returns a header value from an HTTP response.
+///
+/// # Safety
+/// The caller must pass valid pointers according to `jet_http_response_header`'s FFI contract.
+#[no_mangle]
+pub unsafe extern "C" fn jet_http_response_header(
+    response: *const HttpResponse,
+    name: *const u8,
+    name_len: usize,
+) -> *mut JetString {
+    if response.is_null() || name.is_null() {
+        return std::ptr::null_mut();
+    }
+    let response = unsafe { &*response };
+    let name_bytes = unsafe { std::slice::from_raw_parts(name, name_len) };
+    let name_str = String::from_utf8_lossy(name_bytes);
+    match response.header(&name_str) {
+        Some(value) => Box::into_raw(Box::new(JetString::from_str(value))),
+        None => std::ptr::null_mut(),
+    }
+}
+
+/// Frees an HTTP response.
+///
+/// # Safety
+/// The caller must pass a valid pointer according to `jet_http_response_free`'s FFI contract.
+#[no_mangle]
+pub unsafe extern "C" fn jet_http_response_free(response: *mut HttpResponse) {
+    if !response.is_null() {
+        unsafe { drop(Box::from_raw(response)) };
+    }
+}
+
+/// A parsed URL structure for FFI.
+pub struct Url {
+    /// The full URL string
+    url: JetString,
+    /// The host
+    host: JetString,
+    /// The port (0 if not specified)
+    port: u16,
+    /// The path
+    path: JetString,
+    /// The scheme (http or https)
+    scheme: JetString,
+}
+
+/// Parses a URL string.
+///
+/// # Safety
+/// The caller must pass a valid pointer and length according to `jet_url_parse`'s FFI contract.
+#[no_mangle]
+pub unsafe extern "C" fn jet_url_parse(url: *const u8, url_len: usize) -> *mut Url {
+    if url.is_null() {
+        return std::ptr::null_mut();
+    }
+    let bytes = unsafe { std::slice::from_raw_parts(url, url_len) };
+    let url_str = String::from_utf8_lossy(bytes);
+
+    match parse_url(&url_str) {
+        Ok((host, port, path, is_https)) => {
+            let scheme = if is_https { "https" } else { "http" };
+            let url = Url {
+                url: JetString::from_str(&url_str),
+                host: JetString::from_str(&host),
+                port,
+                path: JetString::from_str(&path),
+                scheme: JetString::from_str(scheme),
+            };
+            Box::into_raw(Box::new(url))
+        }
+        Err(_) => std::ptr::null_mut(),
+    }
+}
+
+/// Returns the string representation of a URL.
+///
+/// # Safety
+/// The caller must pass a valid pointer according to `jet_url_to_string`'s FFI contract.
+#[no_mangle]
+pub unsafe extern "C" fn jet_url_to_string(url: *const Url) -> *mut JetString {
+    if url.is_null() {
+        return std::ptr::null_mut();
+    }
+    let url = unsafe { &*url };
+    Box::into_raw(Box::new(url.url.clone()))
+}
+
+/// Returns the host of a URL.
+///
+/// # Safety
+/// The caller must pass a valid pointer according to `jet_url_host`'s FFI contract.
+#[no_mangle]
+pub unsafe extern "C" fn jet_url_host(url: *const Url) -> *mut JetString {
+    if url.is_null() {
+        return std::ptr::null_mut();
+    }
+    let url = unsafe { &*url };
+    Box::into_raw(Box::new(url.host.clone()))
+}
+
+/// Returns the path of a URL.
+///
+/// # Safety
+/// The caller must pass a valid pointer according to `jet_url_path`'s FFI contract.
+#[no_mangle]
+pub unsafe extern "C" fn jet_url_path(url: *const Url) -> *mut JetString {
+    if url.is_null() {
+        return std::ptr::null_mut();
+    }
+    let url = unsafe { &*url };
+    Box::into_raw(Box::new(url.path.clone()))
+}
+
+/// Returns the port of a URL (0 if not specified).
+///
+/// # Safety
+/// The caller must pass a valid pointer according to `jet_url_port`'s FFI contract.
+#[no_mangle]
+pub unsafe extern "C" fn jet_url_port(url: *const Url) -> u16 {
+    if url.is_null() {
+        return 0;
+    }
+    let url = unsafe { &*url };
+    url.port
+}
+
+/// Returns the scheme of a URL.
+///
+/// # Safety
+/// The caller must pass a valid pointer according to `jet_url_scheme`'s FFI contract.
+#[no_mangle]
+pub unsafe extern "C" fn jet_url_scheme(url: *const Url) -> *mut JetString {
+    if url.is_null() {
+        return std::ptr::null_mut();
+    }
+    let url = unsafe { &*url };
+    Box::into_raw(Box::new(url.scheme.clone()))
+}
+
+/// Frees a URL.
+///
+/// # Safety
+/// The caller must pass a valid pointer according to `jet_url_free`'s FFI contract.
+#[no_mangle]
+pub unsafe extern "C" fn jet_url_free(url: *mut Url) {
+    if !url.is_null() {
+        unsafe { drop(Box::from_raw(url)) };
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1157,5 +1633,270 @@ mod tests {
 
         let listener = listener.unwrap();
         assert!(listener.local_addr().port() > 0);
+    }
+
+    // FFI tests
+
+    #[test]
+    fn test_ffi_tcp_listener_bind() {
+        let addr = b"127.0.0.1:0";
+        let listener = unsafe { jet_tcp_listener_bind(addr.as_ptr(), addr.len()) };
+        assert!(!listener.is_null());
+
+        unsafe {
+            jet_tcp_listener_close(listener);
+        }
+    }
+
+    #[test]
+    fn test_ffi_tcp_listener_bind_invalid() {
+        let addr = b"invalid:address:format";
+        let listener = unsafe { jet_tcp_listener_bind(addr.as_ptr(), addr.len()) };
+        assert!(listener.is_null());
+    }
+
+    #[test]
+    fn test_ffi_tcp_stream_connect_and_close() {
+        // Bind a listener first
+        let addr = b"127.0.0.1:0";
+        let listener = unsafe { jet_tcp_listener_bind(addr.as_ptr(), addr.len()) };
+        assert!(!listener.is_null());
+
+        // Get the actual bound address
+        let local_addr = unsafe { (*listener).local_addr() };
+        let bound_addr = format!("{}:{}", local_addr.ip(), local_addr.port());
+
+        // Use a channel to synchronize
+        let (tx, rx) = std::sync::mpsc::channel();
+
+        // Connect from another thread
+        std::thread::spawn(move || {
+            let addr_bytes = bound_addr.as_bytes();
+            let stream = unsafe { jet_tcp_stream_connect(addr_bytes.as_ptr(), addr_bytes.len()) };
+            assert!(!stream.is_null());
+            tx.send(stream as usize).unwrap();
+        });
+
+        // Accept the connection
+        let accepted = unsafe { jet_tcp_listener_accept(listener) };
+        assert!(!accepted.is_null());
+
+        // Wait for connect to complete and close stream
+        let client_stream = rx.recv().unwrap() as *mut TcpStream;
+        unsafe {
+            jet_tcp_stream_close(client_stream);
+            jet_tcp_stream_close(accepted);
+            jet_tcp_listener_close(listener);
+        }
+    }
+
+    #[test]
+    fn test_ffi_tcp_stream_null_safety() {
+        unsafe {
+            // All functions should handle null gracefully
+            assert_eq!(
+                jet_tcp_stream_read(std::ptr::null_mut(), b"x".as_ptr() as *mut u8, 1),
+                -1
+            );
+            assert_eq!(
+                jet_tcp_stream_write(std::ptr::null_mut(), b"x".as_ptr(), 1),
+                -1
+            );
+            jet_tcp_stream_close(std::ptr::null_mut());
+            jet_tcp_stream_set_read_timeout(std::ptr::null_mut(), 10);
+            jet_tcp_stream_set_write_timeout(std::ptr::null_mut(), 10);
+
+            assert!(jet_tcp_listener_bind(std::ptr::null(), 0).is_null());
+            assert!(jet_tcp_listener_accept(std::ptr::null_mut()).is_null());
+            jet_tcp_listener_close(std::ptr::null_mut());
+        }
+    }
+
+    #[test]
+    fn test_ffi_http_client_new() {
+        let client = jet_http_client_new();
+        assert!(!client.is_null());
+
+        unsafe {
+            jet_http_client_free(client);
+        }
+    }
+
+    #[test]
+    fn test_ffi_http_client_with_timeout() {
+        let client = jet_http_client_with_timeout(60);
+        assert!(!client.is_null());
+
+        unsafe {
+            assert_eq!((*client).timeout(), 60);
+            jet_http_client_free(client);
+        }
+    }
+
+    #[test]
+    fn test_ffi_http_client_null_safety() {
+        unsafe {
+            assert!(jet_http_client_get(std::ptr::null_mut(), b"x".as_ptr(), 1).is_null());
+            assert!(
+                jet_http_client_post(std::ptr::null_mut(), b"x".as_ptr(), 1, b"".as_ptr(), 0)
+                    .is_null()
+            );
+            assert!(
+                jet_http_client_put(std::ptr::null_mut(), b"x".as_ptr(), 1, b"".as_ptr(), 0)
+                    .is_null()
+            );
+            assert!(jet_http_client_delete(std::ptr::null_mut(), b"x".as_ptr(), 1).is_null());
+            jet_http_client_free(std::ptr::null_mut());
+        }
+    }
+
+    #[test]
+    fn test_ffi_http_response_null_safety() {
+        unsafe {
+            assert_eq!(jet_http_response_status(std::ptr::null()), 0);
+            assert!(jet_http_response_body(std::ptr::null()).is_null());
+
+            let mut len: usize = 0;
+            assert!(jet_http_response_body_as_bytes(std::ptr::null(), &mut len).is_null());
+            assert!(jet_http_response_header(std::ptr::null(), b"x".as_ptr(), 1).is_null());
+            jet_http_response_free(std::ptr::null_mut());
+        }
+    }
+
+    #[test]
+    fn test_ffi_http_response_status() {
+        let response = HttpResponse::new(200);
+        let ptr = Box::into_raw(Box::new(response));
+
+        unsafe {
+            assert_eq!(jet_http_response_status(ptr), 200);
+            jet_http_response_free(ptr);
+        }
+    }
+
+    #[test]
+    fn test_ffi_http_response_body() {
+        let mut response = HttpResponse::new(200);
+        response.body = b"Hello, World!".to_vec();
+        let ptr = Box::into_raw(Box::new(response));
+
+        unsafe {
+            let body = jet_http_response_body(ptr);
+            assert!(!body.is_null());
+            assert_eq!((*body).as_str(), "Hello, World!");
+            crate::string::jet_string_free(body);
+            jet_http_response_free(ptr);
+        }
+    }
+
+    #[test]
+    fn test_ffi_http_response_body_as_bytes() {
+        let mut response = HttpResponse::new(200);
+        response.body = vec![0u8, 1u8, 2u8, 3u8];
+        let ptr = Box::into_raw(Box::new(response));
+
+        unsafe {
+            let mut len: usize = 0;
+            let bytes = jet_http_response_body_as_bytes(ptr, &mut len);
+            assert!(!bytes.is_null());
+            assert_eq!(len, 4);
+            assert_eq!(*bytes, 0u8);
+            jet_http_response_free(ptr);
+        }
+    }
+
+    #[test]
+    fn test_ffi_http_response_header() {
+        let mut response = HttpResponse::new(200);
+        response.headers.push((
+            JetString::from_str("Content-Type"),
+            JetString::from_str("application/json"),
+        ));
+        let ptr = Box::into_raw(Box::new(response));
+
+        unsafe {
+            let header = jet_http_response_header(ptr, b"Content-Type".as_ptr(), 12);
+            assert!(!header.is_null());
+            assert_eq!((*header).as_str(), "application/json");
+            crate::string::jet_string_free(header);
+
+            // Case insensitive
+            let header2 = jet_http_response_header(ptr, b"content-type".as_ptr(), 12);
+            assert!(!header2.is_null());
+            crate::string::jet_string_free(header2);
+
+            // Missing header
+            let missing = jet_http_response_header(ptr, b"X-Missing".as_ptr(), 9);
+            assert!(missing.is_null());
+
+            jet_http_response_free(ptr);
+        }
+    }
+
+    #[test]
+    fn test_ffi_url_parse() {
+        let url = b"https://example.com:8443/path/to/resource";
+        let ptr = unsafe { jet_url_parse(url.as_ptr(), url.len()) };
+        assert!(!ptr.is_null());
+
+        unsafe {
+            assert_eq!(jet_url_port(ptr), 8443);
+
+            let host = jet_url_host(ptr);
+            assert!(!host.is_null());
+            assert_eq!((*host).as_str(), "example.com");
+            crate::string::jet_string_free(host);
+
+            let path = jet_url_path(ptr);
+            assert!(!path.is_null());
+            assert_eq!((*path).as_str(), "/path/to/resource");
+            crate::string::jet_string_free(path);
+
+            let scheme = jet_url_scheme(ptr);
+            assert!(!scheme.is_null());
+            assert_eq!((*scheme).as_str(), "https");
+            crate::string::jet_string_free(scheme);
+
+            let url_str = jet_url_to_string(ptr);
+            assert!(!url_str.is_null());
+            assert_eq!(
+                (*url_str).as_str(),
+                "https://example.com:8443/path/to/resource"
+            );
+            crate::string::jet_string_free(url_str);
+
+            jet_url_free(ptr);
+        }
+    }
+
+    #[test]
+    fn test_ffi_url_parse_http() {
+        let url = b"http://example.com/";
+        let ptr = unsafe { jet_url_parse(url.as_ptr(), url.len()) };
+        assert!(!ptr.is_null());
+
+        unsafe {
+            assert_eq!(jet_url_port(ptr), 80);
+
+            let scheme = jet_url_scheme(ptr);
+            assert!(!scheme.is_null());
+            assert_eq!((*scheme).as_str(), "http");
+            crate::string::jet_string_free(scheme);
+
+            jet_url_free(ptr);
+        }
+    }
+
+    #[test]
+    fn test_ffi_url_null_safety() {
+        unsafe {
+            assert!(jet_url_parse(std::ptr::null(), 0).is_null());
+            assert!(jet_url_to_string(std::ptr::null()).is_null());
+            assert!(jet_url_host(std::ptr::null()).is_null());
+            assert!(jet_url_path(std::ptr::null()).is_null());
+            assert_eq!(jet_url_port(std::ptr::null()), 0);
+            assert!(jet_url_scheme(std::ptr::null()).is_null());
+            jet_url_free(std::ptr::null_mut());
+        }
     }
 }

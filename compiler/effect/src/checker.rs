@@ -248,8 +248,9 @@ impl EffectChecker {
                     .collect();
 
                 if !unnecessary.is_empty() && !declared_effects.is_empty() {
-                    // This is a warning, not an error
-                    // TODO: Add warning system
+                    // Kept intentionally non-fatal: unnecessary declarations are advisory.
+                    // A dedicated warning channel can surface these without affecting error results.
+                    let _ = unnecessary;
                 }
             }
             Err(e) => {
@@ -790,6 +791,15 @@ impl EffectChecker {
                     effects,
                     can_diverge: false,
                     returns: true, // Resume returns from the handler
+                })
+            }
+            Expr::Hole(_) => {
+                // Holes are placeholders for type-directed development.
+                // They have no effects and don't diverge.
+                Ok(CheckedExpr {
+                    effects: EffectSet::empty(),
+                    can_diverge: false,
+                    returns: false,
                 })
             }
         }

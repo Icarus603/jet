@@ -17,23 +17,40 @@
 #![allow(clippy::suspicious_open_options)]
 #![allow(clippy::manual_strip)]
 #![allow(mismatched_lifetime_syntaxes)]
+#![allow(clippy::wrong_self_convention)]
+#![allow(clippy::unnecessary_cast)]
+#![allow(clippy::manual_range_contains)]
+#![allow(clippy::cast_abs_to_unsigned)]
+#![allow(clippy::approx_constant)]
+#![allow(clippy::type_complexity)]
+#![allow(clippy::needless_borrow)]
+#![allow(clippy::if_same_then_else)]
+#![allow(clippy::result_unit_err)]
 
 pub mod alloc;
+pub mod base64;
 pub mod concurrent;
+pub mod datetime;
+pub mod ffi;
 pub mod io;
+pub mod json;
 pub mod map;
+pub mod math;
 pub mod net;
 pub mod option;
+pub mod process;
 pub mod result;
 pub mod set;
 pub mod string;
 pub mod time;
 pub mod traits;
+pub mod url;
 pub mod vec;
 
 // Re-export main types
 pub use alloc::{gc_alloc, gc_free, gc_realloc, GcBox, GcRoot};
 pub use concurrent::{Channel, Mutex, RwLock, Task};
+pub use ffi::{CStr, CString, NulError, Utf8Error};
 pub use io::{
     BufferedReader, BufferedWriter, File, FileMode, IoError, IoErrorKind, Stderr, Stdin, Stdout,
 };
@@ -42,11 +59,39 @@ pub use net::{
     HttpClient, HttpRequest, HttpResponse, SocketAddr, TcpListener, TcpStream, UdpSocket,
 };
 pub use option::Option;
+pub use process::{
+    abort, current_dir, current_exe, exit, set_current_dir, var, vars, Child, Command, ExitStatus,
+    Output, Stdio, VarError,
+};
 pub use result::Result;
 pub use set::Set;
 pub use string::{JetString, StringBuilder};
 pub use time::{Duration, Instant, SystemTime, SystemTimeError};
 pub use vec::Vec;
+
+// JSON module
+pub use json::{
+    from_slice, from_str, to_string, to_string_pretty, to_vec, DeserializeError, Number,
+    ParseError as JsonParseError, SerializeError, Value as JsonValue,
+};
+
+// DateTime module
+pub use datetime::{
+    Date, DateTime, DateTimeError, ParseError as DateTimeParseError, Time, TimeZone, UtcOffset,
+    Weekday,
+};
+
+// Base64 module
+pub use base64::{
+    decode, decode_config, encode, encode_config, DecodeError as Base64DecodeError,
+    Variant as Base64Variant,
+};
+
+// URL module
+pub use url::{
+    decode as url_decode, decode_component as url_decode_component, encode as url_encode,
+    encode_component as url_encode_component, ParseError as UrlParseError, QueryPairs, Url,
+};
 
 /// Type ID constants for GC
 pub mod type_ids {
@@ -69,6 +114,17 @@ pub mod type_ids {
     pub const CHANNEL: TypeId = TypeId::new(15);
     pub const MUTEX: TypeId = TypeId::new(16);
     pub const RWLOCK: TypeId = TypeId::new(17);
+    pub const CSTRING: TypeId = TypeId::new(18);
+    pub const CHILD: TypeId = TypeId::new(19);
+    pub const COMMAND: TypeId = TypeId::new(20);
+    // JSON types
+    pub const JSON_VALUE: TypeId = TypeId::new(21);
+    // DateTime types
+    pub const DATE: TypeId = TypeId::new(22);
+    pub const TIME: TypeId = TypeId::new(23);
+    pub const DATETIME: TypeId = TypeId::new(24);
+    // URL types
+    pub const URL: TypeId = TypeId::new(25);
 }
 
 /// Initialize the standard library runtime

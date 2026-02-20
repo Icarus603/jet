@@ -1,0 +1,8 @@
+error[E0603]: incomplete effect handler for `FileIO`
+ --> effect_incomplete_handler.jet:12:5
+   |
+12 |     with handler:
+   |     ^^^^^^^^^^^^^
+   |
+   = note: handler is missing operations: `write`
+   = help: add the missing operation handlers or mark the handler as partial with `handler partial`

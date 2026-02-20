@@ -1074,6 +1074,9 @@ fn find_references_in_expr(
                 find_references_in_expr(value, word, ctx, locations);
             }
         }
+        Expr::Hole(_) => {
+            // Hole expressions don't contain references
+        }
         Expr::Literal(_) => {}
         Expr::Variable(ident) if ident.name == word => {
             locations.push(Location {
@@ -1111,6 +1114,9 @@ fn get_item_span(item: &ModuleItem) -> jet_lexer::Span {
         ModuleItem::Import(_) => jet_lexer::Span::new(0, 0),
         ModuleItem::Impl(i) => i.span,
         ModuleItem::Effect(e) => e.span,
+        ModuleItem::Spec(s) => s.span,
+        ModuleItem::Example(e) => e.span,
+        ModuleItem::GhostType(g) => g.span,
     }
 }
 
@@ -1242,6 +1248,7 @@ impl ExprSpan for Expr {
             Expr::Raise(raise_expr) => raise_expr.span,
             Expr::Handle(handle_expr) => handle_expr.span,
             Expr::Resume(resume_expr) => resume_expr.span,
+            Expr::Hole(span) => *span,
         }
     }
 }
@@ -1281,6 +1288,158 @@ impl PatternSpan for Pattern {
             Pattern::Literal(_) => jet_lexer::Span::new(0, 0),
         }
     }
+}
+
+/// Find the type definition of a symbol at a position
+pub fn find_type_definition(doc: &Document, ast: &Module, position: Position) -> Option<Location> {
+    let ctx = HandlerContext::new(doc);
+    let word = ctx.word_at_position(position)?;
+
+    // Search through module items to find the type of the symbol
+    for item in &ast.items {
+        match item {
+            ModuleItem::Function(func) => {
+                // Check if the position is within the function body
+                if is_position_in_function(func, position, &ctx) {
+                    // Check parameters for type
+                    for param in &func.params {
+                        if pattern_contains_ident(&param.pattern, &word) {
+                            // Return location of the type definition
+                            return find_type_location(doc, ast, &param.ty, &ctx);
+                        }
+                    }
+                }
+            }
+            ModuleItem::Const(const_def) => {
+                if const_def.name.name == word {
+                    return find_type_location(doc, ast, &const_def.ty, &ctx);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    // Check if word is a type name itself
+    find_type_definition_by_name(doc, ast, &word, &ctx)
+}
+
+/// Find the location of a type definition
+fn find_type_location(
+    doc: &Document,
+    ast: &Module,
+    ty: &Type,
+    ctx: &HandlerContext,
+) -> Option<Location> {
+    match ty {
+        Type::Path(path) => {
+            let type_name = path.segments.last()?.name.clone();
+            find_type_definition_by_name(doc, ast, &type_name, ctx)
+        }
+        _ => None,
+    }
+}
+
+/// Find type definition by name
+fn find_type_definition_by_name(
+    doc: &Document,
+    ast: &Module,
+    name: &str,
+    ctx: &HandlerContext,
+) -> Option<Location> {
+    for item in &ast.items {
+        match item {
+            ModuleItem::Struct(struct_def) if struct_def.name.name == name => {
+                return Some(Location {
+                    uri: doc.uri.clone(),
+                    range: ctx.span_to_range(struct_def.name.span),
+                });
+            }
+            ModuleItem::Enum(enum_def) if enum_def.name.name == name => {
+                return Some(Location {
+                    uri: doc.uri.clone(),
+                    range: ctx.span_to_range(enum_def.name.span),
+                });
+            }
+            ModuleItem::TypeAlias(type_alias) if type_alias.name.name == name => {
+                return Some(Location {
+                    uri: doc.uri.clone(),
+                    range: ctx.span_to_range(type_alias.name.span),
+                });
+            }
+            ModuleItem::Trait(trait_def) if trait_def.name.name == name => {
+                return Some(Location {
+                    uri: doc.uri.clone(),
+                    range: ctx.span_to_range(trait_def.name.span),
+                });
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// Find implementations of a trait or trait implementations for a type
+pub fn find_implementation(doc: &Document, ast: &Module, position: Position) -> Vec<Location> {
+    let ctx = HandlerContext::new(doc);
+    let mut locations = Vec::new();
+
+    let Some(word) = ctx.word_at_position(position) else {
+        return locations;
+    };
+
+    // Search for impl blocks that implement this trait or are for this type
+    for item in &ast.items {
+        if let ModuleItem::Impl(impl_def) = item {
+            // Check if this impl is for the type we're looking for
+            let trait_matches = impl_def
+                .trait_path
+                .as_ref()
+                .map(|t| t.segments.last().map(|s| s.name == word).unwrap_or(false))
+                .unwrap_or(false);
+            let type_matches = format_type(&impl_def.ty) == word;
+            let matches = trait_matches || type_matches;
+
+            if matches {
+                locations.push(Location {
+                    uri: doc.uri.clone(),
+                    range: ctx.span_to_range(impl_def.span),
+                });
+            }
+        }
+    }
+
+    locations
+}
+
+/// Get the identifier range at a position (for prepare rename)
+pub fn get_identifier_range_at_position(
+    doc: &Document,
+    _ast: &Module,
+    position: Position,
+) -> Option<Range> {
+    let ctx = HandlerContext::new(doc);
+    let _word = ctx.word_at_position(position)?;
+
+    // Find the word at the position and return its range
+    // This is a simplified implementation - in practice you'd want to
+    // use the AST to get the exact range
+    let offset = doc.position_to_offset(position);
+    let text = doc.text.to_string();
+
+    // Find the word boundaries around the position
+    let start = text[..offset]
+        .rfind(|c: char| !c.is_alphanumeric() && c != '_')
+        .map(|i| i + 1)
+        .unwrap_or(0);
+    let end = text[offset..]
+        .find(|c: char| !c.is_alphanumeric() && c != '_')
+        .map(|i| offset + i)
+        .unwrap_or(text.len());
+
+    Some(Range {
+        start: doc.offset_to_position(start),
+        end: doc.offset_to_position(end),
+    })
 }
 
 #[cfg(test)]

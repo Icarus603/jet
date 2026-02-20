@@ -330,8 +330,14 @@ fn documented():
 
     let tokens = tokenize_kinds(input);
 
-    // Doc comments are currently treated as errors (placeholder)
-    // This test documents the current behavior
+    let doc_count = tokens
+        .iter()
+        .filter(|t| matches!(t, Token::DocComment(_)))
+        .count();
+    assert_eq!(
+        doc_count, 2,
+        "Expected both doc comment lines to be tokenized"
+    );
     assert!(tokens.contains(&Token::Fn));
 }
 

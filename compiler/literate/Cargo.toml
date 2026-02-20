@@ -1,0 +1,17 @@
+[package]
+name = "jet-literate"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+description = "Literate programming support for Jet - weaving and tangling"
+
+[dependencies]
+jet-lexer = { path = "../lexer" }
+jet-parser = { path = "../parser" }
+jet-diagnostics = { path = "../diagnostics" }
+
+[dev-dependencies]
+pretty_assertions.workspace = true

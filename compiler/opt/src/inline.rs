@@ -410,6 +410,7 @@ impl FunctionInlining {
             Instruction::DebugPrint { value } => Instruction::DebugPrint {
                 value: remap(value),
             },
+            Instruction::Nop => Instruction::Nop,
         }
     }
 

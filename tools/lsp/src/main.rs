@@ -19,12 +19,17 @@ use std::sync::Arc;
 
 use tokio::sync::RwLock;
 use tower_lsp::jsonrpc::Result;
+use tower_lsp::lsp_types::request::{
+    GotoImplementationParams, GotoImplementationResponse, GotoTypeDefinitionParams,
+    GotoTypeDefinitionResponse,
+};
 use tower_lsp::lsp_types::{SymbolInformation, *};
 use tower_lsp::{Client, LanguageServer, LspService, Server};
 
 mod code_actions;
 mod completion;
 mod document;
+mod folding_range;
 mod format;
 mod handlers;
 mod inlay_hints;
@@ -36,8 +41,12 @@ mod workspace_symbol;
 use code_actions::{get_code_actions, get_refactoring_actions, get_source_actions};
 use completion::{get_completions, get_trigger_completions};
 use document::Document;
+use folding_range::handle_folding_range;
 use format::{format_document, format_on_type, format_range};
-use handlers::{find_definition, find_references, get_document_symbols, get_hover_info};
+use handlers::{
+    find_definition, find_implementation, find_references, find_type_definition,
+    get_document_symbols, get_hover_info,
+};
 use inlay_hints::get_inlay_hints;
 use selection_range::get_selection_ranges;
 use semantic_tokens::{
@@ -92,8 +101,6 @@ impl LanguageServer for Backend {
                 document_symbol_provider: Some(OneOf::Left(true)),
                 // Workspace symbols
                 workspace_symbol_provider: Some(OneOf::Left(true)),
-                // Rename support
-                rename_provider: Some(OneOf::Left(true)),
                 // Code actions
                 code_action_provider: Some(CodeActionProviderCapability::Simple(true)),
                 // Inlay hints
@@ -129,6 +136,17 @@ impl LanguageServer for Backend {
                     retrigger_characters: None,
                     work_done_progress_options: WorkDoneProgressOptions::default(),
                 }),
+                // Folding range
+                folding_range_provider: Some(FoldingRangeProviderCapability::Simple(true)),
+                // Type definition (go to type)
+                type_definition_provider: Some(TypeDefinitionProviderCapability::Simple(true)),
+                // Implementation provider
+                implementation_provider: Some(ImplementationProviderCapability::Simple(true)),
+                // Prepare rename for better rename support
+                rename_provider: Some(OneOf::Right(RenameOptions {
+                    prepare_provider: Some(true),
+                    work_done_progress_options: WorkDoneProgressOptions::default(),
+                })),
                 ..Default::default()
             },
             server_info: Some(ServerInfo {
@@ -603,6 +621,98 @@ impl LanguageServer for Backend {
     ) -> Result<Option<Vec<SymbolInformation>>> {
         let symbols = search_workspace_symbols(&self.documents, params).await;
         Ok(Some(symbols))
+    }
+
+    /// Folding range
+    async fn folding_range(&self, params: FoldingRangeParams) -> Result<Option<Vec<FoldingRange>>> {
+        let uri = params.text_document.uri.clone();
+
+        let docs = self.documents.read().await;
+        let Some(doc) = docs.get(&uri) else {
+            return Ok(None);
+        };
+
+        let Some(ref ast) = doc.ast else {
+            return Ok(None);
+        };
+
+        let ranges = handle_folding_range(doc, ast, params);
+        Ok(Some(ranges))
+    }
+
+    /// Go to type definition
+    async fn goto_type_definition(
+        &self,
+        params: GotoTypeDefinitionParams,
+    ) -> Result<Option<GotoTypeDefinitionResponse>> {
+        let uri = params.text_document_position_params.text_document.uri;
+        let position = params.text_document_position_params.position;
+
+        let docs = self.documents.read().await;
+        let Some(doc) = docs.get(&uri) else {
+            return Ok(None);
+        };
+
+        let Some(ref ast) = doc.ast else {
+            return Ok(None);
+        };
+
+        let Some(location) = find_type_definition(doc, ast, position) else {
+            return Ok(None);
+        };
+
+        Ok(Some(GotoTypeDefinitionResponse::Scalar(location)))
+    }
+
+    /// Go to implementation
+    async fn goto_implementation(
+        &self,
+        params: GotoImplementationParams,
+    ) -> Result<Option<GotoImplementationResponse>> {
+        let uri = params.text_document_position_params.text_document.uri;
+        let position = params.text_document_position_params.position;
+
+        let docs = self.documents.read().await;
+        let Some(doc) = docs.get(&uri) else {
+            return Ok(None);
+        };
+
+        let Some(ref ast) = doc.ast else {
+            return Ok(None);
+        };
+
+        let locations = find_implementation(doc, ast, position);
+
+        if locations.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(GotoImplementationResponse::Array(locations)))
+        }
+    }
+
+    /// Prepare rename - provides the range that can be renamed
+    async fn prepare_rename(
+        &self,
+        params: TextDocumentPositionParams,
+    ) -> Result<Option<PrepareRenameResponse>> {
+        let uri = params.text_document.uri;
+        let position = params.position;
+
+        let docs = self.documents.read().await;
+        let Some(doc) = docs.get(&uri) else {
+            return Ok(None);
+        };
+
+        let Some(ref ast) = doc.ast else {
+            return Ok(None);
+        };
+
+        // Find the identifier at the position
+        let Some(range) = handlers::get_identifier_range_at_position(doc, ast, position) else {
+            return Ok(None);
+        };
+
+        Ok(Some(PrepareRenameResponse::Range(range)))
     }
 }
 

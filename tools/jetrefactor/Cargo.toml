@@ -1,0 +1,39 @@
+[package]
+name = "jet-refactor"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "AI-safe refactoring tools for the Jet language"
+
+[[bin]]
+name = "jet-refactor"
+path = "src/main.rs"
+
+[lib]
+name = "jet_refactor"
+path = "src/lib.rs"
+
+[dependencies]
+# Compiler components
+jet-lexer = { path = "../../compiler/lexer" }
+jet-parser = { path = "../../compiler/parser" }
+jet-resolve = { path = "../../compiler/resolve" }
+jet-typeck = { path = "../../compiler/typeck" }
+jet-diagnostics = { path = "../../compiler/diagnostics" }
+jet-ir = { path = "../../compiler/ir" }
+jet-lower = { path = "../../compiler/lower" }
+
+# External dependencies
+thiserror.workspace = true
+anyhow.workspace = true
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+toml.workspace = true
+
+# For diff generation
+similar = "2.4"
+
+[dev-dependencies]
+pretty_assertions.workspace = true

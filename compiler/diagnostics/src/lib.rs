@@ -89,6 +89,14 @@ pub enum ErrorCode {
     CannotNormalizeProjection,
     /// Non-exhaustive patterns
     NonExhaustivePatterns,
+    /// Contract precondition not satisfied
+    ContractPreconditionFailed,
+    /// Contract postcondition not satisfied
+    ContractPostconditionFailed,
+    /// Loop invariant not preserved
+    InvariantNotPreserved,
+    /// Ghost variable used in runtime context
+    GhostInRuntimeContext,
 
     // Effect system errors (E0400-E0499)
     /// Effect not handled
@@ -156,6 +164,10 @@ impl ErrorCode {
             ErrorCode::TraitBoundNotSatisfied => "E0309".to_string(),
             ErrorCode::CannotNormalizeProjection => "E0310".to_string(),
             ErrorCode::NonExhaustivePatterns => "E0311".to_string(),
+            ErrorCode::ContractPreconditionFailed => "E0350".to_string(),
+            ErrorCode::ContractPostconditionFailed => "E0351".to_string(),
+            ErrorCode::InvariantNotPreserved => "E0352".to_string(),
+            ErrorCode::GhostInRuntimeContext => "E0353".to_string(),
 
             // Effect system errors
             ErrorCode::UnhandledEffect => "E0400".to_string(),
@@ -208,6 +220,10 @@ impl ErrorCode {
             ErrorCode::TraitBoundNotSatisfied => "trait bound not satisfied",
             ErrorCode::CannotNormalizeProjection => "cannot normalize projection",
             ErrorCode::NonExhaustivePatterns => "non-exhaustive patterns",
+            ErrorCode::ContractPreconditionFailed => "contract precondition failed",
+            ErrorCode::ContractPostconditionFailed => "contract postcondition failed",
+            ErrorCode::InvariantNotPreserved => "loop invariant not preserved",
+            ErrorCode::GhostInRuntimeContext => "ghost variable in runtime context",
             ErrorCode::UnhandledEffect => "unhandled effect",
             ErrorCode::HandlerMismatch => "handler mismatch",
             ErrorCode::InvalidResume => "invalid resume",
@@ -379,6 +395,10 @@ impl Diagnostic {
             "E0309" => Some(ErrorCode::TraitBoundNotSatisfied),
             "E0310" => Some(ErrorCode::CannotNormalizeProjection),
             "E0311" => Some(ErrorCode::NonExhaustivePatterns),
+            "E0350" => Some(ErrorCode::ContractPreconditionFailed),
+            "E0351" => Some(ErrorCode::ContractPostconditionFailed),
+            "E0352" => Some(ErrorCode::InvariantNotPreserved),
+            "E0353" => Some(ErrorCode::GhostInRuntimeContext),
             "E0400" => Some(ErrorCode::UnhandledEffect),
             "E0401" => Some(ErrorCode::HandlerMismatch),
             "E0402" => Some(ErrorCode::InvalidResume),

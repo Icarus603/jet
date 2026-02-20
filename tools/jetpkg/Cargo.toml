@@ -27,6 +27,10 @@ hex = "0.4"
 dirs = "5"
 chrono = { version = "0.4", features = ["serde"] }
 urlencoding = "2"
+tar = "0.4"
+flate2 = "1.0"
+git2 = "0.18"
+base64 = "0.22"
 
 [dev-dependencies]
 pretty_assertions.workspace = true
