@@ -130,13 +130,15 @@ jobs:
   # Build for macOS (x64)
   build-macos-x64:
     name: Build (macOS x64)
-    runs-on: macos-12
+    runs-on: macos-latest
     needs: [check-release-files]
     steps:
       - uses: actions/checkout@v4
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-apple-darwin
 
       - name: Install LLVM
         run: |
@@ -153,14 +155,14 @@ jobs:
 
       - name: Build release binary
         env:
-          LLVM_SYS_211_PREFIX: /usr/local/opt/llvm@21
-        run: cargo build --workspace --release
+          LLVM_SYS_211_PREFIX: /opt/homebrew/opt/llvm@21
+        run: cargo build --workspace --release --target x86_64-apple-darwin
 
       - name: Create archive
         run: |
           VERSION=${GITHUB_REF#refs/tags/}
           mkdir -p jet-$VERSION-macos-x64
-          cp target/release/jet jet-$VERSION-macos-x64/
+          cp target/x86_64-apple-darwin/release/jet jet-$VERSION-macos-x64/
           cp -r examples jet-$VERSION-macos-x64/
           cp LICENSE jet-$VERSION-macos-x64/
           cp README.md jet-$VERSION-macos-x64/
@@ -171,7 +173,8 @@ jobs:
           VERSION=${GITHUB_REF#refs/tags/}
           tmp_dir="$(mktemp -d)"
           tar xzf jet-$VERSION-macos-x64.tar.gz -C "$tmp_dir"
-          "$tmp_dir/jet-$VERSION-macos-x64/jet" --version
+          # Note: Cannot run x64 binary on ARM64 runner, just verify it exists
+          file "$tmp_dir/jet-$VERSION-macos-x64/jet"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
