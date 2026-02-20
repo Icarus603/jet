@@ -1,0 +1,13 @@
+┌─────────────────────────────────────────┐
+│  $ jet new hello                        │
+│  Created new Jet project: hello         │
+│                                         │
+│  $ cd hello && cat src/main.jet        │
+│  fn main():                             │
+│      print("Hello, World!")             │
+│                                         │
+│  $ jet run                              │
+│  Hello, World!                          │
+│                                         │
+│  ✨ Compiled in 0.023s                  │
+└─────────────────────────────────────────┘
