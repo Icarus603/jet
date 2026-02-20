@@ -2,24 +2,24 @@
   <defs>
     <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" style="stop-color:#0a1628"/>
-      <stop offset="100%" style="stop-color:#1a2744"/>
+      <stop offset="100%" style="stop-color:#1e3a5f"/>
     </linearGradient>
     <linearGradient id="blade1" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#2563eb"/>
-      <stop offset="100%" style="stop-color:#3b82f6"/>
+      <stop offset="0%" style="stop-color:#0ea5e9"/>
+      <stop offset="100%" style="stop-color:#38bdf8"/>
     </linearGradient>
     <linearGradient id="blade2" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#1d4ed8"/>
-      <stop offset="100%" style="stop-color:#60a5fa"/>
+      <stop offset="0%" style="stop-color:#0284c7"/>
+      <stop offset="100%" style="stop-color:#0ea5e9"/>
     </linearGradient>
     <linearGradient id="blade3" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#1e40af"/>
-      <stop offset="100%" style="stop-color:#93c5fd"/>
+      <stop offset="0%" style="stop-color:#0369a1"/>
+      <stop offset="100%" style="stop-color:#7dd3fc"/>
     </linearGradient>
     <linearGradient id="core" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#60a5fa"/>
+      <stop offset="0%" style="stop-color:#0ea5e9"/>
       <stop offset="50%" style="stop-color:#bfdbfe"/>
-      <stop offset="100%" style="stop-color:#60a5fa"/>
+      <stop offset="100%" style="stop-color:#0ea5e9"/>
     </linearGradient>
     <filter id="glow">
       <feGaussianBlur stdDeviation="1.5" result="coloredBlur"/>
@@ -31,7 +31,7 @@
   </defs>
 
   <!-- Background circle -->
-  <circle cx="100" cy="100" r="95" fill="url(#bg)" stroke="#2563eb" stroke-width="2"/>
+  <circle cx="100" cy="100" r="95" fill="url(#bg)" stroke="#0ea5e9" stroke-width="2"/>
 
   <!-- Outer ring -->
   <circle cx="100" cy="100" r="85" fill="none" stroke="#1e3a8a" stroke-width="1" opacity="0.5"/>
@@ -49,17 +49,17 @@
         fill="url(#blade3)" opacity="0.8" filter="url(#glow)"/>
 
   <!-- Effect trails (flowing from blades) -->
-  <path d="M 160 40 Q 175 25 185 20" stroke="#93c5fd" stroke-width="2" fill="none" stroke-linecap="round" opacity="0.8"/>
-  <path d="M 165 50 Q 180 40 190 35" stroke="#60a5fa" stroke-width="1.5" fill="none" stroke-linecap="round" opacity="0.6"/>
+  <path d="M 160 40 Q 175 25 185 20" stroke="#7dd3fc" stroke-width="2" fill="none" stroke-linecap="round" opacity="0.8"/>
+  <path d="M 165 50 Q 180 40 190 35" stroke="#0ea5e9" stroke-width="1.5" fill="none" stroke-linecap="round" opacity="0.6"/>
 
-  <path d="M 150 170 Q 165 180 175 190" stroke="#93c5fd" stroke-width="2" fill="none" stroke-linecap="round" opacity="0.8"/>
-  <path d="M 135 165 Q 145 175 155 185" stroke="#60a5fa" stroke-width="1.5" fill="none" stroke-linecap="round" opacity="0.6"/>
+  <path d="M 150 170 Q 165 180 175 190" stroke="#7dd3fc" stroke-width="2" fill="none" stroke-linecap="round" opacity="0.8"/>
+  <path d="M 135 165 Q 145 175 155 185" stroke="#0ea5e9" stroke-width="1.5" fill="none" stroke-linecap="round" opacity="0.6"/>
 
-  <path d="M 40 70 Q 25 60 15 55" stroke="#93c5fd" stroke-width="2" fill="none" stroke-linecap="round" opacity="0.8"/>
-  <path d="M 45 85 Q 30 80 20 75" stroke="#60a5fa" stroke-width="1.5" fill="none" stroke-linecap="round" opacity="0.6"/>
+  <path d="M 40 70 Q 25 60 15 55" stroke="#7dd3fc" stroke-width="2" fill="none" stroke-linecap="round" opacity="0.8"/>
+  <path d="M 45 85 Q 30 80 20 75" stroke="#0ea5e9" stroke-width="1.5" fill="none" stroke-linecap="round" opacity="0.6"/>
 
   <!-- Central core (safety, solid foundation) -->
-  <circle cx="100" cy="100" r="22" fill="url(#core)" stroke="#2563eb" stroke-width="2" filter="url(#glow)"/>
+  <circle cx="100" cy="100" r="22" fill="url(#core)" stroke="#0ea5e9" stroke-width="2" filter="url(#glow)"/>
 
   <!-- Inner core highlight -->
   <circle cx="100" cy="100" r="15" fill="#bfdbfe" opacity="0.3"/>
