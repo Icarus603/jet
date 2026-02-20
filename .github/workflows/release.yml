@@ -130,7 +130,7 @@ jobs:
   # Build for macOS (x64)
   build-macos-x64:
     name: Build (macOS x64)
-    runs-on: macos-13
+    runs-on: macos-12
     needs: [check-release-files]
     steps:
       - uses: actions/checkout@v4
