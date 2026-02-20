@@ -1,15 +1,28 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
   <defs>
     <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#1a1a2e"/>
-      <stop offset="100%" style="stop-color:#16213e"/>
+      <stop offset="0%" style="stop-color:#0d0d1a"/>
+      <stop offset="100%" style="stop-color:#1a1a2e"/>
     </linearGradient>
-    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="100%">
+    <linearGradient id="blade1" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" style="stop-color:#5c4094"/>
       <stop offset="100%" style="stop-color:#7c5cc4"/>
     </linearGradient>
+    <linearGradient id="blade2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#4a3a8c"/>
+      <stop offset="100%" style="stop-color:#6a5ac4"/>
+    </linearGradient>
+    <linearGradient id="blade3" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#3a2a7c"/>
+      <stop offset="100%" style="stop-color:#5a4ab4"/>
+    </linearGradient>
+    <linearGradient id="core" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#7c5cc4"/>
+      <stop offset="50%" style="stop-color:#9c7ce4"/>
+      <stop offset="100%" style="stop-color:#7c5cc4"/>
+    </linearGradient>
     <filter id="glow">
-      <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+      <feGaussianBlur stdDeviation="1.5" result="coloredBlur"/>
       <feMerge>
         <feMergeNode in="coloredBlur"/>
         <feMergeNode in="SourceGraphic"/>
@@ -18,25 +31,41 @@
   </defs>
 
   <!-- Background circle -->
-  <circle cx="100" cy="100" r="90" fill="url(#bg)" stroke="url(#accent)" stroke-width="3"/>
+  <circle cx="100" cy="100" r="95" fill="url(#bg)" stroke="#5c4094" stroke-width="2"/>
 
-  <!-- Inner ring -->
-  <circle cx="100" cy="100" r="80" fill="none" stroke="#5c4094" stroke-width="1" opacity="0.5"/>
+  <!-- Outer ring -->
+  <circle cx="100" cy="100" r="85" fill="none" stroke="#3a2a7c" stroke-width="1" opacity="0.5"/>
 
-  <!-- J letter -->
-  <text x="100" y="135"
-        font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
-        font-size="100"
-        font-weight="700"
-        fill="#ffffff"
-        text-anchor="middle"
-        filter="url(#glow)">J</text>
+  <!-- Turbine Blade 1 (top-right, flowing clockwise) -->
+  <path d="M 100 100 Q 140 60 160 40 Q 170 90 140 110 Z"
+        fill="url(#blade1)" opacity="0.9" filter="url(#glow)"/>
 
-  <!-- Jet trail decoration -->
-  <path d="M 155 60 Q 170 45 180 35" stroke="#7c5cc4" stroke-width="3" fill="none" stroke-linecap="round"/>
-  <path d="M 160 70 Q 175 60 185 50" stroke="#5c4094" stroke-width="2" fill="none" stroke-linecap="round" opacity="0.7"/>
-  <path d="M 165 80 Q 178 75 188 68" stroke="#5c4094" stroke-width="1.5" fill="none" stroke-linecap="round" opacity="0.5"/>
+  <!-- Turbine Blade 2 (bottom-right to bottom-left) -->
+  <path d="M 100 100 Q 160 140 150 170 Q 110 160 100 130 Z"
+        fill="url(#blade2)" opacity="0.85" filter="url(#glow)"/>
 
-  <!-- Small dot accent -->
-  <circle cx="165" cy="55" r="6" fill="#7c5cc4"/>
+  <!-- Turbine Blade 3 (left side) -->
+  <path d="M 100 100 Q 50 100 40 70 Q 60 40 90 60 Z"
+        fill="url(#blade3)" opacity="0.8" filter="url(#glow)"/>
+
+  <!-- Effect trails (flowing from blades) -->
+  <path d="M 160 40 Q 175 25 185 20" stroke="#9c7ce4" stroke-width="2" fill="none" stroke-linecap="round" opacity="0.8"/>
+  <path d="M 165 50 Q 180 40 190 35" stroke="#7c5cc4" stroke-width="1.5" fill="none" stroke-linecap="round" opacity="0.6"/>
+
+  <path d="M 150 170 Q 165 180 175 190" stroke="#9c7ce4" stroke-width="2" fill="none" stroke-linecap="round" opacity="0.8"/>
+  <path d="M 135 165 Q 145 175 155 185" stroke="#7c5cc4" stroke-width="1.5" fill="none" stroke-linecap="round" opacity="0.6"/>
+
+  <path d="M 40 70 Q 25 60 15 55" stroke="#9c7ce4" stroke-width="2" fill="none" stroke-linecap="round" opacity="0.8"/>
+  <path d="M 45 85 Q 30 80 20 75" stroke="#7c5cc4" stroke-width="1.5" fill="none" stroke-linecap="round" opacity="0.6"/>
+
+  <!-- Central core (safety, solid foundation) -->
+  <circle cx="100" cy="100" r="22" fill="url(#core)" stroke="#5c4094" stroke-width="2" filter="url(#glow)"/>
+
+  <!-- Inner core highlight -->
+  <circle cx="100" cy="100" r="15" fill="#b89cf4" opacity="0.3"/>
+
+  <!-- Speed lines suggesting motion -->
+  <path d="M 170 30 Q 180 20 190 15" stroke="#b89cf4" stroke-width="1" fill="none" stroke-linecap="round" opacity="0.4"/>
+  <path d="M 160 180 Q 175 195 185 200" stroke="#b89cf4" stroke-width="1" fill="none" stroke-linecap="round" opacity="0.4"/>
+  <path d="M 30 55 Q 15 45 5 40" stroke="#b89cf4" stroke-width="1" fill="none" stroke-linecap="round" opacity="0.4"/>
 </svg>
