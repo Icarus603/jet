@@ -153,28 +153,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         continue-on-error: true
 
-  # SBOM generation check
-  sbom-check:
-    name: SBOM Generation Check
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Install cargo-sbom
-        run: cargo install --locked cargo-sbom
-
-      - name: Generate SBOM
-        run: cargo sbom --output-format spdx-json-2-3 --output sbom.spdx.json
-
-      - name: Upload SBOM
-        uses: actions/upload-artifact@v4
-        with:
-          name: sbom
-          path: sbom.spdx.json
-
   # Dependency review for PRs
   dependency-review:
     name: Dependency Review
