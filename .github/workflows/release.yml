@@ -442,7 +442,7 @@ jobs:
     name: Update Homebrew Formula
     needs: [create-release]
     runs-on: ubuntu-latest
-    if: ${{ !contains(github.ref_name, 'alpha') && !contains(github.ref_name, 'beta') && !contains(github.ref_name, 'rc') && secrets.HOMEBREW_TAP_TOKEN != '' }}
+    if: ${{ !contains(github.ref_name, 'alpha') && !contains(github.ref_name, 'beta') && !contains(github.ref_name, 'rc') }}
     permissions:
       contents: read
     steps:
