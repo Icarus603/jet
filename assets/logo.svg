@@ -1,5 +1,42 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
-  <circle cx="100" cy="100" r="90" fill="#1a1a2e" stroke="#5c4094" stroke-width="4"/>
-  <text x="100" y="130" font-family="system-ui, sans-serif" font-size="80" font-weight="bold" fill="#fff" text-anchor="middle">J</text>
-  <circle cx="160" cy="40" r="15" fill="#5c4094"/>
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1a1a2e"/>
+      <stop offset="100%" style="stop-color:#16213e"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#5c4094"/>
+      <stop offset="100%" style="stop-color:#7c5cc4"/>
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background circle -->
+  <circle cx="100" cy="100" r="90" fill="url(#bg)" stroke="url(#accent)" stroke-width="3"/>
+
+  <!-- Inner ring -->
+  <circle cx="100" cy="100" r="80" fill="none" stroke="#5c4094" stroke-width="1" opacity="0.5"/>
+
+  <!-- J letter -->
+  <text x="100" y="135"
+        font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
+        font-size="100"
+        font-weight="700"
+        fill="#ffffff"
+        text-anchor="middle"
+        filter="url(#glow)">J</text>
+
+  <!-- Jet trail decoration -->
+  <path d="M 155 60 Q 170 45 180 35" stroke="#7c5cc4" stroke-width="3" fill="none" stroke-linecap="round"/>
+  <path d="M 160 70 Q 175 60 185 50" stroke="#5c4094" stroke-width="2" fill="none" stroke-linecap="round" opacity="0.7"/>
+  <path d="M 165 80 Q 178 75 188 68" stroke="#5c4094" stroke-width="1.5" fill="none" stroke-linecap="round" opacity="0.5"/>
+
+  <!-- Small dot accent -->
+  <circle cx="165" cy="55" r="6" fill="#7c5cc4"/>
 </svg>
