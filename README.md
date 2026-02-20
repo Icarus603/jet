@@ -1,6 +1,4 @@
-<div align="center">
-
-<img src="https://raw.githubusercontent.com/Icarus603/jet/main/assets/logo.svg" width="180" alt="Jet Programming Language">
+<img src="https://raw.githubusercontent.com/Icarus603/jet/main/assets/logo.svg" width="120" align="right" alt="Jet Programming Language">
 
 # Jet
 
@@ -13,15 +11,7 @@
 [![CI](https://github.com/Icarus603/jet/workflows/CI/badge.svg)](https://github.com/Icarus603/jet/actions)
 [![Release](https://img.shields.io/github/v/release/Icarus603/jet?include_prereleases)](https://github.com/Icarus603/jet/releases)
 
-<p align="center">
-  <a href="#-why-jet">Why Jet?</a> •
-  <a href="#-quick-start">Quick Start</a> •
-  <a href="#-features">Features</a> •
-  <a href="#-installation">Installation</a> •
-  <a href="#-documentation">Docs</a>
-</p>
-
-</div>
+[Why Jet?](#-why-jet) • [Quick Start](#-quick-start) • [Features](#-features) • [Installation](#-installation) • [Docs](#-documentation)
 
 ---
 
