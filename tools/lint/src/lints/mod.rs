@@ -16,7 +16,7 @@ pub trait TypeHint {
     fn is_result_type(&self) -> bool;
     /// Check if this expression returns an Option type
     fn is_option_type(&self) -> bool;
-    /// Check if this expression must be used (has #[must_use] attribute)
+    /// Check if this expression must be used (has #\[must_use\] attribute)
     fn is_must_use(&self) -> bool;
 }
 

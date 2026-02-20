@@ -2,6 +2,7 @@
 name = "jet-repl"
 version.workspace = true
 edition.workspace = true
+license = "MIT"
 
 [[bin]]
 name = "jet-repl"

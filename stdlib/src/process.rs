@@ -576,7 +576,7 @@ fn map_io_error(e: std::io::Error) -> IoError {
 ///
 /// # Examples
 ///
-/// ```
+/// ```text
 /// // Exit with code 0 (success)
 /// // jet_stdlib::process::exit(0);
 ///
@@ -593,7 +593,7 @@ pub fn exit(code: i32) -> ! {
 ///
 /// # Examples
 ///
-/// ```
+/// ```text
 /// // Abort the process
 /// // jet_stdlib::process::abort();
 /// ```
