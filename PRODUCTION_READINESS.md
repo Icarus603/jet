@@ -57,4 +57,4 @@ Note: Release sign-off is represented by this checklist plus CI/release workflow
 - Windows CI/release workflows were removed as part of the Linux/macOS-only support policy.
 - Required release metadata files are now enforced by `scripts/check_release_files.sh` in CI and release workflows.
 - Permissive bypass patterns (`|| true`) were removed from workflow/script paths that are part of required gates.
-- Release workflow includes signed artifacts (Sigstore/cosign) and SBOM outputs.
+- Release workflow includes signed artifacts (Sigstore/cosign).
