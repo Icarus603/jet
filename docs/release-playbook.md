@@ -236,7 +236,7 @@ Brief summary of the most important changes.
 **macOS (Homebrew):**
 ```bash
 brew tap Icarus603/jet
-brew install jet
+brew install jet-lang
 ```
 
 **Linux:**
@@ -303,7 +303,7 @@ Test on clean systems:
 ```bash
 # macOS Homebrew
 brew tap Icarus603/jet
-brew install jet
+brew install jet-lang
 jet --version
 
 # Linux install script

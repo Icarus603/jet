@@ -153,7 +153,7 @@ enum HttpResponse:
 ```bash
 # macOS
 brew tap Icarus603/jet
-brew install jet
+brew install jet-lang
 ```
 
 ```bash

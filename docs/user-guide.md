@@ -40,7 +40,7 @@ macOS (Homebrew):
 
 ```bash
 brew tap Icarus603/jet
-brew install jet
+brew install jet-lang
 ```
 
 Linux (installer script):

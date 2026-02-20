@@ -250,7 +250,7 @@ After release is published:
    ```bash
    # macOS Homebrew
    brew tap Icarus603/jet
-   brew install jet
+   brew install jet-lang
    jet --version
 
    # Linux install script
