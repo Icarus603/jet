@@ -21,8 +21,6 @@
   <a href="#-documentation">Docs</a>
 </p>
 
-<img src="https://raw.githubusercontent.com/Icarus603/jet/main/assets/demo.png" width="700" alt="Jet Demo">
-
 </div>
 
 ---
