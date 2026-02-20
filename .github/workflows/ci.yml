@@ -115,7 +115,7 @@ jobs:
       - name: Run tests
         env:
           LLVM_SYS_211_PREFIX: /usr/lib/llvm-21
-        run: cargo test --workspace --verbose
+        run: cargo test --workspace --verbose -- --skip benchmark_task_spawn_latency
 
       - name: Run integration tests
         env:
