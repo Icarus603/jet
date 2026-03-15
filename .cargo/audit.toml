@@ -1,0 +1,11 @@
+[advisories]
+ignore = [
+    # Transitive dependencies via comrak/syntect - upstream has no fixes yet
+    "RUSTSEC-2025-0141",  # bincode unmaintained
+    "RUSTSEC-2024-0320",  # yaml-rust unmaintained
+]
+
+[output]
+# Don't fail on warnings (unmaintained crates), only on actual vulnerabilities
+quiet = false
+show_tree = true
