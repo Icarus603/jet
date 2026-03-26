@@ -26,7 +26,7 @@ jet-parser = { path = "../../compiler/parser" }
 jet-diagnostics = { path = "../../compiler/diagnostics" }
 
 # HTML generation
-pulldown-cmark = "0.9"  # Markdown parsing
+pulldown-cmark = "0.13"  # Markdown parsing
 askama = "0.12"         # Type-safe HTML templates
 comrak = "0.24"         # GitHub-flavored markdown
 
