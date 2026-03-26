@@ -65,16 +65,16 @@ inkwell = { version = "0.8", features = ["llvm21-1"] }
 # Runtime
 libc = "0.2"
 crossbeam = "0.8"
-once_cell = "1.19"
+once_cell = "1.21"
 parking_lot = "0.12"
 tracing = "0.1"
 
 # Testing
 pretty_assertions = "1.4"
-proptest = "1.4"
+proptest = "1.11"
 
 # CLI
-clap = { version = "4.5", features = ["derive"] }
+clap = { version = "4.6", features = ["derive"] }
 toml = "0.8"
 
 # LSP

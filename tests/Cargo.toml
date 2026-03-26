@@ -12,7 +12,7 @@ jet-effect = { path = "../compiler/effect" }
 jet-ir = { path = "../compiler/ir" }
 
 anyhow = "1.0"
-tempfile = "3.8"
+tempfile = "3.27"
 walkdir = "2.4"
 serde = { version = "1.0", features = ["derive"] }
 toml = "0.8"
