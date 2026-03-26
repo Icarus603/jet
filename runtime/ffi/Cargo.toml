@@ -8,7 +8,7 @@ repository.workspace = true
 
 [dependencies]
 libc = { workspace = true, optional = true }
-windows = { version = "0.54", features = ["Win32_Foundation", "Win32_System_LibraryLoader"], optional = true }
+windows = { version = "0.62", features = ["Win32_Foundation", "Win32_System_LibraryLoader"], optional = true }
 libffi = { version = "3.2", features = ["system"] }
 
 [features]
