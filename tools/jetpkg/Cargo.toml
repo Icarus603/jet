@@ -27,7 +27,7 @@ hex = "0.4"
 dirs = "5"
 chrono = { version = "0.4", features = ["serde"] }
 urlencoding = "2"
-tar = "0.4"
+tar = "0.4.45"
 flate2 = "1.0"
 git2 = "0.20"
 base64 = "0.22"
