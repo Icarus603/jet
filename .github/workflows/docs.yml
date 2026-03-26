@@ -65,7 +65,7 @@ jobs:
           echo '<meta http-equiv="refresh" content="0;url=jet_cli/index.html">' > target/doc/index.html
 
       - name: Setup mdBook
-        uses: peaceiris/actions-mdbook@v1
+        uses: peaceiris/actions-mdbook@v2
         with:
           mdbook-version: 'latest'
 
