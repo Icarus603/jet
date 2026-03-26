@@ -13,7 +13,7 @@ libc = { workspace = true }
 jet-rt-gc = { path = "../gc" }
 
 [build-dependencies]
-cc = "1.0"
+cc = "1.2"
 
 [dev-dependencies]
 pretty_assertions.workspace = true

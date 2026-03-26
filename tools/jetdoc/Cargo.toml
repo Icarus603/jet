@@ -17,7 +17,7 @@ anyhow = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
-tokio = { version = "1.0", features = ["full"] }
+tokio = { version = "1.50", features = ["full"] }
 clap = { workspace = true }
 
 # Compiler crates
@@ -32,7 +32,7 @@ comrak = "0.24"         # GitHub-flavored markdown
 
 # File handling
 walkdir = "2.4"
-tempfile = "3.8"
+tempfile = "3.27"
 
 [dev-dependencies]
 pretty_assertions = { workspace = true }
