@@ -1400,7 +1400,7 @@ dependencies = [
  "jet-diagnostics",
  "jet-ir",
  "pretty_assertions",
- "thiserror 1.0.69",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
@@ -1409,7 +1409,7 @@ version = "1.0.0"
 dependencies = [
  "pretty_assertions",
  "termcolor",
- "thiserror 1.0.69",
+ "thiserror 2.0.18",
  "unicode-width 0.1.14",
 ]
 
@@ -1429,7 +1429,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
- "thiserror 1.0.69",
+ "thiserror 2.0.18",
  "tokio",
  "walkdir",
 ]
@@ -1444,7 +1444,7 @@ dependencies = [
  "jet-lexer",
  "jet-parser",
  "pretty_assertions",
- "thiserror 1.0.69",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
@@ -1456,7 +1456,7 @@ dependencies = [
  "jet-lexer",
  "jet-parser",
  "pretty_assertions",
- "thiserror 1.0.69",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
@@ -1513,7 +1513,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "tempfile",
- "thiserror 1.0.69",
+ "thiserror 2.0.18",
  "tokio",
  "walkdir",
 ]
@@ -1531,7 +1531,7 @@ dependencies = [
  "pretty_assertions",
  "serde",
  "serde_json",
- "thiserror 1.0.69",
+ "thiserror 2.0.18",
  "toml",
 ]
 
@@ -1602,7 +1602,7 @@ dependencies = [
  "rustyline-derive",
  "serde",
  "tempfile",
- "thiserror 1.0.69",
+ "thiserror 2.0.18",
  "tokio",
  "toml",
  "tracing",
@@ -1632,7 +1632,7 @@ dependencies = [
  "once_cell",
  "parking_lot",
  "pretty_assertions",
- "thiserror 1.0.69",
+ "thiserror 2.0.18",
  "tracing",
 ]
 
@@ -1693,7 +1693,7 @@ dependencies = [
  "jet-lexer",
  "jet-parser",
  "pretty_assertions",
- "thiserror 1.0.69",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
@@ -1716,7 +1716,7 @@ dependencies = [
  "tar",
  "tempfile",
  "termcolor",
- "thiserror 1.0.69",
+ "thiserror 2.0.18",
  "tokio",
  "toml",
  "urlencoding",
@@ -1741,7 +1741,7 @@ dependencies = [
  "rand 0.8.5",
  "serde",
  "serde_json",
- "thiserror 1.0.69",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
