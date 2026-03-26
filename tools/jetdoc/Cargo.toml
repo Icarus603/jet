@@ -27,7 +27,7 @@ jet-diagnostics = { path = "../../compiler/diagnostics" }
 
 # HTML generation
 pulldown-cmark = "0.9"  # Markdown parsing
-askama = "0.12"         # Type-safe HTML templates
+askama = "0.15"         # Type-safe HTML templates
 comrak = "0.24"         # GitHub-flavored markdown
 
 # File handling
